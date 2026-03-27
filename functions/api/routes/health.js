@@ -2,6 +2,7 @@
 
 function registerHealthRoutes(app, deps = {}) {
   const getUserConfig = deps.getUserConfig;
+  const getUserConfigPublic = deps.getUserConfigPublic || deps.getUserConfig;
   const getUpstreamHealthSnapshot = deps.getUpstreamHealthSnapshot;
   const tryAttachUser = deps.tryAttachUser;
 
@@ -10,6 +11,9 @@ function registerHealthRoutes(app, deps = {}) {
   }
   if (typeof getUserConfig !== 'function') {
     throw new Error('registerHealthRoutes requires getUserConfig()');
+  }
+  if (typeof getUserConfigPublic !== 'function') {
+    throw new Error('registerHealthRoutes requires getUserConfigPublic()');
   }
   if (typeof tryAttachUser !== 'function') {
     throw new Error('registerHealthRoutes requires tryAttachUser()');
@@ -40,7 +44,7 @@ function registerHealthRoutes(app, deps = {}) {
 
       if (userId) {
         try {
-          const config = (await getUserConfig(userId)) || {};
+          const config = (await getUserConfigPublic(userId)) || {};
           foxessTokenPresent = !!config.foxessToken;
           amberApiKeyPresent = !!config.amberApiKey;
         } catch (e) {

@@ -34,33 +34,44 @@ function registerUserSelfRoutes(app, deps = {}) {
   app.post('/api/user/init-profile', authenticateUser, async (req, res) => {
     try {
       const userId = req.user.uid;
+      const userEmail = req.user.email || '';
 
       const userRef = db.collection('users').doc(userId);
       const userDoc = await userRef.get();
       const existing = userDoc.exists ? (userDoc.data() || {}) : {};
+      const profileUpdate = {};
+      let shouldWriteProfile = false;
+      let automationEnabled = typeof existing.automationEnabled === 'boolean'
+        ? existing.automationEnabled
+        : false;
 
-      // IMPORTANT: createdAt must be immutable once set.
-      // Previous logic used merge+serverTimestamp on every init call, which
-      // could shift "joined" date repeatedly. We now set createdAt only when missing.
-      const profileUpdate = {
-        uid: userId,
-        email: req.user.email || '',
-        lastUpdated: serverTimestamp()
-      };
-
+      if (!userDoc.exists || existing.uid !== userId) {
+        profileUpdate.uid = userId;
+        shouldWriteProfile = true;
+      }
+      if (!userDoc.exists || existing.email !== userEmail) {
+        profileUpdate.email = userEmail;
+        shouldWriteProfile = true;
+      }
       if (!userDoc.exists || typeof existing.automationEnabled !== 'boolean') {
         profileUpdate.automationEnabled = false;
+        automationEnabled = false;
+        shouldWriteProfile = true;
       }
-
+      // createdAt must be immutable once set.
       if (!existing.createdAt) {
         profileUpdate.createdAt = serverTimestamp();
+        shouldWriteProfile = true;
       }
-
-      await userRef.set(profileUpdate, { merge: true });
+      if (shouldWriteProfile) {
+        profileUpdate.lastUpdated = serverTimestamp();
+        await userRef.set(profileUpdate, { merge: true });
+      }
 
       // Ensure automation state exists and is enabled
       const stateRef = db.collection('users').doc(userId).collection('automation').doc('state');
       const stateDoc = await stateRef.get();
+      let createdAutomationState = false;
 
       if (!stateDoc.exists) {
         // Create default state with automation DISABLED (user must enable it)
@@ -71,6 +82,13 @@ function registerUserSelfRoutes(app, deps = {}) {
           activeRule: null,
           updatedAt: serverTimestamp()
         });
+        createdAutomationState = true;
+        automationEnabled = false;
+      } else {
+        const stateData = stateDoc.data() || {};
+        if (typeof stateData.enabled === 'boolean') {
+          automationEnabled = stateData.enabled;
+        }
       }
 
       res.json({
@@ -78,7 +96,9 @@ function registerUserSelfRoutes(app, deps = {}) {
         result: {
           userId,
           message: 'User profile initialized successfully',
-          automationEnabled: false
+          automationEnabled,
+          profileUpdated: shouldWriteProfile,
+          automationStateCreated: createdAutomationState
         }
       });
     } catch (error) {

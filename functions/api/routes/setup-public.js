@@ -63,6 +63,7 @@ function registerSetupPublicRoutes(app, deps = {}) {
   const sigenEnergyAPI = deps.sigenEnergyAPI || null;
   const getConfig = deps.getConfig;
   const getUserConfig = deps.getUserConfig;
+  const getUserConfigPublic = deps.getUserConfigPublic || deps.getUserConfig;
   const logger = deps.logger;
   const serverTimestamp = deps.serverTimestamp;
   const setUserConfig = deps.setUserConfig;
@@ -82,6 +83,9 @@ function registerSetupPublicRoutes(app, deps = {}) {
   }
   if (typeof getUserConfig !== 'function') {
     throw new Error('registerSetupPublicRoutes requires getUserConfig()');
+  }
+  if (typeof getUserConfigPublic !== 'function') {
+    throw new Error('registerSetupPublicRoutes requires getUserConfigPublic()');
   }
   if (!logger || typeof logger.info !== 'function') {
     throw new Error('registerSetupPublicRoutes requires logger.info()');
@@ -524,8 +528,14 @@ function registerSetupPublicRoutes(app, deps = {}) {
       const serverConfig = getConfig();
 
       if (req.user?.uid) {
-        const userConfig = await getUserConfig(req.user.uid);
-        const hasAlphaEssAppSecret = !!userConfig?.alphaessAppSecret;
+        const [userConfig, secretsDoc] = await Promise.all([
+          getUserConfigPublic(req.user.uid),
+          db.collection('users').doc(req.user.uid).collection('secrets').doc('credentials')
+            .get()
+            .catch(() => ({ exists: false, data: () => ({}) }))
+        ]);
+        const secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
+        const hasAlphaEssAppSecret = !!(userConfig?.alphaessAppSecret || secrets?.alphaessAppSecret);
         const setupComplete = !!(
           (userConfig?.deviceSn && userConfig?.foxessToken) ||
           (userConfig?.alphaessSystemSn && userConfig?.alphaessAppId && hasAlphaEssAppSecret) ||

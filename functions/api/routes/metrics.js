@@ -71,6 +71,19 @@ function registerMetricsRoutes(app, deps = {}) {
     return toCounter(metricsDoc.amber) + toCounter(metricsDoc.aemo);
   };
 
+  const getRecentUserMetricsSnapshot = async (metricsCollection, days) => {
+    if (metricsCollection && typeof metricsCollection.orderBy === 'function') {
+      try {
+        return await metricsCollection.orderBy('__name__', 'desc').limit(days).get();
+      } catch (queryError) {
+        logger.warn(
+          `[Metrics] Bounded user metrics query failed; falling back to full scan: ${queryError?.message || queryError}`
+        );
+      }
+    }
+    return metricsCollection.get();
+  };
+
   const buildMetricsEnvelope = (rawDoc = {}) => {
     const metricsDoc = (rawDoc && typeof rawDoc === 'object') ? rawDoc : {};
     const providerBreakdown = {};
@@ -160,10 +173,7 @@ function registerMetricsRoutes(app, deps = {}) {
         }
 
         const metricsCollection = db.collection('users').doc(userId).collection('metrics');
-        // Read the small per-user daily metrics set directly and sort in memory.
-        // In production, ordering this subcollection by document ID can trigger
-        // a Firestore index requirement and the route silently falls back to zeros.
-        const metricsSnapshot = await metricsCollection.get();
+        const metricsSnapshot = await getRecentUserMetricsSnapshot(metricsCollection, days);
 
         const result = {};
         const allDocs = [];

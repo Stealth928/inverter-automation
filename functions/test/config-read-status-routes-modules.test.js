@@ -52,8 +52,7 @@ function createDbMock({
 
 function createDeps(overrides = {}) {
   const dbMock = createDbMock();
-
-  return {
+  const baseDeps = {
     authenticateUser: (req, res, next) => {
       if (!req.headers.authorization) {
         return res.status(401).json({ errno: 401, error: 'Unauthorized' });
@@ -72,6 +71,11 @@ function createDeps(overrides = {}) {
       }
     })),
     getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+    getUserConfigPublic: jest.fn(async () => ({
+      automation: { intervalMs: 90000, inverterCacheTtlMs: 240000, blackoutWindows: [] },
+      cache: { amber: 75000, weather: 1900000, teslaStatus: 840000 },
+      defaults: { cooldownMinutes: 3, durationMinutes: 12 }
+    })),
     getUserConfig: jest.fn(async () => ({
       automation: { intervalMs: 90000, inverterCacheTtlMs: 240000, blackoutWindows: [] },
       cache: { amber: 75000, weather: 1900000, teslaStatus: 840000 },
@@ -87,9 +91,18 @@ function createDeps(overrides = {}) {
       return 'unknown';
     }),
     setUserConfig: jest.fn(async () => undefined),
-    __dbMock: dbMock,
-    ...overrides
+    __dbMock: dbMock
   };
+
+  const mergedDeps = { ...baseDeps, ...overrides };
+  if (!overrides.getUserConfigPublic && overrides.getUserConfig) {
+    mergedDeps.getUserConfigPublic = overrides.getUserConfig;
+  }
+  if (!overrides.getUserConfig && overrides.getUserConfigPublic) {
+    mergedDeps.getUserConfig = overrides.getUserConfigPublic;
+  }
+
+  return mergedDeps;
 }
 
 function buildApp(deps, { globalAuth = true } = {}) {
@@ -431,6 +444,48 @@ describe('config/status read route module', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ errno: 0, result: { announcement: null } });
+  });
+
+  test('automation-status-summary omits rules/weather sync while preserving blackout and timing fields', async () => {
+    const dbMock = createDbMock({ automationEnabled: false });
+    const getUserConfigPublic = jest.fn(async () => ({
+      automation: {
+        intervalMs: 120000,
+        inverterCacheTtlMs: 210000,
+        blackoutWindows: [{ start: '10:00', end: '11:00' }]
+      },
+      cache: { amber: 65000, weather: 1700000 },
+      defaults: { cooldownMinutes: 6, durationMinutes: 22 },
+      timezone: 'Australia/Sydney'
+    }));
+    const deps = createDeps({
+      db: dbMock.db,
+      getUserConfigPublic,
+      getUserConfig: jest.fn(async () => ({
+        automation: { intervalMs: 120000 }
+      }))
+    });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .get('/api/automation/status-summary')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.enabled).toBe(true);
+    expect(response.body.result.inBlackout).toBe(true);
+    expect(response.body.result.nextCheckIn).toBe(120000);
+    expect(response.body.result.config.cache.teslaStatus).toBe(600000);
+    expect(response.body.result.rules).toBeUndefined();
+    expect(deps.getUserRules).not.toHaveBeenCalled();
+    expect(deps.getCachedWeatherData).not.toHaveBeenCalled();
+    expect(deps.setUserConfig).not.toHaveBeenCalled();
+    expect(getUserConfigPublic).toHaveBeenCalledWith('u-config');
+    expect(dbMock.userDocSet).toHaveBeenCalledWith(
+      { automationEnabled: true },
+      { merge: true }
+    );
   });
 
   test('automation-status syncs automationEnabled and evaluates blackout windows', async () => {

@@ -6,6 +6,7 @@ const request = require('supertest');
 const { registerAuthLifecycleRoutes } = require('../api/routes/auth-lifecycle');
 
 function createDeps(overrides = {}) {
+  const userExists = overrides.userExists === true;
   const stateDocRef = {
     set: jest.fn(async () => undefined)
   };
@@ -13,6 +14,7 @@ function createDeps(overrides = {}) {
     doc: jest.fn(() => stateDocRef)
   };
   const userDocRef = {
+    get: jest.fn(async () => ({ exists: userExists })),
     set: jest.fn(async () => undefined),
     collection: jest.fn(() => automationCollectionRef)
   };
@@ -40,6 +42,7 @@ function createDeps(overrides = {}) {
     logger: {
       info: jest.fn()
     },
+    sendAdminSystemAlert: jest.fn(async () => ({ sent: true })),
     serverTimestamp: jest.fn(() => 'server-ts'),
     setUserConfig: jest.fn(async () => undefined),
     __refs: { usersCollectionRef, userDocRef, automationCollectionRef, stateDocRef }
@@ -121,6 +124,22 @@ describe('auth lifecycle route module', () => {
       lastTriggered: null,
       activeRule: null
     }, { merge: true });
+    expect(deps.sendAdminSystemAlert).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'signup',
+      stateSignature: 'uid:user-1'
+    }));
+  });
+
+  test('init-user does not send signup alert when user already exists', async () => {
+    const deps = createDeps({ userExists: true });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/auth/init-user')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(deps.sendAdminSystemAlert).not.toHaveBeenCalled();
   });
 
   test('cleanup-user deletes user data tree', async () => {

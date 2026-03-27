@@ -20,16 +20,41 @@ function createTimestamp(value = 'ts') {
 function createMockDb(seed = {}) {
   let autoId = 0;
   const users = deepClone(seed.users || {});
+  const sharedDocs = deepClone(seed.shared || {});
+  const notificationAdminRuntime = deepClone(seed.notificationAdminRuntime || {});
+
+  function mergeObjects(target, source) {
+    const output = { ...(target || {}) };
+    Object.keys(source || {}).forEach((key) => {
+      const nextValue = source[key];
+      const currentValue = output[key];
+      if (
+        nextValue &&
+        typeof nextValue === 'object' &&
+        !Array.isArray(nextValue) &&
+        currentValue &&
+        typeof currentValue === 'object' &&
+        !Array.isArray(currentValue)
+      ) {
+        output[key] = mergeObjects(currentValue, nextValue);
+      } else {
+        output[key] = deepClone(nextValue);
+      }
+    });
+    return output;
+  }
 
   function ensureUser(uid) {
     if (!users[uid]) {
       users[uid] = {
+        profile: {},
         configMain: {},
         notificationRuntimeState: {},
         notifications: {},
         pushSubscriptions: {}
       };
     }
+    users[uid].profile = users[uid].profile || {};
     users[uid].configMain = users[uid].configMain || {};
     users[uid].notificationRuntimeState = users[uid].notificationRuntimeState || {};
     users[uid].notifications = users[uid].notifications || {};
@@ -47,6 +72,22 @@ function createMockDb(seed = {}) {
   }
 
   function resolveCollectionDocs(path, queryState = {}) {
+    if (path.length === 1 && path[0] === 'users') {
+      let docs = Object.entries(users)
+        .map(([id, user]) => ({ id, data: deepClone(user.profile || {}) }));
+      if (Array.isArray(queryState.filters)) {
+        queryState.filters.forEach((filter) => {
+          if (filter.field === 'role' && filter.op === '==') {
+            docs = docs.filter((doc) => String(doc.data.role || '') === String(filter.value || ''));
+          }
+        });
+      }
+      if (Number.isInteger(queryState.limit) && queryState.limit > 0) {
+        docs = docs.slice(0, queryState.limit);
+      }
+      return docs;
+    }
+
     if (path.length === 3 && path[0] === 'users' && path[2] === 'notifications') {
       const user = ensureUser(path[1]);
       let docs = Object.entries(user.notifications)
@@ -154,6 +195,11 @@ function createMockDb(seed = {}) {
           const data = user.configMain && Object.keys(user.configMain).length ? user.configMain : null;
           return buildDocSnapshot(id, data, this);
         }
+        if (path.length === 2 && path[0] === 'users') {
+          const user = ensureUser(path[1]);
+          const data = user.profile && Object.keys(user.profile).length ? user.profile : null;
+          return buildDocSnapshot(id, data, this);
+        }
         if (path.length === 4 && path[0] === 'users' && path[2] === 'notificationRuntime' && path[3] === 'state') {
           const user = ensureUser(path[1]);
           const data = user.notificationRuntimeState && Object.keys(user.notificationRuntimeState).length
@@ -171,20 +217,35 @@ function createMockDb(seed = {}) {
           const data = user.pushSubscriptions[id] || null;
           return buildDocSnapshot(id, data, this);
         }
+        if (path.length === 2 && path[0] === 'shared') {
+          const data = sharedDocs[id] || null;
+          return buildDocSnapshot(id, data, this);
+        }
+        if (path.length === 2 && path[0] === 'notificationAdminRuntime') {
+          const data = notificationAdminRuntime[id] || null;
+          return buildDocSnapshot(id, data, this);
+        }
         return buildDocSnapshot(id, null, this);
       },
       async set(payload, options = {}) {
+        if (path.length === 2 && path[0] === 'users') {
+          const user = ensureUser(path[1]);
+          user.profile = options.merge
+            ? mergeObjects(user.profile || {}, payload)
+            : deepClone(payload);
+          return;
+        }
         if (path.length === 4 && path[0] === 'users' && path[2] === 'config' && path[3] === 'main') {
           const user = ensureUser(path[1]);
           user.configMain = options.merge
-            ? { ...(user.configMain || {}), ...deepClone(payload) }
+            ? mergeObjects(user.configMain || {}, payload)
             : deepClone(payload);
           return;
         }
         if (path.length === 4 && path[0] === 'users' && path[2] === 'notificationRuntime' && path[3] === 'state') {
           const user = ensureUser(path[1]);
           user.notificationRuntimeState = options.merge
-            ? { ...(user.notificationRuntimeState || {}), ...deepClone(payload) }
+            ? mergeObjects(user.notificationRuntimeState || {}, payload)
             : deepClone(payload);
           return;
         }
@@ -192,7 +253,7 @@ function createMockDb(seed = {}) {
           const user = ensureUser(path[1]);
           const previous = user.notifications[id] || {};
           user.notifications[id] = options.merge
-            ? { ...previous, ...deepClone(payload) }
+            ? mergeObjects(previous, payload)
             : deepClone(payload);
           return;
         }
@@ -200,7 +261,21 @@ function createMockDb(seed = {}) {
           const user = ensureUser(path[1]);
           const previous = user.pushSubscriptions[id] || {};
           user.pushSubscriptions[id] = options.merge
-            ? { ...previous, ...deepClone(payload) }
+            ? mergeObjects(previous, payload)
+            : deepClone(payload);
+          return;
+        }
+        if (path.length === 2 && path[0] === 'shared') {
+          const previous = sharedDocs[id] || {};
+          sharedDocs[id] = options.merge
+            ? mergeObjects(previous, payload)
+            : deepClone(payload);
+          return;
+        }
+        if (path.length === 2 && path[0] === 'notificationAdminRuntime') {
+          const previous = notificationAdminRuntime[id] || {};
+          notificationAdminRuntime[id] = options.merge
+            ? mergeObjects(previous, payload)
             : deepClone(payload);
           return;
         }
@@ -242,6 +317,9 @@ function createMockDb(seed = {}) {
     collection(name) {
       return createCollectionRef([name]);
     },
+    async getAll(...refs) {
+      return Promise.all(refs.map((ref) => ref.get()));
+    },
     batch() {
       const ops = [];
       return {
@@ -267,7 +345,7 @@ function createMockDb(seed = {}) {
     }
   };
 
-  return { db, users };
+  return { db, users, sharedDocs, notificationAdminRuntime };
 }
 
 describe('notifications service', () => {
@@ -474,5 +552,222 @@ describe('notifications service', () => {
     });
     expect(webPush.generateVAPIDKeys).not.toHaveBeenCalled();
     expect(webPush.setVapidDetails).not.toHaveBeenCalled();
+  });
+
+  test('sendAdminSystemAlert sends to admins and bypasses user broadcast preferences', async () => {
+    const { db, users } = createMockDb({
+      users: {
+        'admin-1': {
+          profile: {
+            email: 'admin@example.com',
+            role: 'admin'
+          },
+          configMain: {
+            notificationPreferences: {
+              inboxEnabled: false,
+              broadcastsEnabled: false,
+              highSignalAutomationEnabled: false,
+              curtailmentEnabled: false
+            }
+          },
+          notifications: {},
+          pushSubscriptions: {
+            'sub-1': {
+              endpoint: 'https://example.com/push/admin-1',
+              keys: { p256dh: 'p256dh', auth: 'auth' },
+              active: true
+            }
+          }
+        },
+        'seed-admin': {
+          profile: {
+            email: 'socrates.team.comms@gmail.com',
+            role: 'user'
+          },
+          configMain: {
+            notificationPreferences: {
+              inboxEnabled: false,
+              broadcastsEnabled: false,
+              highSignalAutomationEnabled: false,
+              curtailmentEnabled: false
+            }
+          },
+          notifications: {},
+          pushSubscriptions: {}
+        }
+      },
+      shared: {
+        serverConfig: {
+          notifications: {
+            adminAlerts: {
+              enabled: true,
+              channels: ['inbox', 'push'],
+              events: {
+                signup: { enabled: true }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const service = createNotificationsService({
+      db,
+      now: () => 1700000000000,
+      serverTimestamp: () => createTimestamp('ts'),
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
+    });
+
+    const result = await service.sendAdminSystemAlert({
+      eventType: 'signup',
+      stateSignature: 'uid:new-user',
+      title: 'New user signup',
+      body: 'new-user@example.com completed initialization',
+      severity: 'info'
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      sent: true,
+      targetedAdmins: 2,
+      inboxCreated: 2
+    }));
+    expect(Object.keys(users['admin-1'].notifications)).toHaveLength(1);
+    expect(Object.keys(users['seed-admin'].notifications)).toHaveLength(1);
+    expect(result.pushAttempted).toBe(1);
+  });
+
+  test('sendAdminSystemAlert enforces cooldown dedupe', async () => {
+    const { db, users } = createMockDb({
+      users: {
+        'admin-1': {
+          profile: { email: 'admin@example.com', role: 'admin' },
+          notifications: {}
+        }
+      },
+      shared: {
+        serverConfig: {
+          notifications: {
+            adminAlerts: {
+              enabled: true,
+              channels: ['inbox'],
+              events: {
+                schedulerBreach: { enabled: true }
+              },
+              cooldowns: {
+                schedulerBreachMs: 1800000
+              }
+            }
+          }
+        }
+      }
+    });
+
+    let nowMs = 1700000000000;
+    const service = createNotificationsService({
+      db,
+      now: () => nowMs,
+      serverTimestamp: () => createTimestamp('ts'),
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
+    });
+
+    const first = await service.sendAdminSystemAlert({
+      eventType: 'scheduler_breach',
+      stateSignature: 'scheduler',
+      title: 'Scheduler breach'
+    });
+
+    nowMs += 60 * 1000;
+    const second = await service.sendAdminSystemAlert({
+      eventType: 'scheduler_breach',
+      stateSignature: 'scheduler',
+      title: 'Scheduler breach'
+    });
+
+    expect(first.sent).toBe(true);
+    expect(second).toEqual({ sent: false, reason: 'cooldown' });
+    expect(Object.keys(users['admin-1'].notifications)).toHaveLength(1);
+  });
+
+  test('evaluateAndSendAdminOperationalAlerts handles scheduler, DataWorks, and API health transitions', async () => {
+    const { db, users } = createMockDb({
+      users: {
+        'admin-1': {
+          profile: { email: 'admin@example.com', role: 'admin' },
+          notifications: {}
+        }
+      },
+      shared: {
+        serverConfig: {
+          notifications: {
+            adminAlerts: {
+              enabled: true,
+              channels: ['inbox'],
+              events: {
+                schedulerBreach: { enabled: true },
+                dataworksFailure: { enabled: true },
+                apiHealthBad: { enabled: true }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const service = createNotificationsService({
+      db,
+      now: () => 1700000000000,
+      serverTimestamp: () => createTimestamp('ts'),
+      logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() }
+    });
+
+    const watchResult = await service.evaluateAndSendAdminOperationalAlerts({
+      schedulerAlert: { status: 'watch' },
+      apiHealth: { healthStatus: 'warn' }
+    });
+    expect(watchResult.triggered).toBe(0);
+
+    const breachResult = await service.evaluateAndSendAdminOperationalAlerts({
+      schedulerAlert: { status: 'breach', schedulerId: 'sched-1' }
+    });
+    expect(breachResult.triggered).toBe(1);
+
+    const repeatedBreach = await service.evaluateAndSendAdminOperationalAlerts({
+      schedulerAlert: { status: 'breach', schedulerId: 'sched-1' }
+    });
+    expect(repeatedBreach.triggered).toBe(0);
+
+    const firstDataworksFailure = await service.evaluateAndSendAdminOperationalAlerts({
+      dataworks: {
+        latestRun: {
+          id: 'run-1',
+          status: 'completed',
+          conclusion: 'failure'
+        }
+      }
+    });
+    expect(firstDataworksFailure.triggered).toBe(1);
+
+    const repeatedDataworksFailure = await service.evaluateAndSendAdminOperationalAlerts({
+      dataworks: {
+        latestRun: {
+          id: 'run-1',
+          status: 'completed',
+          conclusion: 'failure'
+        }
+      }
+    });
+    expect(repeatedDataworksFailure.triggered).toBe(0);
+
+    const apiHealthBad = await service.evaluateAndSendAdminOperationalAlerts({
+      apiHealth: { healthStatus: 'bad' }
+    });
+    expect(apiHealthBad.triggered).toBe(1);
+
+    const repeatedApiHealthBad = await service.evaluateAndSendAdminOperationalAlerts({
+      apiHealth: { healthStatus: 'bad' }
+    });
+    expect(repeatedApiHealthBad.triggered).toBe(0);
+
+    expect(Object.keys(users['admin-1'].notifications).length).toBeGreaterThanOrEqual(3);
   });
 });

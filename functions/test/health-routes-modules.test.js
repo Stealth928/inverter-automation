@@ -6,11 +6,19 @@ const request = require('supertest');
 const { registerHealthRoutes } = require('../api/routes/health');
 
 function createDeps(overrides = {}) {
-  return {
+  const base = {
+    getUserConfigPublic: jest.fn(async () => ({})),
     getUserConfig: jest.fn(async () => ({})),
     tryAttachUser: jest.fn(async () => undefined),
-    ...overrides
   };
+  const merged = { ...base, ...overrides };
+  if (!overrides.getUserConfigPublic && overrides.getUserConfig) {
+    merged.getUserConfigPublic = overrides.getUserConfig;
+  }
+  if (!overrides.getUserConfig && overrides.getUserConfigPublic) {
+    merged.getUserConfig = overrides.getUserConfigPublic;
+  }
+  return merged;
 }
 
 function buildApp(deps) {
@@ -69,7 +77,7 @@ describe('health route module', () => {
       FOXESS_TOKEN: true,
       AMBER_API_KEY: true
     });
-    expect(deps.getUserConfig).toHaveBeenCalledWith('u-health');
+    expect(deps.getUserConfigPublic).toHaveBeenCalledWith('u-health');
   });
 
   test('returns degraded upstream snapshot with 503 when a critical service is unavailable', async () => {

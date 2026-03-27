@@ -18,6 +18,21 @@ async function mockAdminNotificationsEnvironment(page) {
     config: {
       enabled: true,
       defaultChannels: ['inbox', 'push'],
+      adminAlerts: {
+        enabled: true,
+        channels: ['inbox', 'push'],
+        events: {
+          signup: { enabled: true },
+          schedulerBreach: { enabled: true },
+          dataworksFailure: { enabled: true },
+          apiHealthBad: { enabled: true }
+        },
+        cooldowns: {
+          schedulerBreachMs: 1800000,
+          dataworksFailureMs: 1800000,
+          apiHealthBadMs: 3600000
+        }
+      },
       audienceDefaults: {
         requireTourComplete: true,
         requireSetupComplete: true,
@@ -193,6 +208,8 @@ test.describe('Admin Notifications Tab', () => {
     await expect(page.locator('#notificationsConfigEnabledInput')).toBeChecked();
     await expect(page.locator('#notificationsConfigChannelInboxInput')).toBeChecked();
     await expect(page.locator('#notificationsConfigChannelPushInput')).toBeChecked();
+    await expect(page.locator('#notificationsAdminAlertsEnabledInput')).toBeChecked();
+    await expect(page.locator('#notificationsAdminAlertsEventSignupInput')).toBeChecked();
     await expect(page.locator('#notificationsConfigMinAgeInput')).toHaveValue('14');
     await expect(page.locator('#notificationsOverviewPushConfigured')).toHaveText('Yes');
     await expect(page.locator('#notificationsOverviewActiveSubs')).toContainText('12');
@@ -223,11 +240,37 @@ test.describe('Admin Notifications Tab', () => {
         notifications: {
           enabled: true,
           defaultChannels: ['inbox'],
+          adminAlerts: {
+            enabled: true,
+            channels: ['inbox', 'push'],
+            events: {
+              signup: {
+                enabled: true
+              },
+              schedulerBreach: {
+                enabled: true
+              },
+              dataworksFailure: {
+                enabled: true
+              },
+              apiHealthBad: {
+                enabled: true
+              }
+            },
+            cooldowns: {
+              schedulerBreachMs: 1800000,
+              dataworksFailureMs: 1800000,
+              apiHealthBadMs: 3600000
+            }
+          },
           audienceDefaults: {
             requireTourComplete: true,
             requireSetupComplete: true,
             requireAutomationEnabled: true,
-            minAccountAgeDays: 21
+            minAccountAgeDays: 21,
+            onlyIncludeUids: [],
+            includeUids: [],
+            excludeUids: []
           }
         }
       }
@@ -244,7 +287,10 @@ test.describe('Admin Notifications Tab', () => {
           requireTourComplete: true,
           requireSetupComplete: true,
           requireAutomationEnabled: true,
-          minAccountAgeDays: 21
+          minAccountAgeDays: 21,
+          onlyIncludeUids: [],
+          includeUids: [],
+          excludeUids: []
         }
       }
     ]);

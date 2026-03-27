@@ -5,6 +5,7 @@ const { createUserAutomationRepository } = require('../lib/repositories/user-aut
 function buildRepositoryFixture(options = {}) {
   const {
     configMainData = null,
+    secretsData = null,
     userDocData = null,
     rules = [],
     historyEntries = [],
@@ -21,6 +22,7 @@ function buildRepositoryFixture(options = {}) {
   const historyWrites = [];
   let historyCounter = historyState.length;
   let lastRulesQuery = null;
+  let secretsGetCalls = 0;
 
   function getRuleDocRef(ruleId) {
     return {
@@ -146,8 +148,17 @@ function buildRepositoryFixture(options = {}) {
       if (subCollectionName === 'rules') return rulesCollection;
       if (subCollectionName === 'history') return historyCollection;
       if (subCollectionName === 'secrets') {
-        // Secrets subcollection: return an empty non-existent doc by default
-        return { doc: () => ({ get: async () => ({ exists: false, data: () => ({}) }) }) };
+        return {
+          doc: () => ({
+            get: async () => {
+              secretsGetCalls += 1;
+              return {
+                exists: !!secretsData,
+                data: () => (secretsData ? { ...secretsData } : {})
+              };
+            }
+          })
+        };
       }
       throw new Error(`Unexpected subcollection: ${subCollectionName}`);
     },
@@ -191,6 +202,7 @@ function buildRepositoryFixture(options = {}) {
     getRuleData: (ruleId) => (ruleState.has(ruleId) ? { ...ruleState.get(ruleId) } : null),
     historyWrites,
     getLastRulesQuery: () => lastRulesQuery,
+    getSecretsGetCalls: () => secretsGetCalls,
     repository
   };
 }
@@ -240,6 +252,53 @@ describe('user-automation repository', () => {
       setupComplete: true,
       _source: 'legacy-credentials'
     });
+  });
+
+  test('getUserConfigPublic reads config-main without loading secrets', async () => {
+    const fixture = buildRepositoryFixture({
+      configMainData: {
+        deviceSn: 'SN-123',
+        foxessToken: 'TOKEN',
+        amberApiKey: 'AMBER'
+      },
+      secretsData: {
+        alphaessAppSecret: 'SECRET'
+      }
+    });
+
+    const config = await fixture.repository.getUserConfigPublic('u1');
+
+    expect(config).toEqual({
+      deviceSn: 'SN-123',
+      foxessToken: 'TOKEN',
+      amberApiKey: 'AMBER',
+      _source: 'config-main'
+    });
+    expect(fixture.getSecretsGetCalls()).toBe(0);
+  });
+
+  test('getUserConfigWithSecrets merges secrets for config-main users', async () => {
+    const fixture = buildRepositoryFixture({
+      configMainData: {
+        deviceSn: 'SN-123',
+        foxessToken: 'TOKEN',
+        amberApiKey: 'AMBER'
+      },
+      secretsData: {
+        alphaessAppSecret: 'SECRET'
+      }
+    });
+
+    const config = await fixture.repository.getUserConfigWithSecrets('u1');
+
+    expect(config).toEqual({
+      deviceSn: 'SN-123',
+      foxessToken: 'TOKEN',
+      amberApiKey: 'AMBER',
+      alphaessAppSecret: 'SECRET',
+      _source: 'config-main'
+    });
+    expect(fixture.getSecretsGetCalls()).toBe(1);
   });
 
   test('getUserRules maps collection docs to id-keyed object', async () => {

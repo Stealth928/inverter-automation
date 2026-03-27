@@ -302,6 +302,10 @@ class APIClient {
     return this.get('/api/automation/status');
   }
 
+  async getAutomationStatusSummary() {
+    return this.get('/api/automation/status-summary');
+  }
+
   async toggleAutomation(enabled) {
     return this.post('/api/automation/toggle', { enabled });
   }

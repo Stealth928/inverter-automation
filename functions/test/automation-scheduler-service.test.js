@@ -55,6 +55,10 @@ function buildSchedulerDeps(overrides = {}) {
     getUserConfig:
       overrides.getUserConfig ||
       jest.fn(async (userId) => ({ deviceSn: `SN-${userId}`, timezone: 'UTC', automation: { intervalMs: 1000 } })),
+    getUserConfigPublic:
+      overrides.getUserConfigPublic ||
+      overrides.getUserConfig ||
+      jest.fn(async (userId) => ({ deviceSn: `SN-${userId}`, timezone: 'UTC', automation: { intervalMs: 1000 } })),
     getUserRules:
       overrides.getUserRules ||
       jest.fn(async () => ({
@@ -86,6 +90,39 @@ function buildSchedulerDeps(overrides = {}) {
 describe('automation scheduler service', () => {
   test('throws when required deps are missing', async () => {
     await expect(runAutomationSchedulerCycle({}, {})).rejects.toThrow('db.collection');
+  });
+
+  test('skips run without full users scan when pre-filter query returns no users', async () => {
+    const emptySnapshot = buildUsersSnapshot([]);
+    const usersCollection = {
+      where: jest.fn(() => ({
+        get: jest.fn(async () => emptySnapshot)
+      })),
+      get: jest.fn(async () => {
+        throw new Error('Unexpected full users scan');
+      })
+    };
+    const db = {
+      collection: jest.fn((name) => {
+        if (name === 'users') {
+          return usersCollection;
+        }
+        throw new Error(`Unexpected collection access in test: ${name}`);
+      })
+    };
+    const automationCycleHandler = jest.fn(async (_req, res) => {
+      res.json({ errno: 0, result: { skipped: true } });
+    });
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      db,
+      userIds: []
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(automationCycleHandler).not.toHaveBeenCalled();
+    expect(usersCollection.get).not.toHaveBeenCalled();
   });
 
   test('runs cycle handler for eligible users and records successful outcome', async () => {
@@ -123,6 +160,37 @@ describe('automation scheduler service', () => {
         }),
         userId: 'u-1'
       })
+    );
+  });
+
+  test('uses public config for preflight and full config for cycle candidates', async () => {
+    const getUserConfigPublic = jest.fn(async () => ({
+      deviceSn: 'SN-PUBLIC',
+      timezone: 'UTC',
+      automation: { intervalMs: 1000 }
+    }));
+    const getUserConfig = jest.fn(async () => ({
+      deviceSn: 'SN-FULL',
+      foxessToken: 'secret-token',
+      timezone: 'UTC',
+      automation: { intervalMs: 1000 }
+    }));
+    const automationCycleHandler = jest.fn(async (req, res) => {
+      res.json({ errno: 0, result: { skipped: true, userConfig: req.schedulerContext?.userConfig || null } });
+    });
+    const { deps } = buildSchedulerDeps({
+      automationCycleHandler,
+      getUserConfig,
+      getUserConfigPublic,
+      userIds: ['u-1']
+    });
+
+    await runAutomationSchedulerCycle({}, deps);
+
+    expect(getUserConfigPublic).toHaveBeenCalledWith('u-1');
+    expect(getUserConfig).toHaveBeenCalledWith('u-1');
+    expect(automationCycleHandler.mock.calls[0][0].schedulerContext.userConfig).toEqual(
+      expect.objectContaining({ deviceSn: 'SN-FULL', foxessToken: 'secret-token' })
     );
   });
 

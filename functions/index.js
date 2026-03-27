@@ -24,7 +24,7 @@ const {
   isForecastTemperatureType,
   normalizeWeekdays
 } = require('./lib/automation-conditions');
-const { createAdminAccess } = require('./lib/admin-access');
+const { createAdminAccess, DEFAULT_SEED_ADMIN_EMAIL } = require('./lib/admin-access');
 const {
   buildFirestoreQuotaSummary,
   estimateFirestoreCostFromUsage,
@@ -326,6 +326,7 @@ const {
   deleteUserRule,
   getHistoryEntries: getUserHistoryEntries,
   getUserConfig,
+  getUserConfigPublic,
   getUserRule,
   getUserRules,
   setUserConfig,
@@ -463,6 +464,7 @@ const {
 const notificationsService = createNotificationsService({
   db,
   logger,
+  seedAdminEmail: DEFAULT_SEED_ADMIN_EMAIL,
   serverTimestamp,
   pushConfig: {
     vapidPublicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
@@ -518,13 +520,28 @@ const {
   webhookUrl: process.env.AUTOMATION_SCHEDULER_SLO_ALERT_WEBHOOK_URL
 });
 
+const emitSchedulerSloAlert = async (alert = {}) => {
+  await notifySchedulerSloAlert(alert);
+  const alertStatus = String(alert?.alertStatus || alert?.status || '').trim().toLowerCase();
+  if (alertStatus !== 'breach') return;
+
+  await notificationsService.sendAdminSystemAlert({
+    eventType: 'scheduler_breach',
+    stateSignature: String(alert?.schedulerId || 'scheduler'),
+    title: 'Scheduler breach detected',
+    body: 'Scheduler SLO status moved to breach. Review scheduler metrics and dead letters in admin.',
+    severity: 'danger',
+    deepLink: '/admin.html#scheduler'
+  });
+};
+
 const schedulerSloThresholdConfig = getConfig()?.automation?.scheduler?.slo || {};
 const {
   emitSchedulerMetrics
 } = createAutomationSchedulerMetricsSink({
   db,
   logger,
-  onSloAlert: notifySchedulerSloAlert,
+  onSloAlert: emitSchedulerSloAlert,
   sloThresholds: {
     errorRatePct:
       schedulerSloThresholdConfig.errorRatePct ||
@@ -1136,6 +1153,7 @@ const teslaFleetAdapter = new TeslaFleetAdapter({
 
 registerHealthRoutes(app, {
   getUserConfig,
+  getUserConfigPublic,
   getUpstreamHealthSnapshot,
   tryAttachUser
 });
@@ -1146,6 +1164,7 @@ registerSetupPublicRoutes(app, {
   foxessAPI,
   getConfig,
   getUserConfig,
+  getUserConfigPublic,
   logger,
   serverTimestamp,
   setUserConfig,
@@ -1179,8 +1198,9 @@ registerMetricsRoutes(app, {
 const getRuntimeProjectIdForAdmin = () => getRuntimeProjectId(admin);
 const fetchCloudBillingCostForAdmin = (projectId) => fetchCloudBillingCost(projectId, { googleApis });
 let automationCycleHandler = null;
+let adminRouteHelpers = {};
 
-registerAdminRoutes(app, {
+adminRouteHelpers = registerAdminRoutes(app, {
   admin,
   authenticateUser,
   buildFirestoreQuotaSummary,
@@ -1210,7 +1230,7 @@ registerAdminRoutes(app, {
   },
   getAutomationCycleHandler: () => automationCycleHandler,
   notificationsService
-});
+}) || {};
 
 // Apply auth middleware to remaining API routes
 app.use('/api', authenticateUser);
@@ -1229,6 +1249,7 @@ registerAuthLifecycleRoutes(app, {
   db,
   deleteUserDataTree,
   logger,
+  sendAdminSystemAlert: async (payload) => notificationsService.sendAdminSystemAlert(payload),
   serverTimestamp,
   setUserConfig
 });
@@ -1289,6 +1310,7 @@ registerConfigReadStatusRoutes(app, {
   getConfig,
   getUserAutomationState,
   getUserConfig,
+  getUserConfigPublic,
   getUserRules,
   getUserTime,
   logger,
@@ -1596,6 +1618,7 @@ async function runAutomationHandler(context) {
     getTimeInTimezone,
     getUserAutomationState,
     getUserConfig,
+    getUserConfigPublic,
     getUserRules,
     isTimeInRange,
     logger: console
@@ -1639,6 +1662,70 @@ async function refreshAemoLiveSnapshotsHandler(_context) {
   }
 }
 
+async function runAdminOperationalAlertsHandler(_context) {
+  const schedulerAlertSnapshot = await db
+    .collection('metrics')
+    .doc('automationScheduler')
+    .collection('alerts')
+    .doc('current')
+    .get();
+
+  const schedulerAlert = schedulerAlertSnapshot.exists
+    ? (schedulerAlertSnapshot.data() || {})
+    : { status: 'healthy' };
+
+  let dataworks = {};
+  try {
+    if (adminRouteHelpers && typeof adminRouteHelpers.loadGithubWorkflowOps === 'function') {
+      dataworks = await adminRouteHelpers.loadGithubWorkflowOps(false);
+    }
+  } catch (error) {
+    dataworks = {
+      error: error?.message || String(error)
+    };
+  }
+
+  let apiHealth = {};
+  try {
+    if (adminRouteHelpers && typeof adminRouteHelpers.loadAdminApiHealth === 'function') {
+      apiHealth = await adminRouteHelpers.loadAdminApiHealth({
+        days: 30,
+        forceRefresh: false
+      });
+    }
+  } catch (error) {
+    apiHealth = {
+      healthStatus: 'unknown',
+      error: error?.message || String(error)
+    };
+  }
+
+  const evaluation = await notificationsService.evaluateAndSendAdminOperationalAlerts({
+    schedulerAlert: {
+      status: schedulerAlert.status || schedulerAlert.alertStatus || 'healthy',
+      schedulerId: schedulerAlert.schedulerId || null,
+      runId: schedulerAlert.runId || null,
+      dayKey: schedulerAlert.dayKey || null
+    },
+    dataworks: {
+      latestRun: dataworks.latestRun || null,
+      error: dataworks.error || null
+    },
+    apiHealth: {
+      healthStatus: apiHealth?.summary?.healthStatus || apiHealth?.healthStatus || apiHealth?.status || 'good'
+    }
+  });
+
+  console.log(
+    '[AdminAlerts] Evaluation complete: scheduler=%s dataworks=%s apiHealth=%s triggered=%s',
+    evaluation?.evaluatedSignals?.schedulerStatus || 'unknown',
+    evaluation?.evaluatedSignals?.dataworksStatus || 'unknown',
+    evaluation?.evaluatedSignals?.apiHealthStatus || 'unknown',
+    Number(evaluation?.triggered || 0)
+  );
+  return evaluation;
+}
+
 // ==================== EXPORT CLOUD SCHEDULER FUNCTION ====================
 // Scheduler for background automation (runs every 1 minute via Cloud Scheduler)
 // For firebase-functions v7+ (2nd gen), we use functions.scheduler
@@ -1661,4 +1748,12 @@ exports.refreshAemoLiveSnapshots = onSchedule(
     memory: '512MiB'
   },
   refreshAemoLiveSnapshotsHandler
+);
+
+exports.runAdminOperationalAlerts = onSchedule(
+  {
+    schedule: '2-59/5 * * * *',
+    timeZone: 'UTC'
+  },
+  runAdminOperationalAlertsHandler
 );

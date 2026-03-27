@@ -118,8 +118,8 @@ describe('metrics route module', () => {
       alphaess: 0
     });
     expect(db.__mocks.get).toHaveBeenCalledTimes(1);
-    expect(db.__mocks.orderBy).not.toHaveBeenCalled();
-    expect(db.__mocks.limit).not.toHaveBeenCalled();
+    expect(db.__mocks.orderBy).toHaveBeenCalledWith('__name__', 'desc');
+    expect(db.__mocks.limit).toHaveBeenCalledWith(1);
   });
 
   test('respects explicit inverter field when present', async () => {

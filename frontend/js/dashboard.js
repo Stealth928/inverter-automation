@@ -3412,7 +3412,7 @@
             if (!warningDiv) return;
             
             try {
-                const resp = await authenticatedFetch('/api/automation/status');
+                const resp = await authenticatedFetch('/api/automation/status-summary');
                 const data = await resp.json();
                 
                 if (data.errno === 0 && data.result?.enabled === true) {
@@ -5055,7 +5055,7 @@
             }
             
             try {
-                const resp = await authenticatedFetch('/api/automation/status');
+                const resp = await authenticatedFetch('/api/automation/status-summary');
                 const data = await resp.json();
                 
                 if (data.errno === 0 && data.result?.enabled === true) {
@@ -6771,7 +6771,7 @@
             if (!window.automationStatusRefreshInterval) {
                 window.automationStatusRefreshInterval = setInterval(() => {
                     try {
-                        loadBackendAutomationStatus();
+                        loadBackendAutomationStatusSummary();
                     } catch (e) {
                         console.warn('[Automation] Failed to refresh status:', e);
                     }
@@ -7663,6 +7663,8 @@
             updateAutomationToggle();
         }
 
+        let latestAutomationStatusSnapshot = null;
+
         // Load backend automation status and sync UI
         async function loadBackendAutomationStatus() {
             if (isPreviewMode()) {
@@ -7686,6 +7688,8 @@
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 if (data.errno === 0 && data.result) {
+                    latestAutomationStatusSnapshot = data.result;
+                    window.automationStatus = data.result;
                     updateBackendAutomationUI(data.result);
                 } else {
                     container.innerHTML = '<div style="color:var(--color-danger);font-size:12px">⚠️ Failed to load (errno: ' + data.errno + ')</div>';
@@ -7696,6 +7700,33 @@
                 if (container) {
                     container.innerHTML = `<div style="color:var(--color-danger);font-size:12px">⚠️ Error: ${e.message}</div>`;
                 }
+            }
+        }
+
+        async function loadBackendAutomationStatusSummary() {
+            if (isPreviewMode()) {
+                updateBackendAutomationUI(getMockAutomationStatus());
+                return;
+            }
+            try {
+                const resp = await authenticatedFetch('/api/automation/status-summary');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                if (data.errno !== 0 || !data.result) {
+                    throw new Error(`Status summary errno: ${data.errno}`);
+                }
+
+                const mergedStatus = {
+                    ...(latestAutomationStatusSnapshot || {}),
+                    ...data.result,
+                    rules: (latestAutomationStatusSnapshot && latestAutomationStatusSnapshot.rules) || {}
+                };
+                latestAutomationStatusSnapshot = mergedStatus;
+                window.automationStatus = mergedStatus;
+                updateBackendAutomationUI(mergedStatus);
+            } catch (e) {
+                console.warn('[Automation] Status summary refresh failed, falling back to full status:', e);
+                await loadBackendAutomationStatus();
             }
         }
 

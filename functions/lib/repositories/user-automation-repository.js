@@ -31,28 +31,20 @@ function createUserAutomationRepository(deps = {}) {
     return 0;
   }
 
-  async function getUserConfig(userId) {
+  async function getUserConfigPublic(userId) {
     try {
-      logger.debug('Config', `Loading config for user: ${userId}`);
+      logger.debug('Config', `Loading public config for user: ${userId}`);
 
-      // Primary location: users/{uid}/config/main (newer code)
-      // Also fetch users/{uid}/secrets/credentials in parallel — passwords are stored
-      // there separately so clients cannot read them back via Firestore SDK.
       const userRef = getUserDocRef(userId);
-      const [configDoc, secretsDoc] = await Promise.all([
-        userRef.collection('config').doc('main').get(),
-        userRef.collection('secrets').doc('credentials').get().catch(() => ({ exists: false, data: () => ({}) }))
-      ]);
+      const configDoc = await userRef.collection('config').doc('main').get();
 
       if (configDoc.exists) {
         const data = configDoc.data() || {};
-        // Merge secrets (passwords) so downstream services can re-authenticate when tokens expire.
-        const secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
         logger.debug(
           'Config',
           `Found config at users/${userId}/config/main: { hasDeviceSn: ${!!data.deviceSn}, hasFoxessToken: ${!!data.foxessToken} }`
         );
-        return { ...data, ...secrets, _source: 'config-main' };
+        return { ...data, _source: 'config-main' };
       }
 
       // Backward compatibility: older deployments stored credentials directly on users/{uid}.credentials
@@ -66,7 +58,7 @@ function createUserAutomationRepository(deps = {}) {
             deviceSn: data.credentials.device_sn || '',
             foxessToken: data.credentials.foxess_token || '',
             amberApiKey: data.credentials.amber_api_key || '',
-            // No explicit setupComplete flag in old storage — consider presence of tokens as complete
+            // No explicit setupComplete flag in old storage; presence of tokens implies complete.
             setupComplete: !!(data.credentials.device_sn && data.credentials.foxess_token),
             _source: 'legacy-credentials'
           };
@@ -86,9 +78,37 @@ function createUserAutomationRepository(deps = {}) {
 
       return null;
     } catch (error) {
-      console.error('Error getting user config:', error);
+      console.error('Error getting user public config:', error);
       return null;
     }
+  }
+
+  async function getUserConfigWithSecrets(userId) {
+    try {
+      const publicConfig = await getUserConfigPublic(userId);
+      if (!publicConfig) {
+        return null;
+      }
+      if (publicConfig._source !== 'config-main') {
+        return publicConfig;
+      }
+
+      // Password-like credentials are stored separately so clients cannot read them via Firestore SDK.
+      const secretsDoc = await getUserDocRef(userId)
+        .collection('secrets')
+        .doc('credentials')
+        .get()
+        .catch(() => ({ exists: false, data: () => ({}) }));
+      const secrets = secretsDoc.exists ? (secretsDoc.data() || {}) : {};
+      return { ...publicConfig, ...secrets };
+    } catch (error) {
+      console.error('Error getting user config with secrets:', error);
+      return null;
+    }
+  }
+
+  async function getUserConfig(userId) {
+    return getUserConfigWithSecrets(userId);
   }
 
   async function getUserRules(userId, options = {}) {
@@ -207,6 +227,8 @@ function createUserAutomationRepository(deps = {}) {
     deleteUserRule,
     getHistoryEntries,
     getUserConfig,
+    getUserConfigPublic,
+    getUserConfigWithSecrets,
     getUserRule,
     getUserRules,
     setUserConfig,

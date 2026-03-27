@@ -177,6 +177,7 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
   const getConfig = deps.getConfig;
   const getUserAutomationState = deps.getUserAutomationState;
   const getUserConfig = deps.getUserConfig;
+  const getUserConfigPublic = deps.getUserConfigPublic || deps.getUserConfig;
   const getUserRules = deps.getUserRules;
   const getUserTime = deps.getUserTime;
   const logger = deps.logger;
@@ -210,6 +211,9 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
   if (typeof getUserConfig !== 'function') {
     throw new Error('registerConfigReadStatusRoutes requires getUserConfig()');
   }
+  if (typeof getUserConfigPublic !== 'function') {
+    throw new Error('registerConfigReadStatusRoutes requires getUserConfigPublic()');
+  }
   if (typeof getUserRules !== 'function') {
     throw new Error('registerConfigReadStatusRoutes requires getUserRules()');
   }
@@ -226,6 +230,71 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
     throw new Error('registerConfigReadStatusRoutes requires setUserConfig()');
   }
 
+  const buildResponseConfig = (userConfig, serverConfig) => ({
+    automation: {
+      intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
+    },
+    cache: {
+      amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
+      inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
+      weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather,
+      teslaStatus: resolveTeslaStatusCacheMs(userConfig, serverConfig)
+    },
+    defaults: {
+      cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
+      durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
+    }
+  });
+
+  const resolveBlackoutStatus = (userConfig, currentMinutes) => {
+    const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
+    let inBlackout = false;
+    let currentBlackoutWindow = null;
+    for (const window of blackoutWindows) {
+      // Treat windows without explicit enabled property as enabled by default.
+      if (window.enabled === false) continue;
+      const [startH, startM] = (window.start || '00:00').split(':').map(Number);
+      const [endH, endM] = (window.end || '00:00').split(':').map(Number);
+      const startMins = startH * 60 + startM;
+      const endMins = endH * 60 + endM;
+
+      // Handle windows that cross midnight.
+      if (startMins <= endMins) {
+        if (currentMinutes >= startMins && currentMinutes < endMins) {
+          inBlackout = true;
+          currentBlackoutWindow = window;
+          break;
+        }
+      } else if (currentMinutes >= startMins || currentMinutes < endMins) {
+        inBlackout = true;
+        currentBlackoutWindow = window;
+        break;
+      }
+    }
+
+    return {
+      inBlackout,
+      currentBlackoutWindow
+    };
+  };
+
+  const syncAutomationEnabledMirror = async (userId, state) => {
+    if (!state || typeof state.enabled !== 'boolean') return;
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (userDoc.exists && userDoc.data()?.automationEnabled !== state.enabled) {
+        await db.collection('users').doc(userId).set(
+          { automationEnabled: state.enabled },
+          { merge: true }
+        );
+        logger.debug('Migration', `Synced automationEnabled=${state.enabled} for user ${userId}`);
+      }
+    } catch (migErr) {
+      // Non-critical - do not fail the status request.
+      console.warn('[Migration] Failed to sync automationEnabled flag:', migErr.message);
+    }
+  };
+
   // Get user config
   app.get('/api/config', async (req, res) => {
     try {
@@ -234,23 +303,7 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
       }
       const userConfig = await getUserConfig(req.user.uid);
       const serverConfig = getConfig();
-
-      // Build config object with TTLs and defaults (same as setup-status)
-      const config = {
-        automation: {
-          intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
-        },
-        cache: {
-          amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
-          inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
-          weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather,
-          teslaStatus: resolveTeslaStatusCacheMs(userConfig, serverConfig)
-        },
-        defaults: {
-          cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
-          durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
-        }
-      };
+      const config = buildResponseConfig(userConfig, serverConfig);
 
       const configResponse = sanitizeConfigForClient(userConfig);
 
@@ -269,7 +322,7 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
   app.get('/api/config/system-topology', async (req, res) => {
     try {
       const userId = req.user.uid;
-      const userConfig = await getUserConfig(userId);
+      const userConfig = await getUserConfigPublic(userId);
       const topology = userConfig?.systemTopology || {};
       const coupling = normalizeCouplingValue(topology.coupling);
 
@@ -296,7 +349,7 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
   app.get('/api/config/telemetry-mappings', async (req, res) => {
     try {
       const userId = req.user.uid;
-      const userConfig = await getUserConfig(userId);
+      const userConfig = await getUserConfigPublic(userId);
       const telemetryMappings = getTelemetryMappings(userConfig);
 
       res.json({
@@ -312,7 +365,7 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
   // GET /api/config/tour-status - return tourComplete flag for the current user
   app.get('/api/config/tour-status', authenticateUser, async (req, res) => {
     try {
-      const config = await getUserConfig(req.user.uid);
+      const config = await getUserConfigPublic(req.user.uid);
       res.json({
         errno: 0,
         result: {
@@ -330,7 +383,7 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
     try {
       const userId = req.user.uid;
       const [userConfig, sharedDoc, userProfileDoc, automationState] = await Promise.all([
-        getUserConfig(userId),
+        getUserConfigPublic(userId),
         db.collection('shared').doc('serverConfig').get(),
         db.collection('users').doc(userId).get(),
         getUserAutomationState(userId)
@@ -356,33 +409,57 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
     }
   });
 
+  // Lightweight automation status for polling paths.
+  // Intentionally avoids full rules/secrets/weather-sync reads.
+  app.get('/api/automation/status-summary', async (req, res) => {
+    try {
+      const userId = req.user.uid;
+      const [state, userConfig] = await Promise.all([
+        getUserAutomationState(userId),
+        getUserConfigPublic(userId)
+      ]);
+      const serverConfig = getConfig();
+      const statePayload = state && typeof state === 'object' ? state : {};
+
+      await syncAutomationEnabledMirror(userId, statePayload);
+
+      const config = buildResponseConfig(userConfig, serverConfig);
+      const userTimezone = getAutomationTimezone(userConfig);
+      const userTime = getUserTime(userTimezone);
+      const currentMinutes = userTime.hour * 60 + userTime.minute;
+      const blackoutStatus = resolveBlackoutStatus(userConfig, currentMinutes);
+
+      return res.json({
+        errno: 0,
+        result: {
+          ...statePayload,
+          enabled: statePayload.enabled === true,
+          serverTime: Date.now(),
+          userTimezone,
+          nextCheckIn: config.automation.intervalMs,
+          inBlackout: blackoutStatus.inBlackout,
+          currentBlackoutWindow: blackoutStatus.currentBlackoutWindow,
+          config
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ errno: 500, error: error.message });
+    }
+  });
+
   // Get automation state
   app.get('/api/automation/status', async (req, res) => {
     try {
       const userId = req.user.uid;
-      const state = await getUserAutomationState(userId);
-      const rules = await getUserRules(userId);
-      let userConfig = await getUserConfig(userId);
+      const [state, rules, initialUserConfig] = await Promise.all([
+        getUserAutomationState(userId),
+        getUserRules(userId),
+        getUserConfig(userId)
+      ]);
+      let userConfig = initialUserConfig;
       const serverConfig = getConfig();
 
-      // Migration: sync automationEnabled flag to parent user doc for scheduler pre-filtering
-      // This ensures existing users who enabled automation before the flag was introduced
-      // get picked up by the optimized scheduler query
-      if (state && typeof state.enabled === 'boolean') {
-        try {
-          const userDoc = await db.collection('users').doc(userId).get();
-          if (userDoc.exists && userDoc.data()?.automationEnabled !== state.enabled) {
-            await db.collection('users').doc(userId).set(
-              { automationEnabled: state.enabled },
-              { merge: true }
-            );
-            logger.debug('Migration', `Synced automationEnabled=${state.enabled} for user ${userId}`);
-          }
-        } catch (migErr) {
-          // Non-critical - don't fail the status request
-          console.warn('[Migration] Failed to sync automationEnabled flag:', migErr.message);
-        }
-      }
+      await syncAutomationEnabledMirror(userId, state);
 
       // Aggressive timezone sync: fetch weather to ensure timezone matches location.
       if (userConfig?.location) {
@@ -404,54 +481,8 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
       const userTimezone = getAutomationTimezone(userConfig);
       const userTime = getUserTime(userTimezone);
       const currentMinutes = userTime.hour * 60 + userTime.minute;
-
-      // Check for blackout windows
-      const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
-
-      let inBlackout = false;
-      let currentBlackoutWindow = null;
-      for (const window of blackoutWindows) {
-        // Treat windows without explicit enabled property as enabled by default
-        // (the user explicitly added them, so they should be active unless explicitly disabled)
-        if (window.enabled === false) continue;
-        const [startH, startM] = (window.start || '00:00').split(':').map(Number);
-        const [endH, endM] = (window.end || '00:00').split(':').map(Number);
-        const startMins = startH * 60 + startM;
-        const endMins = endH * 60 + endM;
-
-        // Handle windows that cross midnight
-        if (startMins <= endMins) {
-          if (currentMinutes >= startMins && currentMinutes < endMins) {
-            inBlackout = true;
-            currentBlackoutWindow = window;
-            break;
-          }
-        } else if (currentMinutes >= startMins || currentMinutes < endMins) {
-          inBlackout = true;
-          currentBlackoutWindow = window;
-          break;
-        }
-      }
-
-      // Include user-specific cache TTLs and defaults
-      const config = {
-        // Automation timing
-        automation: {
-          intervalMs: (userConfig?.automation?.intervalMs) || serverConfig.automation.intervalMs
-        },
-        // Cache TTLs (respect user overrides, fall back to server defaults)
-        cache: {
-          amber: (userConfig?.cache?.amber) || serverConfig.automation.cacheTtl.amber,
-          inverter: (userConfig?.automation?.inverterCacheTtlMs) || serverConfig.automation.cacheTtl.inverter,
-          weather: (userConfig?.cache?.weather) || serverConfig.automation.cacheTtl.weather,
-          teslaStatus: resolveTeslaStatusCacheMs(userConfig, serverConfig)
-        },
-        // Default rule behavior
-        defaults: {
-          cooldownMinutes: (userConfig?.defaults?.cooldownMinutes) || 5,
-          durationMinutes: (userConfig?.defaults?.durationMinutes) || 30
-        }
-      };
+      const blackoutStatus = resolveBlackoutStatus(userConfig, currentMinutes);
+      const config = buildResponseConfig(userConfig, serverConfig);
 
       res.json({
         errno: 0,
@@ -461,8 +492,8 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
           serverTime: Date.now(),
           userTimezone, // Include user's timezone so frontend can format times correctly
           nextCheckIn: config.automation.intervalMs,
-          inBlackout,
-          currentBlackoutWindow,
+          inBlackout: blackoutStatus.inBlackout,
+          currentBlackoutWindow: blackoutStatus.currentBlackoutWindow,
           config // Return user-specific configuration
         }
       });

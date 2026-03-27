@@ -7,6 +7,9 @@ function registerAuthLifecycleRoutes(app, deps = {}) {
   const logger = deps.logger;
   const serverTimestamp = deps.serverTimestamp;
   const setUserConfig = deps.setUserConfig;
+  const sendAdminSystemAlert = typeof deps.sendAdminSystemAlert === 'function'
+    ? deps.sendAdminSystemAlert
+    : null;
 
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('registerAuthLifecycleRoutes requires an Express app');
@@ -40,8 +43,11 @@ function registerAuthLifecycleRoutes(app, deps = {}) {
     try {
       const userId = req.user.uid;
       const { email, displayName } = req.user;
+      const userDocRef = db.collection('users').doc(userId);
+      const existingUserSnapshot = await userDocRef.get();
+      const isFirstInit = !existingUserSnapshot.exists;
 
-      await db.collection('users').doc(userId).set({
+      await userDocRef.set({
         email,
         displayName: displayName || '',
         photoURL: req.user.photoURL || '',
@@ -71,6 +77,21 @@ function registerAuthLifecycleRoutes(app, deps = {}) {
         lastTriggered: null,
         activeRule: null
       }, { merge: true });
+
+      if (isFirstInit && sendAdminSystemAlert) {
+        try {
+          await sendAdminSystemAlert({
+            eventType: 'signup',
+            stateSignature: `uid:${userId}`,
+            title: 'New user signup',
+            body: `${email || userId} completed account initialization.`,
+            severity: 'info',
+            deepLink: '/admin.html#users'
+          });
+        } catch (alertError) {
+          logger.info('Auth', `Failed to emit admin signup alert for ${userId}: ${alertError?.message || alertError}`, true);
+        }
+      }
 
       logger.info('Auth', `User ${userId} initialized successfully`, true);
       res.json({ errno: 0, msg: 'User initialized' });

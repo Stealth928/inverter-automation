@@ -10,21 +10,44 @@ function buildDeps(overrides = {}) {
     get: jest.fn(async () => ({ exists: false, data: () => ({}) })),
     set: jest.fn(async () => undefined)
   };
+  const userSecretsDoc = {
+    get: jest.fn(async () => ({ exists: false, data: () => ({}) })),
+    set: jest.fn(async () => undefined)
+  };
 
   const deps = {
     db: {
       collection: jest.fn((name) => {
-        if (name !== 'shared') {
-          throw new Error(`Unexpected collection: ${name}`);
+        if (name === 'shared') {
+          return {
+            doc: jest.fn((docId) => {
+              if (docId !== 'serverConfig') {
+                throw new Error(`Unexpected doc: ${docId}`);
+              }
+              return sharedDoc;
+            })
+          };
         }
-        return {
-          doc: jest.fn((docId) => {
-            if (docId !== 'serverConfig') {
-              throw new Error(`Unexpected doc: ${docId}`);
-            }
-            return sharedDoc;
-          })
-        };
+        if (name === 'users') {
+          return {
+            doc: jest.fn(() => ({
+              collection: jest.fn((subName) => {
+                if (subName !== 'secrets') {
+                  throw new Error(`Unexpected users subcollection: ${subName}`);
+                }
+                return {
+                  doc: jest.fn((docId) => {
+                    if (docId !== 'credentials') {
+                      throw new Error(`Unexpected users/secrets doc: ${docId}`);
+                    }
+                    return userSecretsDoc;
+                  })
+                };
+              })
+            }))
+          };
+        }
+        throw new Error(`Unexpected collection: ${name}`);
       })
     },
     foxessAPI: {
@@ -39,15 +62,28 @@ function buildDeps(overrides = {}) {
         cacheTtl: { amber: 60000, inverter: 300000, weather: 1800000, teslaStatus: 600000 }
       }
     })),
+    getUserConfigPublic: jest.fn(async () => ({})),
     getUserConfig: jest.fn(async () => ({})),
     logger: { info: jest.fn() },
     serverTimestamp: jest.fn(() => 'server-ts'),
     setUserConfig: jest.fn(async () => undefined),
     tryAttachUser: jest.fn(async () => undefined),
-    __sharedDoc: sharedDoc
+    __sharedDoc: sharedDoc,
+    __userSecretsDoc: userSecretsDoc
   };
-
-  return { ...deps, ...overrides, __sharedDoc: overrides.__sharedDoc || sharedDoc };
+  const merged = {
+    ...deps,
+    ...overrides,
+    __sharedDoc: overrides.__sharedDoc || sharedDoc,
+    __userSecretsDoc: overrides.__userSecretsDoc || userSecretsDoc
+  };
+  if (!overrides.getUserConfigPublic && overrides.getUserConfig) {
+    merged.getUserConfigPublic = overrides.getUserConfig;
+  }
+  if (!overrides.getUserConfig && overrides.getUserConfigPublic) {
+    merged.getUserConfig = overrides.getUserConfigPublic;
+  }
+  return merged;
 }
 
 function buildApp(deps) {

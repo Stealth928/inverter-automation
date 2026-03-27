@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { DEFAULT_SEED_ADMIN_EMAIL } = require('../admin-access');
 
 let webPush = null;
 try {
@@ -22,6 +23,13 @@ const DEFAULT_NOTIFICATION_PAGE_LIMIT = 20;
 const MAX_NOTIFICATION_PAGE_LIMIT = 100;
 const DEFAULT_NOTIFICATION_RETENTION = 200;
 const NOTIFICATION_RUNTIME_DOC_ID = 'state';
+const ADMIN_ALERT_RUNTIME_DOC_ID = 'state';
+const ADMIN_ALERT_EVENT_CONFIG_MAP = Object.freeze({
+  signup: 'signup',
+  scheduler_breach: 'schedulerBreach',
+  dataworks_failure: 'dataworksFailure',
+  api_health_bad: 'apiHealthBad'
+});
 
 function trimString(value) {
   const text = String(value || '').trim();
@@ -155,6 +163,96 @@ function normalizeAudienceShape(value) {
   };
 }
 
+function createDefaultAdminAlertsConfig() {
+  return {
+    enabled: true,
+    channels: ['inbox', 'push'],
+    events: {
+      signup: { enabled: true },
+      schedulerBreach: { enabled: true },
+      dataworksFailure: { enabled: true },
+      apiHealthBad: { enabled: true }
+    },
+    cooldowns: {
+      schedulerBreachMs: 30 * 60 * 1000,
+      dataworksFailureMs: 30 * 60 * 1000,
+      apiHealthBadMs: 60 * 60 * 1000
+    }
+  };
+}
+
+function normalizeAdminAlertEventType(value) {
+  const normalized = trimString(value)
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (!normalized) return null;
+  if (normalized === 'signup') return 'signup';
+  if (normalized === 'scheduler_breach' || normalized === 'schedulerbreach') return 'scheduler_breach';
+  if (normalized === 'dataworks_failure' || normalized === 'dataworksfailure') return 'dataworks_failure';
+  if (normalized === 'api_health_bad' || normalized === 'apihealthbad') return 'api_health_bad';
+  return null;
+}
+
+function normalizeAdminAlertsConfig(value, { includeAudit = false } = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const defaults = createDefaultAdminAlertsConfig();
+  const events = source.events && typeof source.events === 'object' ? source.events : {};
+  const cooldowns = source.cooldowns && typeof source.cooldowns === 'object' ? source.cooldowns : {};
+
+  const normalized = {
+    enabled: source.enabled !== false,
+    channels: normalizeNotificationChannels(source.channels || defaults.channels),
+    events: {
+      signup: {
+        enabled: events.signup?.enabled !== false
+      },
+      schedulerBreach: {
+        enabled: events.schedulerBreach?.enabled !== false
+      },
+      dataworksFailure: {
+        enabled: events.dataworksFailure?.enabled !== false
+      },
+      apiHealthBad: {
+        enabled: events.apiHealthBad?.enabled !== false
+      }
+    },
+    cooldowns: {
+      schedulerBreachMs: parseBoundedInt(
+        cooldowns.schedulerBreachMs,
+        defaults.cooldowns.schedulerBreachMs,
+        { min: 60000, max: 7 * 24 * 60 * 60 * 1000 }
+      ),
+      dataworksFailureMs: parseBoundedInt(
+        cooldowns.dataworksFailureMs,
+        defaults.cooldowns.dataworksFailureMs,
+        { min: 60000, max: 7 * 24 * 60 * 60 * 1000 }
+      ),
+      apiHealthBadMs: parseBoundedInt(
+        cooldowns.apiHealthBadMs,
+        defaults.cooldowns.apiHealthBadMs,
+        { min: 60000, max: 7 * 24 * 60 * 60 * 1000 }
+      )
+    }
+  };
+
+  if (includeAudit) {
+    normalized.updatedAt = source.updatedAt || null;
+    normalized.updatedByUid = toNullableString(source.updatedByUid, 128);
+    normalized.updatedByEmail = toNullableString(source.updatedByEmail, 240);
+  }
+
+  return normalized;
+}
+
+function isTerminalDataworksFailure(latestRun) {
+  const run = latestRun && typeof latestRun === 'object' ? latestRun : {};
+  const status = trimString(run.status).toLowerCase();
+  const conclusion = trimString(run.conclusion).toLowerCase();
+  if (status !== 'completed') return false;
+  if (!conclusion) return false;
+  return !['success', 'neutral', 'skipped'].includes(conclusion);
+}
+
 function toArrayChunked(values, chunkSize = 300) {
   const rows = Array.isArray(values) ? values : [];
   const size = Math.max(1, Math.floor(chunkSize));
@@ -208,6 +306,7 @@ function createNotificationsService(deps = {}) {
   const pushConfig = deps.pushConfig && typeof deps.pushConfig === 'object'
     ? deps.pushConfig
     : {};
+  const seedAdminEmail = trimString(deps.seedAdminEmail || DEFAULT_SEED_ADMIN_EMAIL).toLowerCase();
 
   if (!db || typeof db.collection !== 'function') {
     throw new Error('createNotificationsService requires Firestore db');
@@ -269,6 +368,33 @@ function createNotificationsService(deps = {}) {
 
   function notificationCampaignsRef() {
     return db.collection('notificationCampaigns');
+  }
+
+  function adminAlertRuntimeRef() {
+    return db.collection('notificationAdminRuntime').doc(ADMIN_ALERT_RUNTIME_DOC_ID);
+  }
+
+  async function resolveAdminRecipients() {
+    const usersSnapshot = await db.collection('users').get();
+    if (!usersSnapshot || !usersSnapshot.size) return [];
+
+    const recipients = [];
+    const seen = new Set();
+    usersSnapshot.docs.forEach((doc) => {
+      const profile = doc && typeof doc.data === 'function' ? (doc.data() || {}) : {};
+      const email = trimString(profile.email).toLowerCase();
+      const role = trimString(profile.role).toLowerCase();
+      const isSeedAdmin = Boolean(seedAdminEmail) && email === seedAdminEmail;
+      if (!isSeedAdmin && role !== 'admin') return;
+      const uid = trimString(doc.id);
+      if (!uid || seen.has(uid)) return;
+      seen.add(uid);
+      recipients.push({
+        uid,
+        email: email || null
+      });
+    });
+    return recipients;
   }
 
   async function readUserConfig(userId) {
@@ -656,6 +782,7 @@ function createNotificationsService(deps = {}) {
       enabled: source.enabled !== false,
       defaultChannels: normalizeNotificationChannels(source.defaultChannels || ['inbox', 'push']),
       audienceDefaults: normalizeAudienceShape(source.audienceDefaults || {}),
+      adminAlerts: normalizeAdminAlertsConfig(source.adminAlerts || {}, { includeAudit: true }),
       updatedAt: source.updatedAt || null,
       updatedByUid: toNullableString(source.updatedByUid, 128),
       updatedByEmail: toNullableString(source.updatedByEmail, 240)
@@ -664,10 +791,17 @@ function createNotificationsService(deps = {}) {
 
   async function saveAdminConfig(configInput, actor = {}) {
     const source = configInput && typeof configInput === 'object' ? configInput : {};
+    const normalizedAdminAlerts = normalizeAdminAlertsConfig(source.adminAlerts || {});
     const normalized = {
       enabled: source.enabled !== false,
       defaultChannels: normalizeNotificationChannels(source.defaultChannels || source.channels || ['inbox', 'push']),
       audienceDefaults: normalizeAudienceShape(source.audienceDefaults || source.audience || {}),
+      adminAlerts: {
+        ...normalizedAdminAlerts,
+        updatedAt: serverTimestamp(),
+        updatedByUid: trimString(actor.uid),
+        updatedByEmail: trimString(actor.email)
+      },
       updatedAt: serverTimestamp(),
       updatedByUid: trimString(actor.uid),
       updatedByEmail: trimString(actor.email)
@@ -994,6 +1128,298 @@ function createNotificationsService(deps = {}) {
     };
   }
 
+  function resolveAdminAlertCooldownMs(eventType, adminAlertConfig, eventInput = {}) {
+    const override = Number(eventInput.cooldownMs);
+    if (Number.isFinite(override)) {
+      return Math.max(0, Math.min(7 * 24 * 60 * 60 * 1000, Math.round(override)));
+    }
+
+    const cooldowns = adminAlertConfig && adminAlertConfig.cooldowns
+      ? adminAlertConfig.cooldowns
+      : {};
+
+    if (eventType === 'scheduler_breach') {
+      return parseBoundedInt(cooldowns.schedulerBreachMs, 30 * 60 * 1000, { min: 0, max: 7 * 24 * 60 * 60 * 1000 });
+    }
+    if (eventType === 'dataworks_failure') {
+      return parseBoundedInt(cooldowns.dataworksFailureMs, 30 * 60 * 1000, { min: 0, max: 7 * 24 * 60 * 60 * 1000 });
+    }
+    if (eventType === 'api_health_bad') {
+      return parseBoundedInt(cooldowns.apiHealthBadMs, 60 * 60 * 1000, { min: 0, max: 7 * 24 * 60 * 60 * 1000 });
+    }
+    return 0;
+  }
+
+  async function sendAdminSystemAlert(eventInput = {}) {
+    const event = eventInput && typeof eventInput === 'object' ? eventInput : {};
+    const eventType = normalizeAdminAlertEventType(event.eventType || event.type);
+    const stateSignature = toNullableString(event.stateSignature, 240);
+    if (!eventType || !stateSignature) {
+      return { sent: false, reason: 'invalid_event' };
+    }
+
+    const adminConfig = await readAdminConfig();
+    const adminAlertConfig = normalizeAdminAlertsConfig(adminConfig.adminAlerts || {});
+    if (adminAlertConfig.enabled !== true) {
+      return { sent: false, reason: 'admin_alerts_disabled' };
+    }
+
+    const eventConfigKey = ADMIN_ALERT_EVENT_CONFIG_MAP[eventType];
+    if (!eventConfigKey || adminAlertConfig.events?.[eventConfigKey]?.enabled !== true) {
+      return { sent: false, reason: 'event_disabled' };
+    }
+
+    const cooldownMs = resolveAdminAlertCooldownMs(eventType, adminAlertConfig, event);
+    const dedupeKey = buildStableId(`${eventType}:${stateSignature}`);
+    const runtimeRef = adminAlertRuntimeRef();
+    const nowMs = now();
+    let shouldSend = false;
+
+    await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(runtimeRef);
+      const runtimeData = snapshot.exists ? (snapshot.data() || {}) : {};
+      const events = runtimeData.events && typeof runtimeData.events === 'object'
+        ? runtimeData.events
+        : {};
+      const prior = events[dedupeKey] && typeof events[dedupeKey] === 'object'
+        ? events[dedupeKey]
+        : {};
+      const lastSentAtMs = Number(prior.lastSentAtMs || 0);
+      if (cooldownMs > 0 && lastSentAtMs > 0 && (nowMs - lastSentAtMs) < cooldownMs) {
+        shouldSend = false;
+        return;
+      }
+      shouldSend = true;
+      tx.set(runtimeRef, {
+        events: {
+          [dedupeKey]: {
+            eventType,
+            stateSignature,
+            lastSentAtMs: nowMs,
+            cooldownMs,
+            updatedAtMs: nowMs,
+            updatedAt: serverTimestamp()
+          }
+        },
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    });
+
+    if (!shouldSend) {
+      return { sent: false, reason: 'cooldown' };
+    }
+
+    const channels = normalizeNotificationChannels(event.channels || adminAlertConfig.channels || ['inbox', 'push']);
+    const recipients = await resolveAdminRecipients();
+    if (!recipients.length) {
+      return { sent: false, reason: 'no_admin_recipients' };
+    }
+
+    const title = toNullableString(event.title, 160) || 'Admin operational alert';
+    const body = toNullableString(event.body, 4000) || '';
+    const severity = normalizeNotificationSeverity(event.severity || 'warning');
+    const deepLink = toNullableString(event.deepLink, 300);
+    const eventKey = `${eventType}:${stateSignature}`;
+
+    const summary = {
+      sent: false,
+      eventType,
+      targetedAdmins: recipients.length,
+      inboxCreated: 0,
+      pushAttempted: 0,
+      pushSuccess: 0,
+      pushFailure: 0,
+      pushPruned: 0
+    };
+
+    for (const recipient of recipients) {
+      const userId = recipient.uid;
+      let inboxRecord = null;
+      if (channels.includes('inbox')) {
+        inboxRecord = await createInboxNotification(userId, {
+          type: 'admin_alert',
+          source: 'system',
+          title,
+          body,
+          severity,
+          deepLink,
+          eventKey
+        }, { keepMax: DEFAULT_NOTIFICATION_RETENTION });
+        summary.inboxCreated += 1;
+      }
+      if (channels.includes('push')) {
+        const pushResult = await sendPushToUser(userId, {
+          type: 'admin_alert',
+          source: 'system',
+          title,
+          body,
+          severity,
+          deepLink,
+          eventKey
+        }, {
+          notificationId: inboxRecord?.id || null
+        });
+        summary.pushAttempted += pushResult.attempted;
+        summary.pushSuccess += pushResult.success;
+        summary.pushFailure += pushResult.failure;
+        summary.pushPruned += pushResult.pruned;
+      }
+    }
+
+    summary.sent = summary.inboxCreated > 0 || summary.pushAttempted > 0;
+    return summary;
+  }
+
+  async function evaluateAndSendAdminOperationalAlerts(input = {}) {
+    const source = input && typeof input === 'object' ? input : {};
+    const schedulerAlert = source.schedulerAlert && typeof source.schedulerAlert === 'object'
+      ? source.schedulerAlert
+      : {};
+    const dataworks = source.dataworks && typeof source.dataworks === 'object'
+      ? source.dataworks
+      : {};
+    const apiHealth = source.apiHealth && typeof source.apiHealth === 'object'
+      ? source.apiHealth
+      : {};
+    const nowMs = now();
+
+    const runtimeRef = adminAlertRuntimeRef();
+    const runtimeSnapshot = await runtimeRef.get();
+    const runtimeData = runtimeSnapshot.exists ? (runtimeSnapshot.data() || {}) : {};
+    const priorSignals = runtimeData.signals && typeof runtimeData.signals === 'object'
+      ? runtimeData.signals
+      : {};
+    const nextSignals = { ...priorSignals };
+    const pendingAlerts = [];
+
+    const schedulerStatus = trimString(schedulerAlert.status || schedulerAlert.alertStatus).toLowerCase();
+    const previousSchedulerStatus = trimString(priorSignals.scheduler?.status).toLowerCase();
+    if (schedulerStatus) {
+      nextSignals.scheduler = {
+        status: schedulerStatus,
+        schedulerId: toNullableString(schedulerAlert.schedulerId, 120),
+        runId: toNullableString(schedulerAlert.runId, 120),
+        dayKey: toNullableString(schedulerAlert.dayKey, 40),
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      };
+      if (schedulerStatus === 'breach' && previousSchedulerStatus !== 'breach') {
+        pendingAlerts.push({
+          eventType: 'scheduler_breach',
+          stateSignature: toNullableString(schedulerAlert.schedulerId, 120) || 'scheduler',
+          title: 'Scheduler breach detected',
+          body: 'Scheduler SLO status moved to breach. Review scheduler metrics and dead letters in admin.',
+          severity: 'danger',
+          deepLink: '/admin.html#scheduler'
+        });
+      }
+    }
+
+    const dataworksState = priorSignals.dataworks && typeof priorSignals.dataworks === 'object'
+      ? priorSignals.dataworks
+      : {};
+    const dataworksErrorMessage = toNullableString(dataworks.error?.message || dataworks.error, 300);
+    if (dataworksErrorMessage) {
+      const previousStreak = Number(dataworksState.loadFailureStreak || 0);
+      const nextStreak = previousStreak + 1;
+      const alreadyOpen = dataworksState.loadFailureAlertOpen === true;
+      nextSignals.dataworks = {
+        status: 'load_error',
+        loadFailureStreak: nextStreak,
+        loadFailureAlertOpen: alreadyOpen || nextStreak >= 3,
+        lastError: dataworksErrorMessage,
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      };
+      if (nextStreak >= 3 && !alreadyOpen) {
+        pendingAlerts.push({
+          eventType: 'dataworks_failure',
+          stateSignature: `load_error:${buildStableId(dataworksErrorMessage).slice(0, 12)}`,
+          title: 'DataWorks diagnostics failing',
+          body: `DataWorks operational diagnostics failed ${nextStreak} consecutive times: ${dataworksErrorMessage}`,
+          severity: 'warning',
+          deepLink: '/admin.html#dataworks'
+        });
+      }
+    } else {
+      const latestRun = dataworks.latestRun && typeof dataworks.latestRun === 'object'
+        ? dataworks.latestRun
+        : null;
+      const failed = isTerminalDataworksFailure(latestRun);
+      const failedRunKey = failed
+        ? `${trimString(latestRun?.id)}:${trimString(latestRun?.conclusion).toLowerCase()}`
+        : null;
+      const previousFailedRunKey = toNullableString(dataworksState.lastFailedRunKey, 200);
+
+      nextSignals.dataworks = {
+        status: failed ? 'failed' : 'healthy',
+        loadFailureStreak: 0,
+        loadFailureAlertOpen: false,
+        lastError: null,
+        lastFailedRunKey: failedRunKey,
+        latestRunId: toNullableString(latestRun?.id, 120),
+        latestRunStatus: toNullableString(latestRun?.status, 80),
+        latestRunConclusion: toNullableString(latestRun?.conclusion, 80),
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      };
+
+      if (failed && failedRunKey && failedRunKey !== previousFailedRunKey) {
+        pendingAlerts.push({
+          eventType: 'dataworks_failure',
+          stateSignature: failedRunKey,
+          title: 'DataWorks run failed',
+          body: `Latest DataWorks workflow run failed (${trimString(latestRun?.conclusion) || 'unknown'}).`,
+          severity: 'warning',
+          deepLink: '/admin.html#dataworks'
+        });
+      }
+    }
+
+    const apiHealthStatus = trimString(apiHealth.healthStatus || apiHealth.status).toLowerCase();
+    const previousApiHealthStatus = trimString(priorSignals.apiHealth?.status).toLowerCase();
+    if (apiHealthStatus) {
+      nextSignals.apiHealth = {
+        status: apiHealthStatus,
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      };
+      if (apiHealthStatus === 'bad' && previousApiHealthStatus !== 'bad') {
+        pendingAlerts.push({
+          eventType: 'api_health_bad',
+          stateSignature: 'bad',
+          title: 'API health is bad',
+          body: 'Admin API health moved to bad status. Review provider metrics and error alerts.',
+          severity: 'danger',
+          deepLink: '/admin.html#apihealth'
+        });
+      }
+    }
+
+    await runtimeRef.set({
+      signals: nextSignals,
+      updatedAtMs: nowMs,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    const deliveryResults = [];
+    for (const alert of pendingAlerts) {
+      deliveryResults.push(await sendAdminSystemAlert(alert));
+    }
+
+    return {
+      evaluatedAtMs: nowMs,
+      evaluatedSignals: {
+        schedulerStatus: schedulerStatus || null,
+        dataworksStatus: nextSignals.dataworks?.status || null,
+        apiHealthStatus: apiHealthStatus || null
+      },
+      triggered: deliveryResults.filter((entry) => entry && entry.sent === true).length,
+      results: deliveryResults
+    };
+  }
+
   return {
     NOTIFICATION_PREF_DEFAULTS,
     normalizeNotificationPreferences,
@@ -1006,6 +1432,8 @@ function createNotificationsService(deps = {}) {
     createInboxNotification,
     sendPushToUser,
     emitEventNotification,
+    sendAdminSystemAlert,
+    evaluateAndSendAdminOperationalAlerts,
     readAdminConfig,
     saveAdminConfig,
     sendAdminBroadcast,

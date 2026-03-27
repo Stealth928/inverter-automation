@@ -2571,6 +2571,21 @@
         return {
             enabled: true,
             defaultChannels: ['inbox', 'push'],
+            adminAlerts: {
+                enabled: true,
+                channels: ['inbox', 'push'],
+                events: {
+                    signup: { enabled: true },
+                    schedulerBreach: { enabled: true },
+                    dataworksFailure: { enabled: true },
+                    apiHealthBad: { enabled: true }
+                },
+                cooldowns: {
+                    schedulerBreachMs: 30 * 60 * 1000,
+                    dataworksFailureMs: 30 * 60 * 1000,
+                    apiHealthBadMs: 60 * 60 * 1000
+                }
+            },
             audienceDefaults: {
                 requireTourComplete: true,
                 requireSetupComplete: true,
@@ -2592,6 +2607,16 @@
             configEnabledInput: document.getElementById('notificationsConfigEnabledInput'),
             configChannelInboxInput: document.getElementById('notificationsConfigChannelInboxInput'),
             configChannelPushInput: document.getElementById('notificationsConfigChannelPushInput'),
+            adminAlertsEnabledInput: document.getElementById('notificationsAdminAlertsEnabledInput'),
+            adminAlertsChannelInboxInput: document.getElementById('notificationsAdminAlertsChannelInboxInput'),
+            adminAlertsChannelPushInput: document.getElementById('notificationsAdminAlertsChannelPushInput'),
+            adminAlertsEventSignupInput: document.getElementById('notificationsAdminAlertsEventSignupInput'),
+            adminAlertsEventSchedulerBreachInput: document.getElementById('notificationsAdminAlertsEventSchedulerBreachInput'),
+            adminAlertsEventDataworksFailureInput: document.getElementById('notificationsAdminAlertsEventDataworksFailureInput'),
+            adminAlertsEventApiHealthBadInput: document.getElementById('notificationsAdminAlertsEventApiHealthBadInput'),
+            adminAlertsCooldownSchedulerInput: document.getElementById('notificationsAdminAlertsCooldownSchedulerInput'),
+            adminAlertsCooldownDataworksInput: document.getElementById('notificationsAdminAlertsCooldownDataworksInput'),
+            adminAlertsCooldownApiHealthInput: document.getElementById('notificationsAdminAlertsCooldownApiHealthInput'),
             configRequireTourInput: document.getElementById('notificationsConfigRequireTourInput'),
             configRequireSetupInput: document.getElementById('notificationsConfigRequireSetupInput'),
             configRequireAutomationInput: document.getElementById('notificationsConfigRequireAutomationInput'),
@@ -2681,10 +2706,59 @@
         const channels = Array.isArray(source.defaultChannels)
             ? source.defaultChannels.filter((entry) => ['inbox', 'push'].includes(String(entry || '').toLowerCase()))
             : defaults.defaultChannels;
+        const adminAlertsSource = source.adminAlerts && typeof source.adminAlerts === 'object'
+            ? source.adminAlerts
+            : defaults.adminAlerts;
+        const adminAlertChannels = Array.isArray(adminAlertsSource.channels)
+            ? adminAlertsSource.channels.filter((entry) => ['inbox', 'push'].includes(String(entry || '').toLowerCase()))
+            : defaults.adminAlerts.channels;
         const minAccountAgeRaw = Number(source.audienceDefaults?.minAccountAgeDays);
+        const schedulerCooldownMsRaw = Number(adminAlertsSource.cooldowns?.schedulerBreachMs);
+        const dataworksCooldownMsRaw = Number(adminAlertsSource.cooldowns?.dataworksFailureMs);
+        const apiHealthCooldownMsRaw = Number(adminAlertsSource.cooldowns?.apiHealthBadMs);
+        const normalizeCooldownMs = (value, fallback) => (
+            Number.isFinite(value) && value > 0
+                ? Math.max(60000, Math.min(7 * 24 * 60 * 60 * 1000, Math.round(value)))
+                : fallback
+        );
         return {
             enabled: source.enabled !== false,
             defaultChannels: channels.length ? channels : ['inbox'],
+            adminAlerts: {
+                enabled: adminAlertsSource.enabled !== false,
+                channels: adminAlertChannels.length ? adminAlertChannels : ['inbox'],
+                events: {
+                    signup: {
+                        enabled: adminAlertsSource.events?.signup?.enabled !== false
+                    },
+                    schedulerBreach: {
+                        enabled: adminAlertsSource.events?.schedulerBreach?.enabled !== false
+                    },
+                    dataworksFailure: {
+                        enabled: adminAlertsSource.events?.dataworksFailure?.enabled !== false
+                    },
+                    apiHealthBad: {
+                        enabled: adminAlertsSource.events?.apiHealthBad?.enabled !== false
+                    }
+                },
+                cooldowns: {
+                    schedulerBreachMs: normalizeCooldownMs(
+                        schedulerCooldownMsRaw,
+                        defaults.adminAlerts.cooldowns.schedulerBreachMs
+                    ),
+                    dataworksFailureMs: normalizeCooldownMs(
+                        dataworksCooldownMsRaw,
+                        defaults.adminAlerts.cooldowns.dataworksFailureMs
+                    ),
+                    apiHealthBadMs: normalizeCooldownMs(
+                        apiHealthCooldownMsRaw,
+                        defaults.adminAlerts.cooldowns.apiHealthBadMs
+                    )
+                },
+                updatedAt: adminAlertsSource.updatedAt || null,
+                updatedByUid: adminAlertsSource.updatedByUid || null,
+                updatedByEmail: adminAlertsSource.updatedByEmail || null
+            },
             audienceDefaults: {
                 requireTourComplete: source.audienceDefaults?.requireTourComplete !== false,
                 requireSetupComplete: source.audienceDefaults?.requireSetupComplete !== false,
@@ -2710,6 +2784,28 @@
         if (els.configEnabledInput) els.configEnabledInput.checked = normalized.enabled === true;
         if (els.configChannelInboxInput) els.configChannelInboxInput.checked = normalized.defaultChannels.includes('inbox');
         if (els.configChannelPushInput) els.configChannelPushInput.checked = normalized.defaultChannels.includes('push');
+        if (els.adminAlertsEnabledInput) els.adminAlertsEnabledInput.checked = normalized.adminAlerts.enabled === true;
+        if (els.adminAlertsChannelInboxInput) els.adminAlertsChannelInboxInput.checked = normalized.adminAlerts.channels.includes('inbox');
+        if (els.adminAlertsChannelPushInput) els.adminAlertsChannelPushInput.checked = normalized.adminAlerts.channels.includes('push');
+        if (els.adminAlertsEventSignupInput) els.adminAlertsEventSignupInput.checked = normalized.adminAlerts.events.signup.enabled !== false;
+        if (els.adminAlertsEventSchedulerBreachInput) els.adminAlertsEventSchedulerBreachInput.checked = normalized.adminAlerts.events.schedulerBreach.enabled !== false;
+        if (els.adminAlertsEventDataworksFailureInput) els.adminAlertsEventDataworksFailureInput.checked = normalized.adminAlerts.events.dataworksFailure.enabled !== false;
+        if (els.adminAlertsEventApiHealthBadInput) els.adminAlertsEventApiHealthBadInput.checked = normalized.adminAlerts.events.apiHealthBad.enabled !== false;
+        if (els.adminAlertsCooldownSchedulerInput) {
+            els.adminAlertsCooldownSchedulerInput.value = String(
+                Math.max(1, Math.round(Number(normalized.adminAlerts.cooldowns.schedulerBreachMs || 0) / 60000))
+            );
+        }
+        if (els.adminAlertsCooldownDataworksInput) {
+            els.adminAlertsCooldownDataworksInput.value = String(
+                Math.max(1, Math.round(Number(normalized.adminAlerts.cooldowns.dataworksFailureMs || 0) / 60000))
+            );
+        }
+        if (els.adminAlertsCooldownApiHealthInput) {
+            els.adminAlertsCooldownApiHealthInput.value = String(
+                Math.max(1, Math.round(Number(normalized.adminAlerts.cooldowns.apiHealthBadMs || 0) / 60000))
+            );
+        }
         if (els.configRequireTourInput) els.configRequireTourInput.checked = normalized.audienceDefaults.requireTourComplete !== false;
         if (els.configRequireSetupInput) els.configRequireSetupInput.checked = normalized.audienceDefaults.requireSetupComplete !== false;
         if (els.configRequireAutomationInput) els.configRequireAutomationInput.checked = normalized.audienceDefaults.requireAutomationEnabled === true;
@@ -2764,11 +2860,45 @@
         const els = getNotificationsConfigElements();
         const minAccountAgeRaw = Number(els.configMinAgeInput?.value || 0);
         const channels = [];
+        const adminAlertChannels = [];
+        const schedulerCooldownMinutesRaw = Number(els.adminAlertsCooldownSchedulerInput?.value || 0);
+        const dataworksCooldownMinutesRaw = Number(els.adminAlertsCooldownDataworksInput?.value || 0);
+        const apiHealthCooldownMinutesRaw = Number(els.adminAlertsCooldownApiHealthInput?.value || 0);
+        const toCooldownMs = (minutesRaw, fallbackMs) => {
+            if (!Number.isFinite(minutesRaw) || minutesRaw <= 0) return fallbackMs;
+            const minutes = Math.max(1, Math.min(10080, Math.round(minutesRaw)));
+            return minutes * 60000;
+        };
         if (els.configChannelInboxInput?.checked) channels.push('inbox');
         if (els.configChannelPushInput?.checked) channels.push('push');
+        if (els.adminAlertsChannelInboxInput?.checked) adminAlertChannels.push('inbox');
+        if (els.adminAlertsChannelPushInput?.checked) adminAlertChannels.push('push');
         return {
             enabled: els.configEnabledInput?.checked !== false,
             defaultChannels: channels.length ? channels : ['inbox'],
+            adminAlerts: {
+                enabled: els.adminAlertsEnabledInput?.checked !== false,
+                channels: adminAlertChannels.length ? adminAlertChannels : ['inbox'],
+                events: {
+                    signup: {
+                        enabled: els.adminAlertsEventSignupInput?.checked !== false
+                    },
+                    schedulerBreach: {
+                        enabled: els.adminAlertsEventSchedulerBreachInput?.checked !== false
+                    },
+                    dataworksFailure: {
+                        enabled: els.adminAlertsEventDataworksFailureInput?.checked !== false
+                    },
+                    apiHealthBad: {
+                        enabled: els.adminAlertsEventApiHealthBadInput?.checked !== false
+                    }
+                },
+                cooldowns: {
+                    schedulerBreachMs: toCooldownMs(schedulerCooldownMinutesRaw, 30 * 60 * 1000),
+                    dataworksFailureMs: toCooldownMs(dataworksCooldownMinutesRaw, 30 * 60 * 1000),
+                    apiHealthBadMs: toCooldownMs(apiHealthCooldownMinutesRaw, 60 * 60 * 1000)
+                }
+            },
             audienceDefaults: {
                 requireTourComplete: els.configRequireTourInput?.checked !== false,
                 requireSetupComplete: els.configRequireSetupInput?.checked !== false,

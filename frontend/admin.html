@@ -3105,6 +3105,76 @@
                                     </label>
                                 </div>
 
+                                <div class="an-divider">Admin Alerts</div>
+                                <div class="announcement-toggle-grid">
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsEnabledInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Enable admin alerts</span>
+                                            <small>Operational alerts for admin users only.</small>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsChannelInboxInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Admin channel: inbox</span>
+                                            <small>Write alerts to each admin account inbox.</small>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsChannelPushInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Admin channel: push</span>
+                                            <small>Attempt push for admins with active subscriptions.</small>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="announcement-toggle-grid" style="margin-top: 10px;">
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsEventSignupInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Event: new user signup</span>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsEventSchedulerBreachInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Event: scheduler breach</span>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsEventDataworksFailureInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Event: DataWorks failure</span>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsAdminAlertsEventApiHealthBadInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Event: API health bad</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="announcement-form-grid" style="margin-top: 12px;">
+                                    <div class="announcement-field">
+                                        <label for="notificationsAdminAlertsCooldownSchedulerInput">Scheduler cooldown (minutes)</label>
+                                        <input id="notificationsAdminAlertsCooldownSchedulerInput" class="announcement-input" type="number" min="1" max="10080" placeholder="30">
+                                    </div>
+                                    <div class="announcement-field">
+                                        <label for="notificationsAdminAlertsCooldownDataworksInput">DataWorks cooldown (minutes)</label>
+                                        <input id="notificationsAdminAlertsCooldownDataworksInput" class="announcement-input" type="number" min="1" max="10080" placeholder="30">
+                                    </div>
+                                    <div class="announcement-field">
+                                        <label for="notificationsAdminAlertsCooldownApiHealthInput">API health cooldown (minutes)</label>
+                                        <input id="notificationsAdminAlertsCooldownApiHealthInput" class="announcement-input" type="number" min="1" max="10080" placeholder="60">
+                                    </div>
+                                    <div class="announcement-field full">
+                                        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">
+                                            Admin alerts always target admin users and are controlled only from this panel.
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="an-divider">Audience Defaults</div>
                                 <div class="announcement-toggle-grid">
                                     <label class="announcement-toggle">

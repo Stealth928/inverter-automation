@@ -1,6 +1,6 @@
 # Cost Analysis 2026-03-27
 
-Last Updated: 2026-03-27
+Last Updated: 2026-03-27 (implementation status refreshed after code + test pass)
 Purpose: canonical Firebase cost, load-complexity, and app performance review
 for the current architecture.
 
@@ -23,6 +23,11 @@ This review is not based on:
 Treat the findings below as architecture-level cost and performance risks that
 should be validated against billing and monitoring data before large changes are
 prioritized.
+
+Implementation note:
+The detailed findings capture the baseline risk profile at review time. Current
+execution status for each high-priority item is tracked in
+`Implementation Progress (2026-03-27)` below.
 
 ## Executive Summary
 
@@ -522,6 +527,37 @@ Recommended sequence:
 6. Remove unused Firestore compat SDK and duplicate script loads.
 7. Add or verify TTL policies for intended cache/audit collections.
 8. Revisit region placement and function decomposition after the above wins land.
+
+## Implementation Progress (2026-03-27)
+
+Status update against the immediate implementation order:
+
+| Sequence Item | Status | Implementation Notes |
+| --- | --- | --- |
+| 1. Fix user metrics full-scan reads | Implemented | `/api/metrics/api-calls?scope=user` now queries bounded docs (`orderBy('__name__', 'desc').limit(days)`) with safe fallback behavior. |
+| 2. Split public config from secrets reads | Implemented | Added `getUserConfigPublic()` and `getUserConfigWithSecrets()`. Hot read routes now use public config by default. |
+| 3. Slim `/api/automation/status` | Implemented (phase 1) | Added lightweight `GET /api/automation/status-summary` and moved dashboard interval polling to this summary route. Full status route remains for detailed data. |
+| 4. Remove scheduler zero-user migration scan | Implemented | Removed full `users` collection fallback scan from steady-state scheduler. Scheduler now exits early when prefilter finds zero enabled users. |
+| 5. Make profile init session-aware and write-light | Implemented | `/api/user/init-profile` now avoids writes when user profile + automation state are already initialized. |
+| 6. Remove unused Firestore compat SDK and duplicate script loads | Pending | Not included in this implementation pass. |
+| 7. Add or verify TTL policies for intended cache/audit collections | Pending | Not included in this implementation pass. |
+| 8. Revisit region placement and function decomposition | Pending | Not included in this implementation pass. |
+
+## Validation Evidence (2026-03-27)
+
+- Full functions test suite passed:
+  `npm --prefix functions test` -> `115` suites, `1562` tests, `0` failures.
+- Lint passed:
+  `npm --prefix functions run lint`.
+- Full pre-deploy gate passed:
+  `npm --prefix functions run pre-deploy` -> tests, contract checks, lint, import/export checks, API/OpenAPI contract parity, and repo hygiene all passed.
+- Targeted regression suites for touched modules were also run during implementation and passed (metrics route, config/status routes, setup/health routes, scheduler service, user profile init route, repository split tests).
+
+## Rollout and Regression Notes
+
+- Backward compatibility: `getUserConfig()` still returns full (with secrets) behavior, while new callers can opt into public config reads.
+- Frontend safety: dashboard summary polling keeps the last known `rules` payload cached from full status loads, and falls back to full status if summary fetch fails.
+- Remaining optimization phases (frontend SDK trim, TTL policy expansion, region/function decomposition) are intentionally staged to avoid mixing higher-risk deployment changes into this cost-read reduction release.
 
 ## Source Links
 

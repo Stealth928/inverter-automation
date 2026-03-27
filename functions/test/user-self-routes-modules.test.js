@@ -136,6 +136,34 @@ describe('user self route module', () => {
     }));
   });
 
+  test('init-profile avoids writes for fully initialized users', async () => {
+    const dbMock = createDbMock({
+      userDocExists: true,
+      userData: {
+        uid: 'u-self',
+        email: 'self@example.com',
+        automationEnabled: true,
+        createdAt: 'existing-ts'
+      },
+      stateDocExists: true
+    });
+    const deps = createDeps({ db: dbMock.db });
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/user/init-profile')
+      .set('Authorization', 'Bearer token')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.profileUpdated).toBe(false);
+    expect(response.body.result.automationStateCreated).toBe(false);
+    expect(response.body.result.automationEnabled).toBe(true);
+    expect(dbMock.userDocSet).not.toHaveBeenCalled();
+    expect(dbMock.stateDocSet).not.toHaveBeenCalled();
+  });
+
   test('delete-account rejects invalid confirmation text', async () => {
     const deps = createDeps();
     const app = buildApp(deps);

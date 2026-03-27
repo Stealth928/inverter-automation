@@ -2623,7 +2623,7 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
  * GET /api/admin/api-health - Lightweight API/provider usage and request health rollup
  * Query: ?days=30&refresh=1
  */
-app.get('/api/admin/api-health', authenticateUser, requireAdmin, async (req, res) => {
+const adminApiHealthHandler = async (req, res) => {
   try {
     const daysRaw = Number(req.query?.days);
     const days = Number.isFinite(daysRaw) ? Math.max(7, Math.min(60, Math.floor(daysRaw))) : 30;
@@ -2967,7 +2967,9 @@ app.get('/api/admin/api-health', authenticateUser, requireAdmin, async (req, res
     console.error('[Admin] Error loading API health:', error);
     res.status(500).json({ errno: 500, error: error?.message || 'Failed to load API health' });
   }
-});
+};
+
+app.get('/api/admin/api-health', authenticateUser, requireAdmin, adminApiHealthHandler);
 
 /**
  * GET /api/admin/users - List all registered users with basic info
@@ -5221,6 +5223,38 @@ app.post('/api/admin/impersonate', authenticateUser, requireAdmin, async (req, r
   }
 });
 
+  async function loadAdminApiHealth(options = {}) {
+    const days = Number(options.days);
+    const forceRefresh = options.forceRefresh === true;
+    let payload = null;
+    let responseStatus = 200;
+    const req = {
+      query: {
+        days: Number.isFinite(days) ? String(days) : undefined,
+        force: forceRefresh ? '1' : '0'
+      }
+    };
+    const res = {
+      status(code) {
+        responseStatus = Number(code) || 500;
+        return this;
+      },
+      json(body) {
+        payload = body;
+        return body;
+      }
+    };
+
+    await adminApiHealthHandler(req, res);
+
+    if (!payload || payload.errno !== 0 || !payload.result) {
+      const error = new Error(payload?.error || 'Failed to load admin API health');
+      error.statusCode = responseStatus;
+      throw error;
+    }
+    return payload.result;
+  }
+
 /**
  * GET /api/admin/check - Check if the current user is an admin
  * Used by the frontend to decide whether to show the admin nav link
@@ -5229,6 +5263,11 @@ app.get('/api/admin/check', authenticateUser, async (req, res) => {
   const adminStatus = await isAdmin(req);
   res.json({ errno: 0, result: { isAdmin: adminStatus } });
 });
+
+  return {
+    loadGithubWorkflowOps,
+    loadAdminApiHealth
+  };
 }
 
 module.exports = {

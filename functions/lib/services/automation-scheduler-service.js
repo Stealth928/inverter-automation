@@ -746,6 +746,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
   const getTimeInTimezone = deps.getTimeInTimezone;
   const getUserAutomationState = deps.getUserAutomationState;
   const getUserConfig = deps.getUserConfig;
+  const getUserConfigPublic = deps.getUserConfigPublic || deps.getUserConfig;
   const getUserRules = deps.getUserRules;
   const isTimeInRange = deps.isTimeInRange;
   const logger = deps.logger || console;
@@ -758,6 +759,7 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
   assertFunction(getTimeInTimezone, 'getTimeInTimezone');
   assertFunction(getUserAutomationState, 'getUserAutomationState');
   assertFunction(getUserConfig, 'getUserConfig');
+  assertFunction(getUserConfigPublic, 'getUserConfigPublic');
   assertFunction(getUserRules, 'getUserRules');
   assertFunction(isTimeInRange, 'isTimeInRange');
   if (emitSchedulerMetrics != null) {
@@ -798,34 +800,8 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
     let usersSnapshot = await db.collection('users').where('automationEnabled', '==', true).get();
 
     if (usersSnapshot.size === 0) {
-      logger.log('[Scheduler] No pre-filtered users found - running migration scan...');
-      const allUsersSnapshot = await db.collection('users').get();
-      let migratedCount = 0;
-
-      await mapWithConcurrency(allUsersSnapshot.docs, schedulerOptions.maxConcurrentUsers, async (userDoc) => {
-        try {
-          const stateDoc = await db.collection('users').doc(userDoc.id)
-            .collection('automation').doc('state').get();
-          if (stateDoc.exists && stateDoc.data()?.enabled === true) {
-            await db.collection('users').doc(userDoc.id).set(
-              { automationEnabled: true },
-              { merge: true }
-            );
-            logger.log(`[Scheduler] Migrated user ${userDoc.id}: set automationEnabled=true`);
-            migratedCount++;
-          }
-        } catch (error) {
-          logger.error(`[Scheduler] Migration check failed for ${userDoc.id}:`, error.message);
-        }
-      });
-
-      if (migratedCount === 0) {
-        logger.log('[Scheduler] Migration scan complete - no enabled users found, skipping');
-        return null;
-      }
-
-      logger.log(`[Scheduler] Migration complete - ${migratedCount} user(s) migrated, re-querying...`);
-      usersSnapshot = await db.collection('users').where('automationEnabled', '==', true).get();
+      logger.log('[Scheduler] No pre-filtered enabled users found; skipping cycle run');
+      return null;
     }
 
     const totalEnabled = usersSnapshot.size;
@@ -842,21 +818,21 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
 
         try {
           const state = await getUserAutomationState(userId);
-          const userConfig = await getUserConfig(userId);
+          const userConfigPublic = await getUserConfigPublic(userId);
 
-          if (!state || state.enabled !== true || !userConfig || !hasConfiguredSchedulerDevice(userConfig)) {
+          if (!state || state.enabled !== true || !userConfigPublic || !hasConfiguredSchedulerDevice(userConfigPublic)) {
             return { reason: 'disabled_or_invalid' };
           }
 
-          const userIntervalMs = userConfig?.automation?.intervalMs || defaultIntervalMs;
+          const userIntervalMs = userConfigPublic?.automation?.intervalMs || defaultIntervalMs;
           const lastCheck = state?.lastCheck || 0;
           if ((now - lastCheck) < userIntervalMs) {
             return { reason: 'too_soon' };
           }
 
-          const blackoutWindows = userConfig?.automation?.blackoutWindows || [];
+          const blackoutWindows = userConfigPublic?.automation?.blackoutWindows || [];
           if (Array.isArray(blackoutWindows) && blackoutWindows.length > 0) {
-            const userTz = userConfig?.timezone || 'UTC';
+            const userTz = userConfigPublic?.timezone || 'UTC';
             const userNow = getTimeInTimezone(userTz);
             const dayOfWeek = userNow.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
             const currentTime = userNow.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -890,6 +866,11 @@ async function runAutomationSchedulerCycle(_context, deps = {}) {
           });
           if (!shouldRunPreflight) {
             return { reason: 'idempotent' };
+          }
+
+          const userConfig = await getUserConfig(userId);
+          if (!userConfig || !hasConfiguredSchedulerDevice(userConfig)) {
+            return { reason: 'disabled_or_invalid' };
           }
 
           return {
