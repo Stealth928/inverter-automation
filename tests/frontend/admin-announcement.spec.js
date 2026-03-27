@@ -152,13 +152,14 @@ test.describe('Admin Announcement Tab', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.locator('.admin-tab-nav .tab-btn')).toHaveText([
-      '📈 Overview',
-      '👥 Users',
-      '⚙️ Scheduler',
-      '🛰️ DataWorks',
-      '🧭 Behaviour',
-      '📣 Announcement',
-      '🩺 API Health'
+      '\uD83D\uDCC8 Overview',
+      '\uD83D\uDC65 Users',
+      '\u2699\uFE0F Scheduler',
+      '\uD83D\uDEF0\uFE0F DataWorks',
+      '\uD83E\uDDED Behaviour',
+      '\uD83D\uDCE3 Announcement',
+      '\uD83D\uDD14 Notifications',
+      '\uD83E\uDE7A API Health'
     ]);
   });
 

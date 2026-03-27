@@ -132,6 +132,16 @@
         let teslaVehiclesState = [];
         let teslaIsAdmin = false;
         let teslaSharedAppConfig = null; // { configured, clientId, domain, domainRegistered }
+        const NOTIFICATION_PREF_DEFAULTS = Object.freeze({
+            inboxEnabled: true,
+            broadcastsEnabled: true,
+            highSignalAutomationEnabled: true,
+            curtailmentEnabled: true
+        });
+        let notificationBootstrapState = null;
+        let notificationPreferenceBaseline = { ...NOTIFICATION_PREF_DEFAULTS };
+        let notificationLoadPending = null;
+        let notificationActionBusy = false;
 
         function getTeslaAppShellAdminState() {
             try {
@@ -442,6 +452,423 @@
             const encoder = new TextEncoder();
             const digest = await window.crypto.subtle.digest('SHA-256', encoder.encode(String(codeVerifier || '')));
             return bytesToBase64Url(new Uint8Array(digest));
+        }
+
+        function getNotificationElements() {
+            return {
+                badge: document.getElementById('notificationsBadge'),
+                supportStatus: document.getElementById('notificationsSupportStatus'),
+                pushStatus: document.getElementById('notificationsPushStatus'),
+                iosHint: document.getElementById('notificationsIosHint'),
+                subscribeBtn: document.getElementById('notificationsSubscribeBtn'),
+                unsubscribeBtn: document.getElementById('notificationsUnsubscribeBtn'),
+                prefInboxEnabled: document.getElementById('notifications_pref_inboxEnabled'),
+                prefBroadcastsEnabled: document.getElementById('notifications_pref_broadcastsEnabled'),
+                prefHighSignalAutomationEnabled: document.getElementById('notifications_pref_highSignalAutomationEnabled'),
+                prefCurtailmentEnabled: document.getElementById('notifications_pref_curtailmentEnabled')
+            };
+        }
+
+        function normalizeNotificationPreferencesLocal(value) {
+            const source = value && typeof value === 'object' ? value : {};
+            return {
+                inboxEnabled: source.inboxEnabled !== false,
+                broadcastsEnabled: source.broadcastsEnabled !== false,
+                highSignalAutomationEnabled: source.highSignalAutomationEnabled !== false,
+                curtailmentEnabled: source.curtailmentEnabled !== false
+            };
+        }
+
+        function readNotificationPreferencesFromInputs() {
+            const els = getNotificationElements();
+            return {
+                inboxEnabled: els.prefInboxEnabled?.checked !== false,
+                broadcastsEnabled: els.prefBroadcastsEnabled?.checked !== false,
+                highSignalAutomationEnabled: els.prefHighSignalAutomationEnabled?.checked !== false,
+                curtailmentEnabled: els.prefCurtailmentEnabled?.checked !== false
+            };
+        }
+
+        function applyNotificationPreferencesToInputs(value) {
+            const prefs = normalizeNotificationPreferencesLocal(value || {});
+            const els = getNotificationElements();
+            if (els.prefInboxEnabled) els.prefInboxEnabled.checked = prefs.inboxEnabled === true;
+            if (els.prefBroadcastsEnabled) els.prefBroadcastsEnabled.checked = prefs.broadcastsEnabled === true;
+            if (els.prefHighSignalAutomationEnabled) els.prefHighSignalAutomationEnabled.checked = prefs.highSignalAutomationEnabled === true;
+            if (els.prefCurtailmentEnabled) els.prefCurtailmentEnabled.checked = prefs.curtailmentEnabled === true;
+        }
+
+        function isIosDevice() {
+            return /iphone|ipad|ipod/i.test(String(window.navigator?.userAgent || ''));
+        }
+
+        function isStandaloneDisplayMode() {
+            try {
+                if (window.navigator?.standalone === true) return true;
+                if (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) {
+                    return true;
+                }
+            } catch (error) {
+                return false;
+            }
+            return false;
+        }
+
+        function isPushSupportedInBrowser() {
+            return typeof window.Notification !== 'undefined'
+                && typeof window.PushManager !== 'undefined'
+                && 'serviceWorker' in navigator;
+        }
+
+        function base64UrlToUint8Array(base64Url) {
+            const normalized = String(base64Url || '').trim();
+            if (!normalized) return new Uint8Array();
+            const padded = normalized.replace(/-/g, '+').replace(/_/g, '/')
+                + '='.repeat((4 - (normalized.length % 4)) % 4);
+            const raw = atob(padded);
+            const output = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i += 1) {
+                output[i] = raw.charCodeAt(i);
+            }
+            return output;
+        }
+
+        function setNotificationsPushStatus(message, tone = 'muted') {
+            const { pushStatus } = getNotificationElements();
+            if (!pushStatus) return;
+            pushStatus.textContent = String(message || '—');
+            if (tone === 'ok') {
+                pushStatus.style.color = 'var(--color-success)';
+            } else if (tone === 'warning') {
+                pushStatus.style.color = 'var(--color-warning)';
+            } else if (tone === 'error') {
+                pushStatus.style.color = 'var(--color-danger)';
+            } else {
+                pushStatus.style.color = 'var(--text-secondary)';
+            }
+        }
+
+        function checkNotificationsChanged() {
+            const current = normalizeNotificationPreferencesLocal(readNotificationPreferencesFromInputs());
+            const baseline = normalizeNotificationPreferencesLocal(notificationPreferenceBaseline || NOTIFICATION_PREF_DEFAULTS);
+            const changed = current.inboxEnabled !== baseline.inboxEnabled
+                || current.broadcastsEnabled !== baseline.broadcastsEnabled
+                || current.highSignalAutomationEnabled !== baseline.highSignalAutomationEnabled
+                || current.curtailmentEnabled !== baseline.curtailmentEnabled;
+
+            const { badge } = getNotificationElements();
+            if (badge) {
+                badge.textContent = changed ? 'Modified' : 'Synced';
+                badge.className = changed ? 'badge badge-modified' : 'badge badge-sync';
+            }
+            return changed;
+        }
+
+        function setNotificationActionButtonsState({ subscribeDisabled = true, unsubscribeDisabled = true } = {}) {
+            const { subscribeBtn, unsubscribeBtn } = getNotificationElements();
+            if (subscribeBtn) subscribeBtn.disabled = notificationActionBusy || subscribeDisabled;
+            if (unsubscribeBtn) unsubscribeBtn.disabled = notificationActionBusy || unsubscribeDisabled;
+        }
+
+        async function computeNotificationSubscriptionId(endpoint) {
+            const normalizedEndpoint = String(endpoint || '').trim();
+            if (!normalizedEndpoint) return '';
+            const subtle = window.crypto?.subtle;
+            if (!subtle || typeof subtle.digest !== 'function') return '';
+            const digest = await subtle.digest('SHA-256', new TextEncoder().encode(normalizedEndpoint));
+            return Array.from(new Uint8Array(digest))
+                .map((value) => value.toString(16).padStart(2, '0'))
+                .join('')
+                .slice(0, 40);
+        }
+
+        async function getSettingsServiceWorkerRegistration(createIfMissing = false) {
+            if (!('serviceWorker' in navigator)) return null;
+            const existing = await navigator.serviceWorker.getRegistration('/');
+            if (existing) return existing;
+            if (!createIfMissing) return null;
+            const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+            return registration || null;
+        }
+
+        async function getBrowserPushSubscription(createIfMissing = false) {
+            const registration = await getSettingsServiceWorkerRegistration(createIfMissing);
+            if (!registration?.pushManager) return null;
+            return registration.pushManager.getSubscription();
+        }
+
+        function buildPushUserAgentMeta() {
+            return {
+                platform: window.navigator?.platform || '',
+                language: window.navigator?.language || '',
+                userAgent: window.navigator?.userAgent || ''
+            };
+        }
+
+        async function upsertNotificationSubscription(subscription) {
+            const payload = subscription && typeof subscription.toJSON === 'function'
+                ? subscription.toJSON()
+                : subscription;
+            if (!payload || !payload.endpoint) {
+                throw new Error('No active push subscription found for this browser');
+            }
+
+            const resp = await authenticatedFetch('/api/notifications/subscriptions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...payload,
+                    userAgentMeta: buildPushUserAgentMeta(),
+                    isStandalone: isStandaloneDisplayMode()
+                })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data?.errno !== 0) {
+                throw new Error(data?.error || `Subscription save failed (${resp.status})`);
+            }
+            return data.result || {};
+        }
+
+        async function deactivateNotificationSubscriptionByEndpoint(endpoint) {
+            const subscriptionId = await computeNotificationSubscriptionId(endpoint);
+            if (!subscriptionId) return;
+            const resp = await authenticatedFetch(`/api/notifications/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+                method: 'DELETE'
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data?.errno !== 0) {
+                throw new Error(data?.error || `Subscription delete failed (${resp.status})`);
+            }
+        }
+
+        async function syncNotificationPushUiState() {
+            const els = getNotificationElements();
+            const isPushSupported = isPushSupportedInBrowser();
+            const isIos = isIosDevice();
+            const isStandalone = isStandaloneDisplayMode();
+            const permission = isPushSupported ? String(window.Notification.permission || 'default') : 'unsupported';
+
+            if (els.iosHint) {
+                els.iosHint.style.display = isIos && !isStandalone ? '' : 'none';
+            }
+
+            if (!isPushSupported) {
+                if (els.supportStatus) {
+                    els.supportStatus.textContent = 'Web push is not supported in this browser.';
+                }
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: true });
+                setNotificationsPushStatus('Unsupported', 'warning');
+                return;
+            }
+
+            if (isIos && !isStandalone) {
+                if (els.supportStatus) {
+                    els.supportStatus.textContent = 'Install to Home Screen first, then open this app from Home Screen to enable push.';
+                }
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: true });
+                setNotificationsPushStatus('Home Screen mode required on iPhone/iPad', 'warning');
+                return;
+            }
+
+            const pushConfigured = notificationBootstrapState?.push?.configured === true
+                && Boolean(notificationBootstrapState?.push?.vapidPublicKey);
+            if (!pushConfigured) {
+                if (els.supportStatus) {
+                    els.supportStatus.textContent = 'Push transport is not configured on the server yet.';
+                }
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: true });
+                setNotificationsPushStatus('Server push config missing', 'warning');
+                return;
+            }
+
+            const activeSub = await getBrowserPushSubscription(false).catch(() => null);
+            const isSubscribed = Boolean(activeSub?.endpoint);
+            if (els.supportStatus) {
+                const permissionLabel = permission === 'granted'
+                    ? 'Permission granted'
+                    : permission === 'denied'
+                        ? 'Permission blocked'
+                        : 'Permission not requested';
+                els.supportStatus.textContent = `Push supported · ${permissionLabel}`;
+            }
+
+            if (permission === 'denied') {
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: !isSubscribed });
+                setNotificationsPushStatus('Browser permission is blocked. Enable notifications in browser site settings.', 'error');
+                return;
+            }
+
+            if (isSubscribed) {
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: false });
+                setNotificationsPushStatus('Enabled on this device', 'ok');
+            } else {
+                setNotificationActionButtonsState({ subscribeDisabled: false, unsubscribeDisabled: true });
+                setNotificationsPushStatus('Disabled on this device', 'muted');
+            }
+        }
+
+        async function loadNotificationSettings(options = {}) {
+            const { silent = false } = options;
+            if (notificationLoadPending) return notificationLoadPending;
+
+            notificationLoadPending = (async () => {
+                try {
+                    const resp = await authenticatedFetch('/api/notifications/bootstrap');
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok || data?.errno !== 0) {
+                        throw new Error(data?.error || `Notifications bootstrap failed (${resp.status})`);
+                    }
+                    notificationBootstrapState = data.result || {};
+                    const normalizedPrefs = normalizeNotificationPreferencesLocal(notificationBootstrapState.preferences || NOTIFICATION_PREF_DEFAULTS);
+                    applyNotificationPreferencesToInputs(normalizedPrefs);
+                    notificationPreferenceBaseline = { ...normalizedPrefs };
+                    checkNotificationsChanged();
+                    await syncNotificationPushUiState();
+                    if (!silent) {
+                        showMessage('success', 'Notification settings loaded');
+                    }
+                } catch (error) {
+                    console.warn('[Settings] Failed to load notification settings', error);
+                    if (!silent) {
+                        showMessage('warning', `Failed to load notification settings: ${error?.message || error}`);
+                    }
+                    await syncNotificationPushUiState().catch(() => undefined);
+                } finally {
+                    notificationLoadPending = null;
+                }
+            })();
+
+            return notificationLoadPending;
+        }
+
+        async function saveNotificationPreferences() {
+            const preferences = normalizeNotificationPreferencesLocal(readNotificationPreferencesFromInputs());
+            try {
+                notificationActionBusy = true;
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: true });
+                const resp = await authenticatedFetch('/api/notifications/preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ preferences })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || data?.errno !== 0) {
+                    throw new Error(data?.error || `Preferences save failed (${resp.status})`);
+                }
+
+                const savedPreferences = normalizeNotificationPreferencesLocal(data?.result?.preferences || preferences);
+                notificationPreferenceBaseline = { ...savedPreferences };
+                applyNotificationPreferencesToInputs(savedPreferences);
+                checkNotificationsChanged();
+                showMessage('success', 'Notification preferences saved');
+                if (window.AppShell && typeof window.AppShell.refreshNotifications === 'function') {
+                    window.AppShell.refreshNotifications();
+                }
+            } catch (error) {
+                showMessage('warning', `Failed to save notification preferences: ${error?.message || error}`);
+            } finally {
+                notificationActionBusy = false;
+                await syncNotificationPushUiState().catch(() => undefined);
+                updateStatus();
+            }
+        }
+
+        async function subscribeNotificationsForDevice() {
+            try {
+                notificationActionBusy = true;
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: true });
+                setNotificationsPushStatus('Enabling push…', 'muted');
+                await loadNotificationSettings({ silent: true });
+
+                if (!isPushSupportedInBrowser()) {
+                    throw new Error('Push notifications are not supported in this browser');
+                }
+                if (isIosDevice() && !isStandaloneDisplayMode()) {
+                    throw new Error('On iPhone/iPad, open the Home Screen app to enable push');
+                }
+
+                let permission = String(window.Notification.permission || 'default');
+                if (permission !== 'granted') {
+                    permission = await window.Notification.requestPermission();
+                }
+                if (permission !== 'granted') {
+                    throw new Error('Notification permission was not granted');
+                }
+
+                const vapidKey = String(notificationBootstrapState?.push?.vapidPublicKey || '').trim();
+                if (!vapidKey) {
+                    throw new Error('Server push configuration is missing VAPID public key');
+                }
+
+                const registration = await getSettingsServiceWorkerRegistration(true);
+                if (!registration?.pushManager) {
+                    throw new Error('Push manager is unavailable for this service worker');
+                }
+
+                let subscription = await registration.pushManager.getSubscription();
+                if (!subscription) {
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: base64UrlToUint8Array(vapidKey)
+                    });
+                }
+
+                await upsertNotificationSubscription(subscription);
+                await loadNotificationSettings({ silent: true });
+                setNotificationsPushStatus('Enabled on this device', 'ok');
+                showMessage('success', 'Push notifications enabled for this device');
+                if (window.AppShell && typeof window.AppShell.refreshNotifications === 'function') {
+                    window.AppShell.refreshNotifications();
+                }
+            } catch (error) {
+                setNotificationsPushStatus(error?.message || 'Failed to enable push', 'error');
+                showMessage('warning', `Failed to enable push: ${error?.message || error}`);
+            } finally {
+                notificationActionBusy = false;
+                await syncNotificationPushUiState().catch(() => undefined);
+            }
+        }
+
+        async function unsubscribeNotificationsForDevice() {
+            try {
+                notificationActionBusy = true;
+                setNotificationActionButtonsState({ subscribeDisabled: true, unsubscribeDisabled: true });
+                setNotificationsPushStatus('Disabling push…', 'muted');
+                await loadNotificationSettings({ silent: true });
+
+                const activeSubscription = await getBrowserPushSubscription(false).catch(() => null);
+                const endpoint = String(activeSubscription?.endpoint || '').trim();
+                if (activeSubscription) {
+                    try {
+                        await activeSubscription.unsubscribe();
+                    } catch (_error) {
+                        // Continue and attempt server-side deactivation anyway.
+                    }
+                }
+
+                if (endpoint) {
+                    await deactivateNotificationSubscriptionByEndpoint(endpoint);
+                } else if (Array.isArray(notificationBootstrapState?.subscriptions)) {
+                    for (const subscriptionEntry of notificationBootstrapState.subscriptions) {
+                        const entryEndpoint = String(subscriptionEntry?.endpoint || '').trim();
+                        if (!entryEndpoint) continue;
+                        await deactivateNotificationSubscriptionByEndpoint(entryEndpoint);
+                    }
+                }
+
+                await loadNotificationSettings({ silent: true });
+                setNotificationsPushStatus('Disabled on this device', 'muted');
+                showMessage('success', 'Push notifications disabled for this device');
+                if (window.AppShell && typeof window.AppShell.refreshNotifications === 'function') {
+                    window.AppShell.refreshNotifications();
+                }
+            } catch (error) {
+                setNotificationsPushStatus(error?.message || 'Failed to disable push', 'error');
+                showMessage('warning', `Failed to disable push: ${error?.message || error}`);
+            } finally {
+                notificationActionBusy = false;
+                await syncNotificationPushUiState().catch(() => undefined);
+            }
         }
 
         function persistTeslaPendingOAuth(payload) {
@@ -1975,6 +2402,11 @@
                 } catch (teslaInitErr) {
                     console.warn('[Settings] Tesla onboarding initialization failed', teslaInitErr);
                 }
+                try {
+                    await loadNotificationSettings({ silent: true });
+                } catch (notificationErr) {
+                    console.warn('[Settings] Notification settings initialization failed', notificationErr);
+                }
 
                 updateAllTimeDisplays();
                 updateStatus();
@@ -1997,6 +2429,11 @@
                     await initializeTeslaOnboarding();
                 } catch (teslaInitErr) {
                     console.warn('[Settings] Tesla onboarding recovery failed', teslaInitErr);
+                }
+                try {
+                    await loadNotificationSettings({ silent: true });
+                } catch (_notificationErr) {
+                    // Ignore notification section initialization errors during degraded load mode.
                 }
 
                 setConfigStatus('error', 'Error');
@@ -2057,6 +2494,8 @@
             // Check credentials for changes
             const credentialsChanged = checkCredentialsChanged();
             if (credentialsChanged) hasChanges = true;
+            const notificationsChanged = checkNotificationsChanged();
+            if (notificationsChanged) hasChanges = true;
             
             sections.forEach(section => {
                 let sectionChanged = false;
@@ -2660,6 +3099,20 @@
             // Add change listener for text inputs (especially preferences section)
             document.querySelectorAll('input[type="text"]').forEach(input => {
                 input.addEventListener('input', updateStatus);
+            });
+
+            [
+                'notifications_pref_inboxEnabled',
+                'notifications_pref_broadcastsEnabled',
+                'notifications_pref_highSignalAutomationEnabled',
+                'notifications_pref_curtailmentEnabled'
+            ].forEach((id) => {
+                const input = document.getElementById(id);
+                if (!input) return;
+                input.addEventListener('change', () => {
+                    checkNotificationsChanged();
+                    updateStatus();
+                });
             });
 
             bindTeslaOnboardingHandlers();

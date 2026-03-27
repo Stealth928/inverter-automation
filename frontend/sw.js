@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v63';
+const CACHE_VERSION = 'socrates-v64';
 const CACHE_PREFIX = 'socrates-';
 const API_CLIENT_VERSION = '5';
 const SHARED_UTILS_VERSION = '13';
@@ -35,6 +35,93 @@ const STATIC_ASSETS = [
   '/icons/apple-touch-icon.png'
 ];
 
+function toSafeText(value, fallback = '') {
+  const text = String(value || '').trim();
+  return text || fallback;
+}
+
+function parsePushPayload(event) {
+  if (!event || !event.data) {
+    return {
+      title: 'SoCrates notification',
+      body: '',
+      severity: 'info',
+      deepLink: '/app.html'
+    };
+  }
+
+  try {
+    const parsed = event.data.json();
+    if (parsed && typeof parsed === 'object') {
+      return {
+        ...parsed,
+        title: toSafeText(parsed.title, 'SoCrates notification'),
+        body: toSafeText(parsed.body),
+        severity: toSafeText(parsed.severity, 'info').toLowerCase(),
+        deepLink: toSafeText(parsed.deepLink, '/app.html')
+      };
+    }
+  } catch (_error) {
+    // Fall back to text payload.
+  }
+
+  const fallbackBody = toSafeText(event.data.text ? event.data.text() : '');
+  return {
+    title: 'SoCrates notification',
+    body: fallbackBody,
+    severity: 'info',
+    deepLink: '/app.html'
+  };
+}
+
+function resolveDeepLinkUrl(deepLink) {
+  const raw = toSafeText(deepLink, '/app.html');
+  try {
+    return new URL(raw, self.location.origin).toString();
+  } catch (_error) {
+    return `${self.location.origin}/app.html`;
+  }
+}
+
+function iconForSeverity(severity) {
+  const level = toSafeText(severity, 'info').toLowerCase();
+  if (level === 'danger') return '/icons/icon-192.png?v=2';
+  if (level === 'warning') return '/icons/icon-192.png?v=2';
+  if (level === 'success') return '/icons/icon-192.png?v=2';
+  return '/icons/icon-192.png?v=2';
+}
+
+function notificationTagFromPayload(payload) {
+  const candidates = [
+    toSafeText(payload?.notificationId),
+    toSafeText(payload?.eventKey),
+    toSafeText(payload?.campaignId)
+  ].filter(Boolean);
+  return candidates.length ? `socrates-notify-${candidates[0]}` : undefined;
+}
+
+async function postPushToClients(payload) {
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  if (!clientList.length) {
+    return { hasVisibleClient: false };
+  }
+
+  const hasVisibleClient = clientList.some((client) => client.visibilityState === 'visible');
+  const message = {
+    type: 'SOC_NOTIFICATIONS_PUSH',
+    payload
+  };
+
+  if (hasVisibleClient) {
+    await Promise.all(clientList
+      .filter((client) => client.visibilityState === 'visible')
+      .map((client) => client.postMessage(message)));
+    return { hasVisibleClient: true };
+  }
+
+  return { hasVisibleClient: false };
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => Promise.resolve())
@@ -59,6 +146,64 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+self.addEventListener('push', (event) => {
+  event.waitUntil((async () => {
+    const payload = parsePushPayload(event);
+    const clientResult = await postPushToClients(payload);
+    if (clientResult.hasVisibleClient) {
+      return;
+    }
+
+    await self.registration.showNotification(payload.title, {
+      body: payload.body || '',
+      icon: iconForSeverity(payload.severity),
+      badge: '/icons/icon-192.png?v=2',
+      tag: notificationTagFromPayload(payload),
+      data: {
+        ...payload,
+        deepLink: resolveDeepLinkUrl(payload.deepLink)
+      }
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  const payload = event.notification?.data && typeof event.notification.data === 'object'
+    ? event.notification.data
+    : {};
+  const targetUrl = resolveDeepLinkUrl(payload.deepLink);
+  event.notification?.close();
+
+  event.waitUntil((async () => {
+    const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (clientList.length) {
+      const preferredClient = clientList.find((client) => client.visibilityState === 'visible') || clientList[0];
+      try {
+        if (preferredClient && typeof preferredClient.navigate === 'function') {
+          await preferredClient.navigate(targetUrl);
+        }
+      } catch (_error) {
+        // Ignore navigate failures and still attempt focus.
+      }
+      if (preferredClient && typeof preferredClient.focus === 'function') {
+        await preferredClient.focus();
+      }
+      if (preferredClient && typeof preferredClient.postMessage === 'function') {
+        preferredClient.postMessage({
+          type: 'SOC_NOTIFICATIONS_CLICK',
+          payload: {
+            ...payload,
+            deepLink: targetUrl
+          }
+        });
+      }
+      return;
+    }
+
+    await self.clients.openWindow(targetUrl);
+  })());
 });
 
 self.addEventListener('fetch', (event) => {

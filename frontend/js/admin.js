@@ -113,12 +113,22 @@
     let usersCouplingChart = null;
     let usersTourChart = null;
     let activeTab = 'overview';
-    let tabsLoaded = { overview: false, behavior: false, announcement: false, scheduler: false, dataworks: false, users: false, apiHealth: false };
+    let tabsLoaded = {
+        overview: false,
+        behavior: false,
+        announcement: false,
+        notifications: false,
+        scheduler: false,
+        dataworks: false,
+        users: false,
+        apiHealth: false
+    };
     let usersTableRequestSequence = 0;
     let usersSummaryRequestSequence = 0;
     let usersFilterInputDebounce = null;
     let currentAdminAnnouncement = null;
     let announcementEditorBound = false;
+    let currentAdminNotificationsConfig = null;
 
     function createDefaultUsersFilters() {
         return {
@@ -1353,6 +1363,8 @@
                 loadBehaviorMetrics();
             } else if (name === 'announcement') {
                 loadAdminAnnouncement();
+            } else if (name === 'notifications') {
+                loadAdminNotifications();
             } else if (name === 'scheduler') {
                 loadSchedulerMetrics();
             } else if (name === 'dataworks') {
@@ -2552,6 +2564,277 @@
         const payload = collectAdminAnnouncementForm();
         payload.enabled = false;
         await persistAdminAnnouncement(payload, { successMessage: 'Announcement disabled.' });
+    }
+
+    function createDefaultNotificationsConfig() {
+        return {
+            enabled: true,
+            defaultChannels: ['inbox', 'push'],
+            audienceDefaults: {
+                requireTourComplete: true,
+                requireSetupComplete: true,
+                requireAutomationEnabled: false,
+                minAccountAgeDays: null,
+                onlyIncludeUids: [],
+                includeUids: [],
+                excludeUids: []
+            }
+        };
+    }
+
+    function getNotificationsConfigElements() {
+        return {
+            updated: document.getElementById('notificationsAdminUpdated'),
+            warning: document.getElementById('notificationsAdminWarning'),
+            refreshBtn: document.getElementById('refreshNotificationsAdminBtn'),
+            saveBtn: document.getElementById('saveNotificationsConfigBtn'),
+            configEnabledInput: document.getElementById('notificationsConfigEnabledInput'),
+            configChannelInboxInput: document.getElementById('notificationsConfigChannelInboxInput'),
+            configChannelPushInput: document.getElementById('notificationsConfigChannelPushInput'),
+            configRequireTourInput: document.getElementById('notificationsConfigRequireTourInput'),
+            configRequireSetupInput: document.getElementById('notificationsConfigRequireSetupInput'),
+            configRequireAutomationInput: document.getElementById('notificationsConfigRequireAutomationInput'),
+            configMinAgeInput: document.getElementById('notificationsConfigMinAgeInput'),
+            overviewPushConfigured: document.getElementById('notificationsOverviewPushConfigured'),
+            overviewActiveSubs: document.getElementById('notificationsOverviewActiveSubs'),
+            overviewCampaignCount: document.getElementById('notificationsOverviewCampaignCount'),
+            campaignsList: document.getElementById('notificationsCampaignsList'),
+            broadcastTitleInput: document.getElementById('notificationsBroadcastTitleInput'),
+            broadcastBodyInput: document.getElementById('notificationsBroadcastBodyInput'),
+            broadcastSeveritySelect: document.getElementById('notificationsBroadcastSeveritySelect'),
+            broadcastDeepLinkInput: document.getElementById('notificationsBroadcastDeepLinkInput'),
+            broadcastChannelInboxInput: document.getElementById('notificationsBroadcastChannelInboxInput'),
+            broadcastChannelPushInput: document.getElementById('notificationsBroadcastChannelPushInput'),
+            sendBroadcastBtn: document.getElementById('sendNotificationsBroadcastBtn')
+        };
+    }
+
+    function setAdminNotificationsWarning(message = '') {
+        const { warning } = getNotificationsConfigElements();
+        if (!warning) return;
+        if (!message) {
+            warning.style.display = 'none';
+            warning.textContent = '';
+            return;
+        }
+        warning.style.display = '';
+        warning.textContent = message;
+    }
+
+    function setAdminNotificationsBusy(isBusy) {
+        const els = getNotificationsConfigElements();
+        if (els.refreshBtn) els.refreshBtn.disabled = isBusy;
+        if (els.saveBtn) els.saveBtn.disabled = isBusy;
+        if (els.sendBroadcastBtn) els.sendBroadcastBtn.disabled = isBusy;
+    }
+
+    function normalizeAdminNotificationsConfig(config) {
+        const source = config && typeof config === 'object' ? config : {};
+        const defaults = createDefaultNotificationsConfig();
+        const channels = Array.isArray(source.defaultChannels)
+            ? source.defaultChannels.filter((entry) => ['inbox', 'push'].includes(String(entry || '').toLowerCase()))
+            : defaults.defaultChannels;
+        const minAccountAgeRaw = Number(source.audienceDefaults?.minAccountAgeDays);
+        return {
+            enabled: source.enabled !== false,
+            defaultChannels: channels.length ? channels : ['inbox'],
+            audienceDefaults: {
+                requireTourComplete: source.audienceDefaults?.requireTourComplete !== false,
+                requireSetupComplete: source.audienceDefaults?.requireSetupComplete !== false,
+                requireAutomationEnabled: source.audienceDefaults?.requireAutomationEnabled === true,
+                minAccountAgeDays: Number.isFinite(minAccountAgeRaw) && minAccountAgeRaw > 0
+                    ? Math.min(3650, Math.round(minAccountAgeRaw))
+                    : null,
+                onlyIncludeUids: Array.isArray(source.audienceDefaults?.onlyIncludeUids) ? source.audienceDefaults.onlyIncludeUids : [],
+                includeUids: Array.isArray(source.audienceDefaults?.includeUids) ? source.audienceDefaults.includeUids : [],
+                excludeUids: Array.isArray(source.audienceDefaults?.excludeUids) ? source.audienceDefaults.excludeUids : []
+            },
+            updatedAt: source.updatedAt || null,
+            updatedByUid: source.updatedByUid || null,
+            updatedByEmail: source.updatedByEmail || null
+        };
+    }
+
+    function renderAdminNotificationsConfig(config, overview = null) {
+        const els = getNotificationsConfigElements();
+        const normalized = normalizeAdminNotificationsConfig(config);
+        currentAdminNotificationsConfig = normalized;
+
+        if (els.configEnabledInput) els.configEnabledInput.checked = normalized.enabled === true;
+        if (els.configChannelInboxInput) els.configChannelInboxInput.checked = normalized.defaultChannels.includes('inbox');
+        if (els.configChannelPushInput) els.configChannelPushInput.checked = normalized.defaultChannels.includes('push');
+        if (els.configRequireTourInput) els.configRequireTourInput.checked = normalized.audienceDefaults.requireTourComplete !== false;
+        if (els.configRequireSetupInput) els.configRequireSetupInput.checked = normalized.audienceDefaults.requireSetupComplete !== false;
+        if (els.configRequireAutomationInput) els.configRequireAutomationInput.checked = normalized.audienceDefaults.requireAutomationEnabled === true;
+        if (els.configMinAgeInput) {
+            els.configMinAgeInput.value = Number(normalized.audienceDefaults.minAccountAgeDays || 0) > 0
+                ? String(normalized.audienceDefaults.minAccountAgeDays)
+                : '';
+        }
+
+        if (els.updated) {
+            if (normalized.updatedAt) {
+                const updatedBy = normalized.updatedByEmail || normalized.updatedByUid || 'unknown admin';
+                els.updated.textContent = `Last updated ${formatDate(normalized.updatedAt)} by ${updatedBy}`;
+            } else {
+                els.updated.textContent = 'Notifications config has not been saved yet.';
+            }
+        }
+
+        const campaigns = Array.isArray(overview?.campaigns) ? overview.campaigns : [];
+        if (els.overviewPushConfigured) {
+            els.overviewPushConfigured.textContent = overview?.pushConfigured === true ? 'Yes' : 'No';
+        }
+        if (els.overviewActiveSubs) {
+            els.overviewActiveSubs.textContent = Number(overview?.activeSubscriptionCount || 0).toLocaleString('en-AU');
+        }
+        if (els.overviewCampaignCount) {
+            els.overviewCampaignCount.textContent = String(campaigns.length);
+        }
+        if (els.campaignsList) {
+            if (!campaigns.length) {
+                els.campaignsList.textContent = 'No notification campaigns loaded yet.';
+            } else {
+                els.campaignsList.innerHTML = campaigns.slice(0, 8).map((campaign) => {
+                    const title = escapeHtml(campaign.title || 'Untitled');
+                    const when = campaign.createdAt ? formatDate(campaign.createdAt) : '-';
+                    const counts = [
+                        `users ${Number(campaign.targetedUsers || 0)}`,
+                        `inbox ${Number(campaign.inboxCreated || 0)}`,
+                        `push ${Number(campaign.pushSuccess || 0)}/${Number(campaign.pushAttempted || 0)}`
+                    ];
+                    return `<div style="padding:8px 0;border-bottom:1px solid var(--border-secondary);"><strong>${title}</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">${escapeHtml(when)} · ${escapeHtml(counts.join(' · '))}</div></div>`;
+                }).join('');
+            }
+        }
+    }
+
+    function collectAdminNotificationsConfigForm() {
+        const els = getNotificationsConfigElements();
+        const minAccountAgeRaw = Number(els.configMinAgeInput?.value || 0);
+        const channels = [];
+        if (els.configChannelInboxInput?.checked) channels.push('inbox');
+        if (els.configChannelPushInput?.checked) channels.push('push');
+        return {
+            enabled: els.configEnabledInput?.checked !== false,
+            defaultChannels: channels.length ? channels : ['inbox'],
+            audienceDefaults: {
+                requireTourComplete: els.configRequireTourInput?.checked !== false,
+                requireSetupComplete: els.configRequireSetupInput?.checked !== false,
+                requireAutomationEnabled: els.configRequireAutomationInput?.checked === true,
+                minAccountAgeDays: Number.isFinite(minAccountAgeRaw) && minAccountAgeRaw > 0
+                    ? Math.min(3650, Math.round(minAccountAgeRaw))
+                    : null
+            }
+        };
+    }
+
+    function collectAdminNotificationBroadcastForm() {
+        const els = getNotificationsConfigElements();
+        const channels = [];
+        if (els.broadcastChannelInboxInput?.checked) channels.push('inbox');
+        if (els.broadcastChannelPushInput?.checked) channels.push('push');
+        return {
+            title: String(els.broadcastTitleInput?.value || '').trim().slice(0, 160),
+            body: String(els.broadcastBodyInput?.value || '').replace(/\r\n/g, '\n').trim().slice(0, 4000),
+            severity: String(els.broadcastSeveritySelect?.value || 'info').toLowerCase(),
+            deepLink: String(els.broadcastDeepLinkInput?.value || '').trim().slice(0, 300) || null,
+            channels: channels.length ? channels : ['inbox'],
+            audience: collectAdminNotificationsConfigForm().audienceDefaults
+        };
+    }
+
+    async function loadAdminNotifications(options = {}) {
+        const els = getNotificationsConfigElements();
+        if (!adminApiClient || !els.updated) return;
+
+        setAdminNotificationsBusy(true);
+        setAdminNotificationsWarning('');
+        els.updated.textContent = options.force ? 'Refreshing notifications settings...' : 'Loading notifications settings...';
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/notifications/overview');
+            const data = await resp.json();
+            if (!resp.ok || data.errno !== 0) {
+                throw new Error(data.error || `Request failed (${resp.status})`);
+            }
+            renderAdminNotificationsConfig(data.result?.config || createDefaultNotificationsConfig(), data.result || {});
+        } catch (error) {
+            const message = error?.message || String(error);
+            renderAdminNotificationsConfig(currentAdminNotificationsConfig || createDefaultNotificationsConfig(), null);
+            els.updated.textContent = 'Unable to load notifications settings';
+            setAdminNotificationsWarning(message);
+            showMessage('warning', `Failed to load notifications settings: ${message}`);
+        } finally {
+            setAdminNotificationsBusy(false);
+        }
+    }
+
+    async function saveAdminNotificationsConfig() {
+        if (!adminApiClient) return;
+        const payload = collectAdminNotificationsConfigForm();
+        const els = getNotificationsConfigElements();
+        setAdminNotificationsBusy(true);
+        setAdminNotificationsWarning('');
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/notifications/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notifications: payload })
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.errno !== 0) {
+                throw new Error(data.error || `Save failed (${resp.status})`);
+            }
+            renderAdminNotificationsConfig(data.result?.notifications || payload, null);
+            if (els.updated) {
+                els.updated.textContent = 'Notifications config saved.';
+            }
+            showMessage('success', 'Notifications config saved.');
+            await loadAdminNotifications();
+        } catch (error) {
+            const message = error?.message || String(error);
+            setAdminNotificationsWarning(message);
+            showMessage('error', `Failed to save notifications config: ${message}`);
+        } finally {
+            setAdminNotificationsBusy(false);
+        }
+    }
+
+    async function sendAdminNotificationBroadcast() {
+        if (!adminApiClient) return;
+        const payload = collectAdminNotificationBroadcastForm();
+        if (!payload.title && !payload.body) {
+            setAdminNotificationsWarning('Broadcast title or body is required.');
+            return;
+        }
+
+        const els = getNotificationsConfigElements();
+        setAdminNotificationsBusy(true);
+        setAdminNotificationsWarning('');
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/notifications/broadcasts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.errno !== 0) {
+                throw new Error(data.error || `Send failed (${resp.status})`);
+            }
+            const summary = data.result || {};
+            const message = `Broadcast sent: users ${Number(summary.targetedUsers || 0)}, inbox ${Number(summary.inboxCreated || 0)}, push ${Number(summary.pushSuccess || 0)}/${Number(summary.pushAttempted || 0)}.`;
+            showMessage('success', message);
+            if (els.broadcastTitleInput) els.broadcastTitleInput.value = '';
+            if (els.broadcastBodyInput) els.broadcastBodyInput.value = '';
+            await loadAdminNotifications({ force: true });
+        } catch (error) {
+            const message = error?.message || String(error);
+            setAdminNotificationsWarning(message);
+            showMessage('error', `Failed to send broadcast: ${message}`);
+        } finally {
+            setAdminNotificationsBusy(false);
+        }
     }
 
     // ==================== Render Users Table ====================

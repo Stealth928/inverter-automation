@@ -94,6 +94,9 @@ function registerAutomationCycleRoute(app, deps = {}) {
   const getUserTime = deps.getUserTime;
   const isForecastTemperatureType = deps.isForecastTemperatureType;
   const logger = deps.logger || console;
+  const emitAutomationNotification = typeof deps.emitAutomationNotification === 'function'
+    ? deps.emitAutomationNotification
+    : null;
   const warnLog = typeof logger.warn === 'function' ? logger.warn.bind(logger) : console.warn.bind(console);
   const errorLog = typeof logger.error === 'function' ? logger.error.bind(logger) : console.error.bind(console);
   const saveUserAutomationState = deps.saveUserAutomationState;
@@ -208,6 +211,15 @@ function registerAutomationCycleRoute(app, deps = {}) {
   let telemetryStatePatch = null;
   try {
     const userId = req.user.uid;
+    const emitNotificationSafe = async (payload) => {
+      if (!emitAutomationNotification) return null;
+      try {
+        return await emitAutomationNotification(userId, payload);
+      } catch (notifyError) {
+        warnLog(`[Cycle] Notification emit failed: ${notifyError?.message || notifyError}`);
+        return null;
+      }
+    };
     const schedulerContext = req.schedulerContext && req.schedulerContext.userId === userId
       ? req.schedulerContext
       : null;
@@ -305,6 +317,29 @@ function registerAutomationCycleRoute(app, deps = {}) {
         };
       } finally {
         addPhaseDuration('curtailmentMs', curtailmentStartMs);
+      }
+      if (curtailmentResult && curtailmentResult.stateChanged === true) {
+        const action = String(curtailmentResult.action || '').toLowerCase();
+        const priceText = Number.isFinite(Number(curtailmentResult.currentPrice))
+          ? `${Number(curtailmentResult.currentPrice).toFixed(2)} c/kWh`
+          : 'unknown price';
+        const thresholdText = Number.isFinite(Number(curtailmentResult.priceThreshold))
+          ? `${Number(curtailmentResult.priceThreshold).toFixed(2)} c/kWh`
+          : 'configured threshold';
+        const wasActivated = action === 'activated';
+        await emitNotificationSafe({
+          eventType: wasActivated ? 'curtailment_activated' : 'curtailment_deactivated',
+          stateSignature: wasActivated ? 'active' : 'inactive',
+          preferenceScope: 'curtailment',
+          source: 'automation',
+          title: wasActivated ? 'Curtailment activated' : 'Curtailment deactivated',
+          body: wasActivated
+            ? `Feed-in price ${priceText} is below threshold ${thresholdText}. Export limit was reduced.`
+            : `Feed-in price ${priceText} recovered or curtailment was disabled. Export limit was restored.`,
+          severity: wasActivated ? 'warning' : 'info',
+          deepLink: '/settings.html#curtailmentSection',
+          cooldownMs: 10 * 60 * 1000
+        });
       }
       return curtailmentResult;
     };
@@ -673,10 +708,24 @@ function registerAutomationCycleRoute(app, deps = {}) {
     };
 
     if (telemetryHealth.shouldPauseAutomation) {
+      const telemetryPauseTransition = state?.telemetryFailsafePaused !== true;
       await saveStateWithTelemetry({
         inBlackout: false,
         lastCheck: telemetryCheckNowMs
       });
+      if (telemetryPauseTransition) {
+        await emitNotificationSafe({
+          eventType: 'telemetry_pause',
+          stateSignature: String(telemetryHealth.pauseReason || telemetryHealth.telemetryStatus || 'unknown'),
+          preferenceScope: 'highSignalAutomation',
+          source: 'automation',
+          title: 'Automation paused due to telemetry health',
+          body: String(telemetryHealth.pauseReason || 'Telemetry is stale or frozen and automation is paused until fresh data arrives.'),
+          severity: 'warning',
+          deepLink: '/control.html',
+          cooldownMs: 30 * 60 * 1000
+        });
+      }
       const curtailmentResult = await runCurtailmentCheck(userConfig, amberData);
 
       return respondSuccess({
@@ -1122,6 +1171,23 @@ function registerAutomationCycleRoute(app, deps = {}) {
     const statusCode = Number.isInteger(cycleErrno) && cycleErrno >= 400 && cycleErrno <= 599
       ? cycleErrno
       : 500;
+    if (emitAutomationNotification && req?.user?.uid) {
+      try {
+        await emitAutomationNotification(req.user.uid, {
+          eventType: 'cycle_failure',
+          stateSignature: `${statusCode}:${String(error?.message || 'unknown').slice(0, 120)}`,
+          preferenceScope: 'highSignalAutomation',
+          source: 'automation',
+          title: 'Automation cycle failed',
+          body: `Automation cycle returned ${statusCode}. ${String(error?.message || 'Unknown failure').slice(0, 280)}`,
+          severity: 'danger',
+          deepLink: '/control.html',
+          cooldownMs: 30 * 60 * 1000
+        });
+      } catch (notifyError) {
+        warnLog(`[Cycle] Failed to emit cycle failure notification: ${notifyError?.message || notifyError}`);
+      }
+    }
     res.status(statusCode).json({ errno: statusCode, error: error.message });
   }
 };

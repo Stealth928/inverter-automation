@@ -153,6 +153,23 @@ service cloud.firestore {
       allow create: if false; // Only Cloud Functions can create
     }
 
+    // Per-user push subscription registry: /users/{userId}/pushSubscriptions/{subscriptionId}
+    match /users/{userId}/pushSubscriptions/{subscriptionId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Cloud Functions only
+    }
+
+    // Per-user notification runtime state (dedupe/cooldown): /users/{userId}/notificationRuntime/{docId}
+    match /users/{userId}/notificationRuntime/{docId} {
+      allow read, write: if false; // Cloud Functions only
+    }
+
+    // Campaign/send history for admin notifications
+    match /notificationCampaigns/{campaignId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions only
+    }
+
     // ==================== SHARED SERVER CONFIG ====================
     // shared/serverConfig: non-sensitive config from unauthenticated setup (readable by authenticated users)
     // shared/serverCredentials: provider passwords — Cloud Functions (Admin SDK) only, never from client

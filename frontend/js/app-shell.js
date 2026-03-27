@@ -1,8 +1,10 @@
 (function (window, document) {
-    const APP_RELEASE_ID = '2026-03-22-announcement-runtime-1';
+    const APP_RELEASE_ID = '2026-03-27-notifications-v1';
     const APP_RELEASE_STORAGE_KEY = 'socratesAppReleaseId';
     const APP_RELEASE_RELOAD_SESSION_KEY = `socratesAppReleaseReload:${APP_RELEASE_ID}`;
-    const SERVICE_WORKER_VERSION = '55';
+    const SERVICE_WORKER_VERSION = '56';
+    const NOTIFICATION_POLL_INTERVAL_MS = 60000;
+    const NOTIFICATION_PAGE_LIMIT = 20;
     const SOCRATES_CACHE_PREFIX = 'socrates-';
     const defaultOptions = {
         pageName: 'app',
@@ -31,7 +33,15 @@
         activeAnnouncementId: '',
         announcementRequestToken: 0,
         announcementDismissPending: false,
-        sessionHiddenAnnouncementIds: []
+        sessionHiddenAnnouncementIds: [],
+        notificationsEnabled: true,
+        notificationItems: [],
+        notificationUnreadCount: 0,
+        notificationNextCursor: null,
+        notificationPanelOpen: false,
+        notificationPollingTimer: null,
+        notificationRequestToken: 0,
+        notificationMessageBound: false
     };
 
     function mergeOptions(options) {
@@ -594,6 +604,328 @@
             console.warn('[AppShell] Failed to load announcement banner', error);
             clearAnnouncementBanner();
         }
+    }
+
+    function escapeNotificationText(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function normalizeNotificationRecord(record) {
+        const source = record && typeof record === 'object' ? record : {};
+        const createdAtRaw = source.createdAtMs || source.createdAt || null;
+        const createdAtMs = Number.isFinite(Number(createdAtRaw))
+            ? Number(createdAtRaw)
+            : Date.parse(createdAtRaw || '');
+        return {
+            id: String(source.id || '').trim(),
+            title: String(source.title || '').trim(),
+            body: String(source.body || '').trim(),
+            severity: String(source.severity || 'info').trim().toLowerCase(),
+            deepLink: String(source.deepLink || '').trim(),
+            read: source.read === true,
+            createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0
+        };
+    }
+
+    function formatNotificationTime(createdAtMs) {
+        const millis = Number(createdAtMs);
+        if (!Number.isFinite(millis) || millis <= 0) return '';
+        const ageMs = Date.now() - millis;
+        if (ageMs < 60 * 1000) return 'just now';
+        if (ageMs < 60 * 60 * 1000) return `${Math.floor(ageMs / (60 * 1000))}m ago`;
+        if (ageMs < 24 * 60 * 60 * 1000) return `${Math.floor(ageMs / (60 * 60 * 1000))}h ago`;
+        return new Date(millis).toLocaleDateString('en-AU', {
+            day: '2-digit',
+            month: 'short'
+        });
+    }
+
+    function ensureNotificationCenter() {
+        const navRight = document.querySelector('.nav-right');
+        if (!navRight) return null;
+        let center = document.getElementById('navNotificationCenter');
+        if (center) return center;
+
+        center = document.createElement('div');
+        center.id = 'navNotificationCenter';
+        center.className = 'nav-notification-center';
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.id = 'navNotificationButton';
+        trigger.className = 'nav-notification-btn';
+        trigger.setAttribute('aria-haspopup', 'dialog');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-label', 'Notifications');
+        trigger.innerHTML = '<span class="nav-notification-icon" aria-hidden="true">\uD83D\uDD14</span><span class="nav-notification-label">Alerts</span><span id="navNotificationBadge" class="nav-notification-badge" style="display:none;">0</span>';
+
+        const panel = document.createElement('section');
+        panel.id = 'navNotificationPanel';
+        panel.className = 'nav-notification-panel';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-label', 'Notifications');
+        panel.hidden = true;
+        panel.innerHTML = [
+            '<div class="nav-notification-panel-head">',
+            '<strong>Notifications</strong>',
+            '<button type="button" id="navNotificationMarkAllBtn" class="nav-notification-inline-btn">Mark all read</button>',
+            '</div>',
+            '<div id="navNotificationList" class="nav-notification-list">',
+            '<div class="nav-notification-empty">No notifications yet.</div>',
+            '</div>',
+            '<div class="nav-notification-panel-foot">',
+            '<button type="button" id="navNotificationLoadMoreBtn" class="nav-notification-inline-btn" style="display:none;">Load more</button>',
+            '</div>'
+        ].join('');
+
+        center.appendChild(trigger);
+        center.appendChild(panel);
+        navRight.insertBefore(center, navRight.firstChild);
+
+        const list = panel.querySelector('#navNotificationList');
+        const markAllBtn = panel.querySelector('#navNotificationMarkAllBtn');
+        const loadMoreBtn = panel.querySelector('#navNotificationLoadMoreBtn');
+
+        trigger.addEventListener('click', async (event) => {
+            event.preventDefault();
+            state.notificationPanelOpen = !state.notificationPanelOpen;
+            trigger.setAttribute('aria-expanded', state.notificationPanelOpen ? 'true' : 'false');
+            panel.hidden = !state.notificationPanelOpen;
+            if (state.notificationPanelOpen) {
+                await refreshNotifications({ includeItems: true });
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!state.notificationPanelOpen) return;
+            if (!center.contains(event.target)) {
+                state.notificationPanelOpen = false;
+                trigger.setAttribute('aria-expanded', 'false');
+                panel.hidden = true;
+            }
+        });
+
+        list.addEventListener('click', async (event) => {
+            const row = event.target.closest('[data-notification-id]');
+            if (!row) return;
+            const notificationId = row.getAttribute('data-notification-id') || '';
+            const deepLink = row.getAttribute('data-notification-link') || '';
+            if (!notificationId) return;
+
+            const target = state.notificationItems.find((item) => item.id === notificationId);
+            if (target && !target.read) {
+                await markNotificationsRead({ ids: [notificationId], read: true });
+                target.read = true;
+                state.notificationUnreadCount = Math.max(0, Number(state.notificationUnreadCount || 0) - 1);
+                renderNotificationList();
+                updateNotificationBadge();
+            }
+
+            if (deepLink) {
+                if (typeof safeRedirect === 'function') {
+                    safeRedirect(deepLink);
+                } else {
+                    window.location.href = deepLink;
+                }
+            }
+        });
+
+        if (markAllBtn) {
+            markAllBtn.addEventListener('click', async () => {
+                await markNotificationsRead({ all: true, read: true });
+                await refreshNotifications({ includeItems: true, resetCursor: true });
+            });
+        }
+
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', async () => {
+                await refreshNotifications({ includeItems: true, append: true });
+            });
+        }
+
+        return center;
+    }
+
+    function updateNotificationBadge() {
+        const badge = document.getElementById('navNotificationBadge');
+        if (!badge) return;
+        const unreadCount = Number(state.notificationUnreadCount || 0);
+        if (unreadCount > 0) {
+            badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+            badge.style.display = 'inline-flex';
+        } else {
+            badge.textContent = '0';
+            badge.style.display = 'none';
+        }
+    }
+
+    function renderNotificationList() {
+        const list = document.getElementById('navNotificationList');
+        const loadMoreBtn = document.getElementById('navNotificationLoadMoreBtn');
+        if (!list) return;
+        const rows = Array.isArray(state.notificationItems) ? state.notificationItems : [];
+        if (!rows.length) {
+            list.innerHTML = '<div class="nav-notification-empty">No notifications yet.</div>';
+            if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+            return;
+        }
+
+        const severityTone = (severity) => {
+            if (severity === 'danger') return 'danger';
+            if (severity === 'warning') return 'warning';
+            if (severity === 'success') return 'success';
+            return 'info';
+        };
+
+        list.innerHTML = rows.map((entry) => {
+            const row = normalizeNotificationRecord(entry);
+            const title = escapeNotificationText(row.title || 'Notification');
+            const body = escapeNotificationText(row.body || '');
+            const when = escapeNotificationText(formatNotificationTime(row.createdAtMs));
+            const tone = severityTone(row.severity);
+            const deepLink = row.deepLink || '';
+            const rowClasses = `nav-notification-row ${row.read ? '' : 'is-unread'} tone-${tone}`.trim();
+            return [
+                `<article class="${rowClasses}" data-notification-id="${escapeNotificationText(row.id)}" data-notification-link="${escapeNotificationText(deepLink)}">`,
+                `<header><h4>${title}</h4><time>${when}</time></header>`,
+                body ? `<p>${body}</p>` : '',
+                '</article>'
+            ].join('');
+        }).join('');
+
+        if (loadMoreBtn) {
+            loadMoreBtn.style.display = state.notificationNextCursor ? '' : 'none';
+        }
+    }
+
+    async function markNotificationsRead(payload) {
+        if (!state.user) return { updatedCount: 0 };
+        try {
+            const response = await authFetch('/api/notifications/read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload || {})
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data || data.errno !== 0) {
+                throw new Error(data?.error || `Request failed: ${response.status}`);
+            }
+            return data.result || { updatedCount: 0 };
+        } catch (error) {
+            if (typeof showMessage === 'function') {
+                showMessage('warning', `Failed to update notification state: ${error.message || error}`);
+            }
+            return { updatedCount: 0 };
+        }
+    }
+
+    async function refreshNotifications(options = {}) {
+        if (!state.user || !state.notificationsEnabled) return;
+        const includeItems = options.includeItems !== false;
+        const append = options.append === true;
+        const resetCursor = options.resetCursor === true;
+        const requestToken = ++state.notificationRequestToken;
+        const cursor = append
+            ? state.notificationNextCursor
+            : (resetCursor ? null : state.notificationNextCursor);
+
+        try {
+            const params = new URLSearchParams();
+            params.set('limit', String(NOTIFICATION_PAGE_LIMIT));
+            if (append && cursor) params.set('cursor', String(cursor));
+            const response = await authFetch(`/api/notifications?${params.toString()}`);
+            const data = await response.json().catch(() => null);
+            if (requestToken !== state.notificationRequestToken) return;
+            if (!response.ok || !data || data.errno !== 0) {
+                throw new Error(data?.error || `Request failed: ${response.status}`);
+            }
+
+            const result = data.result || {};
+            const incomingItems = Array.isArray(result.notifications)
+                ? result.notifications.map((item) => normalizeNotificationRecord(item))
+                : [];
+            state.notificationUnreadCount = Number(result.unreadCount || 0);
+            state.notificationNextCursor = String(result.nextCursor || '').trim() || null;
+            if (includeItems) {
+                if (append) {
+                    state.notificationItems = [...state.notificationItems, ...incomingItems];
+                } else {
+                    state.notificationItems = incomingItems;
+                }
+                renderNotificationList();
+            }
+            updateNotificationBadge();
+        } catch (error) {
+            if (!options.silent) {
+                console.warn('[AppShell] Failed to refresh notifications', error);
+            }
+        }
+    }
+
+    function stopNotificationPolling() {
+        if (state.notificationPollingTimer) {
+            clearInterval(state.notificationPollingTimer);
+            state.notificationPollingTimer = null;
+        }
+    }
+
+    function startNotificationPolling() {
+        stopNotificationPolling();
+        state.notificationPollingTimer = setInterval(() => {
+            refreshNotifications({ includeItems: state.notificationPanelOpen, silent: true });
+        }, NOTIFICATION_POLL_INTERVAL_MS);
+    }
+
+    function teardownNotificationCenter() {
+        stopNotificationPolling();
+        state.notificationRequestToken += 1;
+        state.notificationItems = [];
+        state.notificationUnreadCount = 0;
+        state.notificationNextCursor = null;
+        state.notificationPanelOpen = false;
+        const center = document.getElementById('navNotificationCenter');
+        if (center) {
+            center.remove();
+        }
+    }
+
+    function handleServiceWorkerNotificationMessage(event) {
+        const payload = event?.data && typeof event.data === 'object' ? event.data : null;
+        if (!payload) return;
+        const type = String(payload.type || '').trim();
+        if (type !== 'SOC_NOTIFICATIONS_PUSH') return;
+        const notification = normalizeNotificationRecord(payload.payload || {});
+        if (typeof showMessage === 'function') {
+            const toastType = notification.severity === 'danger'
+                ? 'error'
+                : (notification.severity === 'warning' ? 'warning' : 'info');
+            showMessage(toastType, notification.title || notification.body || 'New notification');
+        }
+        refreshNotifications({ includeItems: state.notificationPanelOpen, silent: true });
+    }
+
+    async function initNotificationCenter() {
+        if (!state.user || !state.options.requireAuth) {
+            teardownNotificationCenter();
+            return;
+        }
+
+        const center = ensureNotificationCenter();
+        if (!center) return;
+        if (!state.notificationsEnabled) return;
+
+        if (navigator.serviceWorker && !state.notificationMessageBound) {
+            navigator.serviceWorker.addEventListener('message', handleServiceWorkerNotificationMessage);
+            state.notificationMessageBound = true;
+        }
+
+        await refreshNotifications({ includeItems: state.notificationPanelOpen, resetCursor: true, silent: true });
+        startNotificationPolling();
     }
 
     function renderImpersonationBanner(user) {
@@ -1378,7 +1710,9 @@
         state.announcementRequestToken += 1;
         state.announcementDismissPending = false;
         state.sessionHiddenAnnouncementIds = [];
+        state.notificationsEnabled = true;
         stopMetricsTimer();
+        teardownNotificationCenter();
         updateUserIdentity(null);
         state.signOutCallbacks.forEach(cb => {
             try { cb(); } catch (err) { console.warn('[AppShell] signOut callback failed', err); }
@@ -1433,6 +1767,7 @@
                         const setupOk = await ensureSetupComplete();
                         if (!setupOk) return;
                         refreshAnnouncementBanner();
+                        initNotificationCenter();
                         resolveReady(getContext());
                         if (!state.initResolved) {
                             resolve(getContext());
@@ -2051,6 +2386,7 @@
         setupNavHighlight();
         setupUserMenu();
         relocateMetricsWidget();
+        initNotificationCenter();
         // Re-apply identity and admin link visibility in case auth state arrived
         // before DOM was ready on navigation.
         updateUserIdentity(state.user);
@@ -2065,6 +2401,7 @@
         showAnnouncement: renderAnnouncementBanner,
         hideAnnouncement: clearAnnouncementBanner,
         signOut,
+        refreshNotifications: () => refreshNotifications({ includeItems: state.notificationPanelOpen, resetCursor: true, silent: true }),
         getUser: () => state.user,
         getApiClient: () => window.apiClient || null
     };

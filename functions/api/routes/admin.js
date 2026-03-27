@@ -28,6 +28,9 @@ function registerAdminRoutes(app, deps = {}) {
     : null;
   const SEED_ADMIN_EMAIL = deps.SEED_ADMIN_EMAIL;
   const fetchImpl = deps.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+  const notificationsService = deps.notificationsService && typeof deps.notificationsService === 'object'
+    ? deps.notificationsService
+    : null;
   const githubDataworks = deps.githubDataworks && typeof deps.githubDataworks === 'object'
     ? deps.githubDataworks
     : {};
@@ -1206,6 +1209,88 @@ function registerAdminRoutes(app, deps = {}) {
       }
       console.error('[Admin] Failed to save announcement config:', error?.message || error);
       return res.status(500).json({ errno: 500, error: error?.message || 'Failed to save announcement config' });
+    }
+  });
+
+  app.get('/api/admin/notifications/overview', authenticateUser, requireAdmin, async (req, res) => {
+    if (!notificationsService || typeof notificationsService.getOverview !== 'function') {
+      return res.status(503).json({ errno: 503, error: 'Notifications service unavailable' });
+    }
+
+    try {
+      const overview = await notificationsService.getOverview({
+        campaignLimit: req.query.limit
+      });
+      return res.json({ errno: 0, result: overview });
+    } catch (error) {
+      console.error('[Admin] Failed to load notifications overview:', error?.message || error);
+      return res.status(500).json({ errno: 500, error: error?.message || 'Failed to load notifications overview' });
+    }
+  });
+
+  app.post('/api/admin/notifications/config', authenticateUser, requireAdmin, async (req, res) => {
+    if (!notificationsService || typeof notificationsService.saveAdminConfig !== 'function') {
+      return res.status(503).json({ errno: 503, error: 'Notifications service unavailable' });
+    }
+
+    try {
+      const configInput = req.body?.notifications && typeof req.body.notifications === 'object'
+        ? req.body.notifications
+        : (req.body && typeof req.body === 'object' ? req.body : {});
+
+      const payload = {
+        ...configInput,
+        audienceDefaults: await resolveAnnouncementAudience(
+          configInput.audienceDefaults || configInput.audience || {}
+        )
+      };
+
+      const notifications = await notificationsService.saveAdminConfig(payload, {
+        uid: req.user.uid,
+        email: req.user.email || ''
+      });
+      return res.json({ errno: 0, result: { notifications } });
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500) {
+        return res.status(error.statusCode).json({ errno: error.statusCode, error: error.message });
+      }
+      console.error('[Admin] Failed to save notifications config:', error?.message || error);
+      return res.status(500).json({ errno: 500, error: error?.message || 'Failed to save notifications config' });
+    }
+  });
+
+  app.post('/api/admin/notifications/broadcasts', authenticateUser, requireAdmin, async (req, res) => {
+    if (!notificationsService || typeof notificationsService.sendAdminBroadcast !== 'function') {
+      return res.status(503).json({ errno: 503, error: 'Notifications service unavailable' });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const audience = body.audience && typeof body.audience === 'object'
+        ? await resolveAnnouncementAudience(body.audience)
+        : null;
+      const summary = await notificationsService.sendAdminBroadcast(
+        {
+          title: body.title,
+          body: body.body,
+          severity: body.severity,
+          deepLink: body.deepLink,
+          channels: body.channels,
+          audience
+        },
+        {
+          uid: req.user.uid,
+          email: req.user.email || ''
+        }
+      );
+
+      return res.json({ errno: 0, result: summary });
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500) {
+        return res.status(error.statusCode).json({ errno: error.statusCode, error: error.message });
+      }
+      console.error('[Admin] Failed to send notification broadcast:', error?.message || error);
+      return res.status(500).json({ errno: 500, error: error?.message || 'Failed to send notification broadcast' });
     }
   });
 

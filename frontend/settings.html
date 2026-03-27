@@ -194,6 +194,26 @@
             min-width: 0;
             margin-top: auto;
         }
+        .setting-inline-help {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-primary));
+            color: var(--accent-blue);
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: help;
+            flex: 0 0 auto;
+        }
+        .setting-inline-help:hover {
+            border-color: var(--accent-blue);
+            background: color-mix(in srgb, var(--accent-blue) 16%, var(--bg-primary));
+        }
         .setting-input input {
             flex: 1;
             min-width: 0;
@@ -1295,6 +1315,7 @@
                     <a class="section-nav-link" data-target="blackoutSection">🌙 Blackout</a>
                     <a class="section-nav-link" data-target="curtailmentSection">☀️ Curtailment</a>
                     <a class="section-nav-link" data-target="credentialsSection">🔑 Credentials</a>
+                    <a class="section-nav-link" data-target="notificationsSection">🔔 Notifications</a>
                     <a class="section-nav-link" data-target="preferences">🌤️ Preferences</a>
                     <a class="section-nav-link" data-target="hardwareSection">💪 Hardware</a>
                     <a class="section-nav-link" data-target="defaultsSection">📋 Rule Defaults</a>
@@ -1743,6 +1764,128 @@
                 <button class="btn-secondary" onclick="clearCredentials()">🧹 Clear Credentials</button>
                 <div style="color:var(--muted);font-size:13px;min-width:0;flex-shrink:1;" id="credentialsStatus">Checking...</div>
             </div>
+            <div class="faq-section" style="margin-top: 16px;">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">Do I need to re-enter every credential when I save?</div>
+                        <div class="faq-answer">
+                            No. Hidden secrets can stay blank when you are not changing them. Only enter a token, password, or secret again when you want to replace the stored value.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why do some credential fields change depending on my provider?</div>
+                        <div class="faq-answer">
+                            Each inverter and pricing provider exposes different identifiers and login requirements. This page only shows the fields relevant to your selected device provider and pricing source so you are not asked for values the backend will never use.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">What is the difference between pricing source and pricing API key?</div>
+                        <div class="faq-answer">
+                            <strong>Pricing Source</strong> decides where the app gets electricity prices from. If you choose <strong>AEMO</strong>, select your NEM region and no Amber key is required. If you choose <strong>Amber</strong>, your Amber site and key unlock live customer pricing for automation, history, and ROI views.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Where can I find my inverter serial number or system ID?</div>
+                        <div class="faq-answer">
+                            Usually in your provider portal, mobile app, inverter label, or commissioning paperwork. FoxESS and Sungrow commonly show it in the cloud portal, while AlphaESS exposes a system serial number in its developer portal.
+                            <div class="faq-tip">If the field is already populated, leave it alone unless your hardware has changed.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notifications -->
+        <div class="section" id="notificationsSection">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">
+                        🔔 Notifications
+                        <span class="badge badge-sync" id="notificationsBadge">Synced</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn-secondary" type="button" onclick="loadNotificationSettings()">🔄 Refresh</button>
+                    <button class="btn-primary" type="button" onclick="saveNotificationPreferences()">💾 Save Preferences</button>
+                </div>
+            </div>
+            <div class="section-description">
+                Manage in-app inbox and web push delivery for this account and this browser/device.
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <div class="setting-label">Push status</div>
+                    <div class="setting-hint" id="notificationsSupportStatus">Checking push support...</div>
+                    <div class="setting-input" style="flex-wrap:wrap;">
+                        <button class="btn-primary" type="button" id="notificationsSubscribeBtn" onclick="subscribeNotificationsForDevice()">Enable Push</button>
+                        <button class="btn-secondary" type="button" id="notificationsUnsubscribeBtn" onclick="unsubscribeNotificationsForDevice()">Disable Push</button>
+                        <span id="notificationsPushStatus" style="font-size:12px;color:var(--text-secondary);">—</span>
+                    </div>
+                    <div id="notificationsIosHint" class="setting-hint" style="display:none;margin-top:8px;">
+                        iPhone/iPad push needs Home Screen mode. Install this app to your Home Screen, then return here to enable push.
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">Inbox + alert preferences</div>
+                    <div class="setting-hint">Choose which notification categories you want delivered.</div>
+                    <div style="display:grid;gap:8px;margin-top:auto;">
+                        <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
+                            <input id="notifications_pref_inboxEnabled" type="checkbox" checked>
+                            <span>Enable in-app inbox</span>
+                            <span class="setting-inline-help" title="Save notification records in the app so users can review them later, even if they miss the live event." aria-label="Help: in-app inbox">?</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
+                            <input id="notifications_pref_broadcastsEnabled" type="checkbox" checked>
+                            <span>Admin broadcasts</span>
+                            <span class="setting-inline-help" title="Allow admin-sent broadcast messages, such as maintenance notices or release updates, to reach this account." aria-label="Help: admin broadcasts">?</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
+                            <input id="notifications_pref_highSignalAutomationEnabled" type="checkbox" checked>
+                            <span>High-signal automation alerts</span>
+                            <span class="setting-inline-help" title="Receive only important automation events like telemetry pauses and cycle failures. Routine rule-trigger noise is excluded." aria-label="Help: high-signal automation alerts">?</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary);">
+                            <input id="notifications_pref_curtailmentEnabled" type="checkbox" checked>
+                            <span>Curtailment transitions</span>
+                            <span class="setting-inline-help" title="Get alerted when curtailment turns on or off because the app changed export limits in response to market conditions." aria-label="Help: curtailment transitions">?</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="faq-section" style="margin-top: 16px;">
+                <div class="faq-toggle" onclick="toggleFaq(this)">
+                    <span class="arrow">▶</span> Frequently Asked Questions
+                </div>
+                <div class="faq-content">
+                    <div class="faq-item">
+                        <div class="faq-question">What is the difference between inbox and push notifications?</div>
+                        <div class="faq-answer">
+                            The <strong>in-app inbox</strong> stores notifications inside SoCrates for your account. <strong>Push notifications</strong> are browser or device alerts for this specific browser profile, so they can appear even when the app is not open.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why do I need to enable push separately on each device?</div>
+                        <div class="faq-answer">
+                            Push permissions are granted per browser and per device. Turning push on for your laptop does not automatically enable it on your phone or tablet, even though your inbox preferences stay linked to the same account.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Why does iPhone or iPad push mention Home Screen mode?</div>
+                        <div class="faq-answer">
+                            Apple only allows web push for installed Home Screen web apps. If you are on iPhone or iPad, add this app to your Home Screen first, open it from there, then come back to this section to enable push.
+                        </div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Which alerts are worth keeping on?</div>
+                        <div class="faq-answer">
+                            Most users keep <strong>high-signal automation alerts</strong> and <strong>admin broadcasts</strong> enabled. Curtailment transitions are useful if you actively watch negative feed-in events, but you can disable them if you prefer a quieter notification stream.
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Preferences (Weather, etc.) -->
@@ -2096,7 +2239,7 @@
             <div class="faq-section" style="margin-top: 16px;">
                 <div class="faq-toggle" onclick="toggleFaq(this)">
                     <span>Tesla FAQ</span>
-                    <span class="arrow">▼</span>
+                    <span class="arrow">▶</span>
                 </div>
                 <div class="faq-content">
                     <div class="faq-item">
@@ -2379,6 +2522,6 @@
     })();
     </script>
 
-    <script defer src="js/settings.js?v=5"></script>
+    <script defer src="js/settings.js?v=6"></script>
 </body>
 </html>

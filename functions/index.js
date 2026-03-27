@@ -43,6 +43,7 @@ const { registerInverterReadRoutes } = require('./api/routes/inverter-read');
 const { registerInverterHistoryRoutes } = require('./api/routes/inverter-history');
 const { registerConfigMutationRoutes } = require('./api/routes/config-mutations');
 const { registerConfigReadStatusRoutes } = require('./api/routes/config-read-status');
+const { registerNotificationRoutes } = require('./api/routes/notifications');
 const { registerHealthRoutes } = require('./api/routes/health');
 const { registerAdminRoutes } = require('./api/routes/admin');
 const { registerAuthLifecycleRoutes } = require('./api/routes/auth-lifecycle');
@@ -64,6 +65,7 @@ const { createAutomationRuleActionService } = require('./lib/services/automation
 const { createAutomationRuleEvaluationService } = require('./lib/services/automation-rule-evaluation-service');
 const { createCurtailmentService } = require('./lib/services/curtailment-service');
 const { createQuickControlService } = require('./lib/services/quick-control-service');
+const { createNotificationsService } = require('./lib/services/notifications-service');
 const { createSchedulerSloAlertNotifier } = require('./lib/services/scheduler-slo-alert-notifier');
 const { createWeatherService } = require('./lib/services/weather-service');
 const { createCacheMetricsService } = require('./lib/services/cache-metrics-service');
@@ -453,6 +455,17 @@ const {
   db,
   foxessAPI,
   getCurrentAmberPrices
+});
+
+const notificationsService = createNotificationsService({
+  db,
+  logger,
+  serverTimestamp,
+  pushConfig: {
+    vapidPublicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || '',
+    vapidPrivateKey: process.env.WEB_PUSH_VAPID_PRIVATE_KEY || '',
+    vapidSubject: process.env.WEB_PUSH_VAPID_SUBJECT || ''
+  }
 });
 
 const {
@@ -1192,7 +1205,8 @@ registerAdminRoutes(app, {
     refMode: process.env.GITHUB_DATAWORKS_REF_MODE || 'auto',
     dispatchToken: process.env.GITHUB_DATAWORKS_TOKEN || ''
   },
-  getAutomationCycleHandler: () => automationCycleHandler
+  getAutomationCycleHandler: () => automationCycleHandler,
+  notificationsService
 });
 
 // Apply auth middleware to remaining API routes
@@ -1214,6 +1228,11 @@ registerAuthLifecycleRoutes(app, {
   logger,
   serverTimestamp,
   setUserConfig
+});
+
+registerNotificationRoutes(app, {
+  authenticateUser,
+  notificationsService
 });
 
 registerEVRoutes(app, {
@@ -1345,6 +1364,7 @@ automationCycleHandler = registerAutomationCycleRoute(app, {
   getUserTime,
   isForecastTemperatureType,
   logger,
+  emitAutomationNotification: async (userId, payload) => notificationsService.emitEventNotification(userId, payload),
   saveUserAutomationState,
   serverTimestamp,
   setUserRule

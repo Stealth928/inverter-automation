@@ -64,6 +64,7 @@ function buildDeps(overrides = {}) {
     getUserTime: jest.fn(() => ({ dayOfWeek: 1, hour: 12, minute: 0 })),
     isForecastTemperatureType: jest.fn(() => false),
     logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+    emitAutomationNotification: jest.fn(async () => ({ sent: true })),
     saveUserAutomationState: jest.fn(async () => undefined),
     serverTimestamp: jest.fn(() => '__TS__'),
     setUserRule: jest.fn(async () => undefined),
@@ -223,6 +224,52 @@ describe('automation cycle route module', () => {
     );
   });
 
+  test('emits curtailment transition notification when curtailment state changes', async () => {
+    const deps = buildDeps({
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-CURT-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+        }
+      })),
+      evaluateRule: jest.fn(async () => ({ triggered: false, conditions: [] })),
+      checkAndApplyCurtailment: jest.fn(async () => ({
+        enabled: true,
+        adjusted: true,
+        stateChanged: true,
+        action: 'activated',
+        currentPrice: -2.5,
+        priceThreshold: 0
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-curtailment-notify' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(deps.emitAutomationNotification).toHaveBeenCalledWith(
+      'u-cycle-curtailment-notify',
+      expect.objectContaining({
+        eventType: 'curtailment_activated',
+        preferenceScope: 'curtailment'
+      })
+    );
+  });
+
   test('clears segments and exits when clearSegmentsOnNextCycle flag is set', async () => {
     const deps = buildDeps({
       getQuickControlState: jest.fn(async () => null),
@@ -375,6 +422,13 @@ describe('automation cycle route module', () => {
         activeRuleName: 'Rule A',
         activeSegmentEnabled: false,
         lastActionResult: expect.objectContaining({ errno: 503 })
+      })
+    );
+    expect(deps.emitAutomationNotification).toHaveBeenCalledWith(
+      'u-cycle-action-fail',
+      expect.objectContaining({
+        eventType: 'cycle_failure',
+        preferenceScope: 'highSignalAutomation'
       })
     );
   });
@@ -539,6 +593,13 @@ describe('automation cycle route module', () => {
         telemetryFailsafePaused: true,
         telemetryFailsafePauseReason: 'stale_telemetry',
         telemetryHealthStatus: 'paused'
+      })
+    );
+    expect(deps.emitAutomationNotification).toHaveBeenCalledWith(
+      'u-cycle-stale',
+      expect.objectContaining({
+        eventType: 'telemetry_pause',
+        preferenceScope: 'highSignalAutomation'
       })
     );
   });

@@ -2637,6 +2637,7 @@
             <button class="tab-btn" data-tab="dataworks" onclick="switchTab('dataworks')">🛰️ DataWorks</button>
             <button class="tab-btn" data-tab="behavior" onclick="switchTab('behavior')">🧭 Behaviour</button>
             <button class="tab-btn" data-tab="announcement" onclick="switchTab('announcement')">📣 Announcement</button>
+            <button class="tab-btn" data-tab="notifications" onclick="switchTab('notifications')">🔔 Notifications</button>
             <button class="tab-btn" data-tab="apiHealth" onclick="switchTab('apiHealth')">🩺 API Health</button>
         </nav>
 
@@ -3056,6 +3057,160 @@
             </div>
         </div>
         </div><!-- /tab-announcement -->
+
+        <div id="tab-notifications" class="tab-panel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="icon">🔔</span> Notifications</div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="action-btn" onclick="loadAdminNotifications({ force: true })" id="refreshNotificationsAdminBtn">🔄 Refresh</button>
+                        <button class="action-btn" onclick="saveAdminNotificationsConfig()" id="saveNotificationsConfigBtn">💾 Save Config</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="firestore-updated" id="notificationsAdminUpdated">Loading notifications settings...</div>
+                    <div class="firestore-warning" id="notificationsAdminWarning" style="display:none;"></div>
+
+                    <div class="announcement-grid" style="margin-top: 14px;">
+                        <section class="announcement-panel">
+                            <div class="announcement-panel-head">
+                                <span class="announcement-panel-icon blue">⚙️</span>
+                                <div class="announcement-panel-title-wrap">
+                                    <h3>Runtime config</h3>
+                                    <p>Controls default broadcast channels and audience defaults.</p>
+                                </div>
+                            </div>
+                            <div class="announcement-panel-body">
+                                <div class="announcement-toggle-grid">
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsConfigEnabledInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Enable notifications runtime</span>
+                                            <small>Keeps admin broadcast + automation alert delivery active.</small>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsConfigChannelInboxInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Default channel: inbox</span>
+                                            <small>Always keep in-app inbox records by default.</small>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsConfigChannelPushInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Default channel: push</span>
+                                            <small>Send browser/system notifications when subscriptions exist.</small>
+                                        </span>
+                                    </label>
+                                </div>
+
+                                <div class="an-divider">Audience Defaults</div>
+                                <div class="announcement-toggle-grid">
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsConfigRequireTourInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Require tour completion</span>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsConfigRequireSetupInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Require setup completion</span>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsConfigRequireAutomationInput" type="checkbox" class="a-toggle-cb">
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Require automation enabled</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="announcement-form-grid" style="margin-top: 12px;">
+                                    <div class="announcement-field">
+                                        <label for="notificationsConfigMinAgeInput">Minimum account age (days)</label>
+                                        <input id="notificationsConfigMinAgeInput" class="announcement-input" type="number" min="0" max="3650" placeholder="e.g. 7">
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="announcement-panel">
+                            <div class="announcement-panel-head">
+                                <span class="announcement-panel-icon green">📡</span>
+                                <div class="announcement-panel-title-wrap">
+                                    <h3>Send broadcast</h3>
+                                    <p>Send-now campaign to an audience using inbox and/or push.</p>
+                                </div>
+                            </div>
+                            <div class="announcement-panel-body">
+                                <div class="announcement-form-grid">
+                                    <div class="announcement-field full">
+                                        <label for="notificationsBroadcastTitleInput">Title</label>
+                                        <input id="notificationsBroadcastTitleInput" class="announcement-input" type="text" maxlength="160" placeholder="Broadcast headline">
+                                    </div>
+                                    <div class="announcement-field full">
+                                        <label for="notificationsBroadcastBodyInput">Body</label>
+                                        <textarea id="notificationsBroadcastBodyInput" class="announcement-textarea" placeholder="Message sent to eligible users"></textarea>
+                                    </div>
+                                    <div class="announcement-field">
+                                        <label for="notificationsBroadcastSeveritySelect">Severity</label>
+                                        <select id="notificationsBroadcastSeveritySelect" class="announcement-select">
+                                            <option value="info">Info</option>
+                                            <option value="success">Success</option>
+                                            <option value="warning">Warning</option>
+                                            <option value="danger">Danger</option>
+                                        </select>
+                                    </div>
+                                    <div class="announcement-field">
+                                        <label for="notificationsBroadcastDeepLinkInput">Deep link (optional)</label>
+                                        <input id="notificationsBroadcastDeepLinkInput" class="announcement-input" type="text" maxlength="300" placeholder="/settings.html#notificationsSection">
+                                    </div>
+                                </div>
+                                <div class="announcement-toggle-grid" style="margin-top: 10px;">
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsBroadcastChannelInboxInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Channel: inbox</span>
+                                        </span>
+                                    </label>
+                                    <label class="announcement-toggle">
+                                        <input id="notificationsBroadcastChannelPushInput" type="checkbox" class="a-toggle-cb" checked>
+                                        <span class="announcement-toggle-copy">
+                                            <span class="announcement-toggle-label">Channel: push</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div style="margin-top: 12px;display:flex;justify-content:flex-end;">
+                                    <button class="action-btn" onclick="sendAdminNotificationBroadcast()" id="sendNotificationsBroadcastBtn">🚀 Send Broadcast</button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div style="margin-top: 18px;">
+                        <div class="card-title" style="margin-bottom: 10px;"><span class="icon">📊</span> Delivery overview</div>
+                        <div class="platform-kpis" id="notificationsOverviewKpis">
+                            <div class="kpi-item">
+                                <div class="label">Push Configured</div>
+                                <div class="value" id="notificationsOverviewPushConfigured">-</div>
+                            </div>
+                            <div class="kpi-item">
+                                <div class="label">Active Subscriptions</div>
+                                <div class="value" id="notificationsOverviewActiveSubs">-</div>
+                            </div>
+                            <div class="kpi-item">
+                                <div class="label">Campaigns Loaded</div>
+                                <div class="value" id="notificationsOverviewCampaignCount">-</div>
+                            </div>
+                        </div>
+                        <div id="notificationsCampaignsList" style="margin-top: 10px; color: var(--text-secondary); font-size: 12px;">
+                            No notification campaigns loaded yet.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /tab-notifications -->
 
         <div id="tab-scheduler" class="tab-panel">
         <div class="card scheduler-metrics-card">

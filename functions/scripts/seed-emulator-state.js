@@ -176,15 +176,37 @@ function getAmberCachePreset(seedUser) {
   return AMBER_CACHE_PRESETS[toSeedProvider(seedUser)] || AMBER_CACHE_PRESETS.foxess;
 }
 
+function resolveSeedGridFlow(preset) {
+  const presetGridConsumptionPowerW = Number.isFinite(Number(preset.gridConsumptionPowerW))
+    ? Math.max(0, Number(preset.gridConsumptionPowerW))
+    : 0;
+  const presetFeedinPowerW = Number.isFinite(Number(preset.feedinPowerW))
+    ? Math.max(0, Number(preset.feedinPowerW))
+    : 0;
+
+  // Production inverter frames show either import or export, never both at once.
+  // Keep the emulator seed aligned with that shape so the dashboard renders the same way.
+  if (presetFeedinPowerW >= presetGridConsumptionPowerW) {
+    return {
+      gridConsumptionPowerW: 0,
+      feedinPowerW: presetFeedinPowerW
+    };
+  }
+
+  return {
+    gridConsumptionPowerW: presetGridConsumptionPowerW,
+    feedinPowerW: 0
+  };
+}
+
 function buildInverterDataFrame(seedUser, deviceSN, timestampIso, includeRealtimeExtras = false) {
   const preset = getInverterCachePreset(seedUser);
   const soc = Number.isFinite(Number(preset.socPct)) ? Number(preset.socPct) : 75;
   const pvPowerW = Number.isFinite(Number(preset.pvPowerW)) ? Number(preset.pvPowerW) : 3200;
   const loadsPowerW = Number.isFinite(Number(preset.loadsPowerW)) ? Number(preset.loadsPowerW) : 1600;
-  const gridConsumptionPowerW = Number.isFinite(Number(preset.gridConsumptionPowerW))
-    ? Number(preset.gridConsumptionPowerW)
-    : 500;
-  const feedinPowerW = Number.isFinite(Number(preset.feedinPowerW)) ? Number(preset.feedinPowerW) : -80;
+  const seededGridFlow = resolveSeedGridFlow(preset);
+  const gridConsumptionPowerW = seededGridFlow.gridConsumptionPowerW;
+  const feedinPowerW = seededGridFlow.feedinPowerW;
   const batChargePowerW = Number.isFinite(Number(preset.batChargePowerW)) ? Number(preset.batChargePowerW) : 0;
   const batDischargePowerW = Number.isFinite(Number(preset.batDischargePowerW)) ? Number(preset.batDischargePowerW) : 0;
   const meterPower2 = gridConsumptionPowerW > 0
