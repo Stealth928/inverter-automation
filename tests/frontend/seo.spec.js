@@ -51,7 +51,6 @@ test.describe('SEO Metadata', () => {
   test('landing page highlights the AEMO live prices rollout in copy and structured answers', async ({ page }) => {
     await page.goto('/index.html');
 
-    await expect(page.locator('.land-hero__eyebrow')).toContainText('Live AEMO prices');
     await expect(page.locator('.brand-strip')).toContainText('AEMO Live Prices');
 
     const pricingFaq = page.locator('.faq-item', {

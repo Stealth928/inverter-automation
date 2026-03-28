@@ -8,6 +8,7 @@ function createMetricsHarness() {
   const globalSet = jest.fn(async () => undefined);
 
   const globalMetricsDocRef = {
+    path: 'metrics/day',
     set: globalSet
   };
 
@@ -47,11 +48,20 @@ function createMetricsHarness() {
     runTransaction: jest.fn(async (handler) => handler(transaction))
   };
 
+  const batch = {
+    set: jest.fn(),
+    commit: jest.fn(async () => undefined)
+  };
+  db.batch = jest.fn(() => batch);
+
   return {
     db,
     globalSet,
     userSet,
     metricsCollectionRef,
+    globalMetricsDocRef,
+    userMetricsDocRef,
+    batch,
     transaction,
     userMetricsCollectionRef
   };
@@ -80,7 +90,7 @@ describe('api metrics service', () => {
   });
 
   test('incrementApiCount updates user and global metrics', async () => {
-    const { db, globalSet, userSet } = createMetricsHarness();
+    const { db, globalSet, userSet, batch, userMetricsDocRef, globalMetricsDocRef } = createMetricsHarness();
     const increment = jest.fn((value) => ({ op: 'increment', value }));
     const logger = { debug: jest.fn() };
 
@@ -94,24 +104,29 @@ describe('api metrics service', () => {
 
     await service.incrementApiCount('user-1', 'weather');
 
-    expect(db.runTransaction).not.toHaveBeenCalled();
-    expect(userSet).toHaveBeenCalledTimes(1);
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    expect(userSet).toHaveBeenCalledTimes(0);
+    expect(globalSet).toHaveBeenCalledTimes(0);
     expect(logger.debug).toHaveBeenCalled();
 
-    const [userData, setOptions] = userSet.mock.calls[0];
+    expect(batch.set).toHaveBeenCalledTimes(2);
+    expect(batch.commit).toHaveBeenCalledTimes(1);
+
+    const [userRef, userData, setOptions] = batch.set.mock.calls[0];
+    expect(userRef).toBe(userMetricsDocRef);
     expect(userData.weather).toEqual({ op: 'increment', value: 1 });
     expect(userData.updatedAt).toBe('__TS__');
     expect(setOptions).toEqual({ merge: true });
 
-    expect(globalSet).toHaveBeenCalledTimes(1);
-    const [globalPayload, globalOptions] = globalSet.mock.calls[0];
+    const [globalRef, globalPayload, globalOptions] = batch.set.mock.calls[1];
+    expect(globalRef).toBe(globalMetricsDocRef);
     expect(globalPayload.weather).toEqual({ op: 'increment', value: 1 });
     expect(globalPayload.updatedAt).toBe('__TS__');
     expect(globalOptions).toEqual({ merge: true });
   });
 
   test('incrementApiCount without userId still updates global metrics', async () => {
-    const { db, globalSet } = createMetricsHarness();
+    const { db, globalSet, batch } = createMetricsHarness();
     const service = createApiMetricsService({
       admin: { firestore: { FieldValue: { increment: jest.fn((value) => value) } } },
       db,
@@ -121,7 +136,8 @@ describe('api metrics service', () => {
 
     await service.incrementApiCount(null, 'foxess');
 
-    expect(db.runTransaction).not.toHaveBeenCalled();
+    expect(db.batch).not.toHaveBeenCalled();
+    expect(batch.commit).not.toHaveBeenCalled();
     expect(globalSet).toHaveBeenCalledTimes(1);
   });
 

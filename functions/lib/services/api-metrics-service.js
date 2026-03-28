@@ -67,26 +67,41 @@ function createApiMetricsService(deps = {}) {
 
   async function incrementApiCount(userId, apiType) {
     const today = getAusDateKey();
+    const fieldValue =
+      admin && admin.firestore && admin.firestore.FieldValue &&
+      typeof admin.firestore.FieldValue.increment === 'function'
+        ? admin.firestore.FieldValue.increment(1)
+        : 1;
+    const payload = {
+      [apiType]: fieldValue,
+      updatedAt: serverTimestamp()
+    };
 
     if (userId) {
       if (typeof logger.debug === 'function') {
         logger.debug('Metrics', `Incrementing ${apiType} counter for user ${userId} on ${today}`);
       }
 
-      const docRef = db.collection('users').doc(userId).collection('metrics').doc(today);
+      const userDocRef = db.collection('users').doc(userId).collection('metrics').doc(today);
+      const globalDocRef = db.collection('metrics').doc(today);
       try {
-        const fieldValue =
-          admin && admin.firestore && admin.firestore.FieldValue &&
-          typeof admin.firestore.FieldValue.increment === 'function'
-            ? admin.firestore.FieldValue.increment(1)
-            : 1;
-        await docRef.set({
-          [apiType]: fieldValue,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
+        if (typeof db.batch === 'function') {
+          const batch = db.batch();
+          batch.set(userDocRef, payload, { merge: true });
+          batch.set(globalDocRef, payload, { merge: true });
+          await batch.commit();
+        } else {
+          await Promise.all([
+            userDocRef.set(payload, { merge: true }),
+            globalDocRef.set(payload, { merge: true })
+          ]);
+        }
+        return;
       } catch (error) {
         console.error('Error incrementing API count:', error);
       }
+
+      return;
     }
 
     try {
