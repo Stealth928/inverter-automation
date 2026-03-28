@@ -360,7 +360,7 @@
                 setTeslaNextActionCard(
                     'warning',
                     'Reconnect the affected vehicle',
-                    'Click Reconnect next to the vehicle that needs attention. We will prefill the VIN and switch the green button to Reconnect with Tesla so you can approve access again without re-entering the VIN.'
+                    'Click Reconnect next to the affected vehicle, then approve Reconnect with Tesla; VIN stays prefilled.'
                 );
                 return;
             }
