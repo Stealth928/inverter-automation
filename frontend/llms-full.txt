@@ -17,6 +17,7 @@ SoCrates is a serverless web platform for home solar and battery automation. The
 - /market-insights/ : Public market insights preview with region switching, trendlines, volatility, and volatile-day summaries
 - /rule-template-recommender/ : Public guided helper that maps user goals to starter SoCrates Rules Library bundles and import handoff
 - /blog/ : Blog index for public educational content
+- /amber-smartshift-vs-socrates/ : Comparison article on keeping Amber pricing while replacing SmartShift's managed control model with explicit automation
 - /home-battery-automation-options-compared/ : Comparison article covering manual schedules, Home Assistant, Modbus DIY stacks, retailer automation, and managed platforms
 - /battery-automation-roi-examples/ : Article explaining how smarter battery rules can create ROI uplift in practice
 - /privacy.html : Privacy policy
@@ -39,6 +40,7 @@ SoCrates is a serverless web platform for home solar and battery automation. The
 - Battery automation ROI framing
 - Battery wear-cost framing for arbitrage and self-use decisions
 - Comparing manual schedules, Home Assistant, Modbus DIY stacks, retailer automation, and managed battery platforms
+- Comparing Amber SmartShift with an explicit automation layer while keeping Amber pricing
 - Australian NEM price volatility and negative-price context through the public market insights preview page
 - How market context can inform battery automation rules
 
@@ -58,5 +60,6 @@ Do not rely on authenticated pages such as /login.html, /app.html, /settings.htm
 - https://socratesautomation.com/market-insights/
 - https://socratesautomation.com/rule-template-recommender/
 - https://socratesautomation.com/blog/
+- https://socratesautomation.com/amber-smartshift-vs-socrates/
 - https://socratesautomation.com/home-battery-automation-options-compared/
 - https://socratesautomation.com/battery-automation-roi-examples/

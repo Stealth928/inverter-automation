@@ -143,6 +143,41 @@ function registerEVRoutes(app, deps = {}) {
     return /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b/.test(message);
   }
 
+  function buildTeslaBatchErrorReadiness(error, source = 'batch_error') {
+    const warning = String(error?.message || 'Tesla command-readiness unavailable').trim() || 'Tesla command-readiness unavailable';
+    if (isTeslaReconnectError(error)) {
+      return {
+        state: 'setup_required',
+        transport: 'none',
+        source,
+        vehicleCommandProtocolRequired: null,
+        reasonCode: 'tesla_reconnect_required',
+        warning
+      };
+    }
+    if (isTeslaPermissionDeniedError(error)) {
+      return {
+        state: 'setup_required',
+        transport: 'none',
+        source,
+        vehicleCommandProtocolRequired: null,
+        reasonCode: 'tesla_permission_denied',
+        warning
+      };
+    }
+    if (isTeslaVehicleLookupError(error)) {
+      return {
+        state: 'setup_required',
+        transport: 'none',
+        source,
+        vehicleCommandProtocolRequired: null,
+        reasonCode: 'tesla_vehicle_lookup_failed',
+        warning
+      };
+    }
+    return null;
+  }
+
   function isTeslaPartnerPublicKeyConflict(error) {
     const message = extractErrorMessage(error);
     return /public key hash has already been taken/.test(message);
@@ -746,12 +781,22 @@ function registerEVRoutes(app, deps = {}) {
             }
           };
         });
-        const batchResults = await evAdapter.getCommandReadinessBatch(requests, sharedContext);
-        for (const entry of groupEntries) {
-          const readiness = batchResults?.[entry.vehicleId] || null;
-          if (!readiness) continue;
-          readinessByVehicleId[entry.vehicleId] = readiness;
-          await saveCachedTeslaCommandReadiness(uid, entry.vehicleId, readiness);
+        try {
+          const batchResults = await evAdapter.getCommandReadinessBatch(requests, sharedContext);
+          for (const entry of groupEntries) {
+            const readiness = batchResults?.[entry.vehicleId] || null;
+            if (!readiness) continue;
+            readinessByVehicleId[entry.vehicleId] = readiness;
+            await saveCachedTeslaCommandReadiness(uid, entry.vehicleId, readiness);
+          }
+        } catch (error) {
+          const fallbackReadiness = buildTeslaBatchErrorReadiness(error, 'batch_group_error');
+          if (!fallbackReadiness) {
+            throw error;
+          }
+          for (const entry of groupEntries) {
+            readinessByVehicleId[entry.vehicleId] = { ...fallbackReadiness };
+          }
         }
         continue;
       }
@@ -763,16 +808,24 @@ function registerEVRoutes(app, deps = {}) {
           vehicle: entry.vehicle,
           credentials: entry.credentials
         });
-        const readiness = await fetchTeslaCommandReadinessLive({
-          uid,
-          vehicleId: entry.vehicleId,
-          vehicle: entry.vehicle,
-          credentials: entry.credentials,
-          evAdapter,
-          recordTeslaApiCall: audit.recordTeslaApiCall,
-          persistCredentials
-        });
-        readinessByVehicleId[entry.vehicleId] = readiness;
+        try {
+          const readiness = await fetchTeslaCommandReadinessLive({
+            uid,
+            vehicleId: entry.vehicleId,
+            vehicle: entry.vehicle,
+            credentials: entry.credentials,
+            evAdapter,
+            recordTeslaApiCall: audit.recordTeslaApiCall,
+            persistCredentials
+          });
+          readinessByVehicleId[entry.vehicleId] = readiness;
+        } catch (error) {
+          const fallbackReadiness = buildTeslaBatchErrorReadiness(error, 'batch_entry_error');
+          if (!fallbackReadiness) {
+            throw error;
+          }
+          readinessByVehicleId[entry.vehicleId] = fallbackReadiness;
+        }
       }
     }
 
@@ -1346,7 +1399,7 @@ function registerEVRoutes(app, deps = {}) {
         if (isTeslaPermissionDeniedError(err)) {
           return res.status(403).json({
             errno: 403,
-            error: 'Tesla denied command-readiness access for one or more vehicles. Confirm your Tesla app permissions and vehicle approval, then reconnect Tesla in Settings.',
+            error: 'Tesla denied command-readiness access for one or more vehicles. Review Tesla Setup in Settings, then reconnect Tesla.',
             result: {
               reasonCode: 'tesla_permission_denied'
             }

@@ -886,6 +886,61 @@ describe('POST /api/ev/vehicles/command-readiness', () => {
       teslaBillableApiCalls: 1
     });
   });
+
+  test('isolates stale Tesla auth to the affected credential group instead of failing every vehicle', async () => {
+    const staleError = new Error('Unauthorized');
+    staleError.status = 401;
+    const adapter = makeAdapter({
+      getCommandReadinessBatch: jest.fn(async (requests, context) => {
+        if (String(context?.credentials?.accessToken || '') === 'tok-stale') {
+          throw staleError;
+        }
+        await context.recordTeslaApiCall({ category: 'data_request', status: 200, billable: true });
+        return (Array.isArray(requests) ? requests : []).reduce((acc, request) => {
+          acc[request.key] = {
+            state: 'ready_direct',
+            transport: 'direct',
+            source: 'fleet_status',
+            vehicleCommandProtocolRequired: false
+          };
+          return acc;
+        }, {});
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async (_uid, vehicleId) => ({
+          vehicleId,
+          provider: 'tesla',
+          region: 'na',
+          vin: vehicleId === 'v1' ? '5YJ3E1EA7JF000001' : '5YJ3E1EA7JF000002'
+        })),
+        getVehicleCredentials: jest.fn(async (_uid, vehicleId) => (
+          vehicleId === 'v1'
+            ? { accessToken: 'tok-stale', refreshToken: 'ref-stale', clientId: 'client-1' }
+            : { accessToken: 'tok-good', refreshToken: 'ref-good', clientId: 'client-1' }
+        )),
+        saveVehicleCommandReadiness: jest.fn(async () => {})
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app)
+      .post('/api/ev/vehicles/command-readiness')
+      .set('Authorization', 'Bearer tok')
+      .send({ vehicleIds: ['v1', 'v2'] });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result.byVehicleId.v1).toMatchObject({
+      state: 'setup_required',
+      reasonCode: 'tesla_reconnect_required'
+    });
+    expect(res.body.result.byVehicleId.v2).toMatchObject({
+      state: 'ready_direct',
+      transport: 'direct'
+    });
+    expect(adapter.getCommandReadinessBatch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('POST /api/ev/vehicles/:vehicleId/wake', () => {

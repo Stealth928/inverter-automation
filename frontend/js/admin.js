@@ -4917,7 +4917,7 @@
     }
 
     function formatApiHealthTeslaBreakdown(row) {
-        // Always render Wake/Command/Data counts as plain integers in the format x/y/z.
+        // Render Tesla category counters as wake/command/data, and keep billable total explicit.
         const rawBreakdown = row && row.evBreakdown && typeof row.evBreakdown === 'object'
             ? row.evBreakdown
             : {};
@@ -4934,11 +4934,18 @@
         const wake = grouped.get('Wake') || 0;
         const command = grouped.get('Command') || 0;
         const data = grouped.get('Data') || 0;
+        const breakdownTotal = wake + command + data;
+        const showBillableMeta = totalNumeric > 0;
+        const mismatch = showBillableMeta && breakdownTotal > totalNumeric;
+        const nonBillableDelta = mismatch ? (breakdownTotal - totalNumeric) : 0;
 
-        // If breakdown was empty but a total exists, place the total in the first position (Wake) for visibility.
-        const outWake = (wake || command || data) ? wake : (totalNumeric || 0);
+        const primary = `<span class="api-health-cell-primary">${escapeHtml(String(wake))}/${escapeHtml(String(command))}/${escapeHtml(String(data))}</span>`;
+        if (!showBillableMeta) return primary;
 
-        return `<span class="api-health-cell-primary">${escapeHtml(String(outWake))}/${escapeHtml(String(command))}/${escapeHtml(String(data))}</span>`;
+        const secondaryLabel = mismatch
+            ? `Billable ${totalNumeric} (${nonBillableDelta} non-billable)`
+            : `Billable ${totalNumeric}`;
+        return `${primary}<span class="api-health-cell-secondary">${escapeHtml(secondaryLabel)}</span>`;
     }
 
     function renderApiHealthProviderTable(providers) {

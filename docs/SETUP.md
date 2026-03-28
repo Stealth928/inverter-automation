@@ -3,7 +3,7 @@
 Purpose: canonical setup reference for local development, provider onboarding,
 runtime configuration, Firestore model, and deployment prerequisites.
 
-Last updated: 2026-03-26
+Last updated: 2026-03-28
 
 ## 1. Prerequisites
 
@@ -58,6 +58,7 @@ Public crawlable pages:
 - `/market-insights/`
 - `/rule-template-recommender/`
 - `/blog/`
+- `/amber-smartshift-vs-socrates/`
 - `/home-battery-automation-options-compared/`
 - `/battery-automation-roi-examples/`
 - `/privacy.html`

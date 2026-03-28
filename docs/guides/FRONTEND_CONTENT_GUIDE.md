@@ -1,6 +1,6 @@
 # Frontend Content Guide
 
-Last updated: 2026-03-26
+Last updated: 2026-03-28
 
 ## Purpose
 
@@ -33,6 +33,8 @@ Examples:
 - `frontend/rule-template-recommender/index.html` -> `/rule-template-recommender/`
 - `frontend/home-battery-automation-options-compared/index.html` ->
   `/home-battery-automation-options-compared/`
+- `frontend/amber-smartshift-vs-socrates/index.html` ->
+  `/amber-smartshift-vs-socrates/`
 - `frontend/battery-automation-roi-examples/index.html` ->
   `/battery-automation-roi-examples/`
 
@@ -48,6 +50,7 @@ Current crawlable URLs are:
 - `/market-insights/`
 - `/rule-template-recommender/`
 - `/blog/`
+- `/amber-smartshift-vs-socrates/`
 - `/home-battery-automation-options-compared/`
 - `/battery-automation-roi-examples/`
 - `/privacy.html`
@@ -124,6 +127,7 @@ Current blog-post policy:
 Examples:
 
 - `/home-battery-automation-options-compared/`
+- `/amber-smartshift-vs-socrates/`
 - `/battery-automation-roi-examples/`
 
 If `/blog/<slug>/` aliases are needed, add redirects in `firebase.json`, but

@@ -1,6 +1,6 @@
 # SoCrates Product Capability Guide
 
-Last updated: 2026-03-26
+Last updated: 2026-03-28
 
 ## Purpose
 
@@ -58,6 +58,7 @@ not ship a separate native mobile app.
 | `/market-insights/` | Public AEMO market-insights preview | Public |
 | `/rule-template-recommender/` | Public rule-template recommender | Public |
 | `/blog/` | Blog index | Public |
+| `/amber-smartshift-vs-socrates/` | Blog post | Public |
 | `/home-battery-automation-options-compared/` | Blog post | Public |
 | `/battery-automation-roi-examples/` | Blog post | Public |
 | `/privacy.html` | Privacy policy | Public |

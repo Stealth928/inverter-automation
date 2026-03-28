@@ -14,6 +14,7 @@ Full context: https://socratesautomation.com/llms-full.txt
 - https://socratesautomation.com/market-insights/
 - https://socratesautomation.com/rule-template-recommender/
 - https://socratesautomation.com/blog/
+- https://socratesautomation.com/amber-smartshift-vs-socrates/
 - https://socratesautomation.com/home-battery-automation-options-compared/
 - https://socratesautomation.com/battery-automation-roi-examples/
 - https://socratesautomation.com/privacy.html

@@ -3688,11 +3688,11 @@
         }
 
         function isEVPotentiallyStaleStatus(status = {}, statusMeta = {}) {
-            if (!isEVReliableImmediateStatus(statusMeta)) {
-                return true;
-            }
             const ageMs = getEVStatusAgeMs(status);
-            return Number.isFinite(ageMs) && ageMs > 10 * 60 * 1000;
+            if (Number.isFinite(ageMs)) {
+                return ageMs > 10 * 60 * 1000;
+            }
+            return !isEVReliableImmediateStatus(statusMeta);
         }
 
         function isEVDisconnectedStatus(status = {}) {
@@ -3715,12 +3715,71 @@
             return /credential|reconnect tesla|authorization expired|invalid.?token|expired/.test(String(errorText || '').trim().toLowerCase());
         }
 
+        function isEVPermissionDeniedError(errorText = '') {
+            const normalized = String(errorText || '').trim().toLowerCase();
+            return /permission|scope|approval|vehicle approval|denied/.test(normalized) && !isEVReconnectRequiredError(normalized);
+        }
+
+        function getEVSetupRequiredReasonCode(payload = {}) {
+            return String(payload?.reasonCode || payload?.result?.reasonCode || '').trim().toLowerCase();
+        }
+
+        function isEVSetupRequiredReasonCode(reasonCode = '') {
+            return [
+                'tesla_reconnect_required',
+                'tesla_permission_denied',
+                'vehicle_credentials_not_configured',
+                'tesla_vehicle_lookup_failed'
+            ].includes(String(reasonCode || '').trim().toLowerCase());
+        }
+
+        function getEVSetupRequiredMessage(reasonCode = '') {
+            const normalizedReasonCode = String(reasonCode || '').trim().toLowerCase();
+            if (normalizedReasonCode === 'vehicle_credentials_not_configured') {
+                return 'Vehicle credentials not configured. Finish Tesla setup in Settings to enable status visibility for this vehicle.';
+            }
+            if (normalizedReasonCode === 'tesla_permission_denied') {
+                return 'Tesla denied access for this vehicle. Review Tesla Setup in Settings, then reconnect Tesla.';
+            }
+            if (normalizedReasonCode === 'tesla_vehicle_lookup_failed') {
+                return 'Tesla vehicle lookup failed. Verify VIN and region in Settings, then reconnect Tesla.';
+            }
+            if (normalizedReasonCode === 'tesla_reconnect_required') {
+                return 'Tesla authorization expired for this vehicle. Reconnect Tesla in Settings.';
+            }
+            return 'Tesla access for this vehicle needs attention. Reconnect Tesla in Settings.';
+        }
+
+        function extractEVSetupRequiredMessage(payload = {}) {
+            const reasonCode = getEVSetupRequiredReasonCode(payload);
+            if (payload?.actionRequired === true && isEVSetupRequiredReasonCode(reasonCode)) {
+                return getEVSetupRequiredMessage(reasonCode);
+            }
+            return '';
+        }
+
         function getEVConnectionDescriptor(statusError = '') {
             if (statusError && /credential/i.test(statusError)) {
                 return {
                     kind: 'error',
-                    label: 'Setup Required',
-                    detail: 'Connect Tesla in Settings to enable status visibility'
+                    label: 'Finish setup',
+                    detail: 'Finish Tesla setup in Settings to enable status visibility.'
+                };
+            }
+
+            if (isEVReconnectRequiredError(statusError)) {
+                return {
+                    kind: 'warn',
+                    label: 'Reconnect Tesla',
+                    detail: 'Reconnect Tesla in Settings to restore live status visibility.'
+                };
+            }
+
+            if (isEVPermissionDeniedError(statusError)) {
+                return {
+                    kind: 'warn',
+                    label: 'Review Tesla Setup',
+                    detail: 'Review Tesla Setup in Settings, then reconnect Tesla.'
                 };
             }
 
@@ -3762,8 +3821,8 @@
             if (!hasEVVehicleCredentialsConfigured(selectedVehicle)) {
                 return {
                     kind: 'warn',
-                    label: 'Setup Required',
-                    detail: 'Finish Tesla OAuth in Settings before charging controls can be enabled.',
+                    label: 'Finish setup',
+                    detail: 'Finish Tesla setup in Settings before charging controls can be enabled.',
                     canControl: false,
                     canWake: false
                 };
@@ -3772,8 +3831,18 @@
             if (isEVReconnectRequiredError(statusError) || isEVReconnectRequiredError(readinessError)) {
                 return {
                     kind: 'warn',
-                    label: 'Setup Required',
+                    label: 'Reconnect Tesla',
                     detail: 'Reconnect Tesla in Settings before charging controls can be enabled.',
+                    canControl: false,
+                    canWake: false
+                };
+            }
+
+            if (isEVPermissionDeniedError(statusError) || isEVPermissionDeniedError(readinessError)) {
+                return {
+                    kind: 'warn',
+                    label: 'Review Tesla Setup',
+                    detail: 'Review Tesla Setup in Settings, then reconnect Tesla.',
                     canControl: false,
                     canWake: false
                 };
@@ -3839,7 +3908,7 @@
             if (state === 'setup_required') {
                 return {
                     kind: 'warn',
-                    label: 'Setup Required',
+                    label: 'Reconnect Tesla',
                     detail: 'Reconnect Tesla in Settings before charging controls can be enabled.',
                     canControl: false,
                     canWake: false
@@ -3937,11 +4006,21 @@
                 const vehicleId = String(vehicle.vehicleId || '');
                 const hasCredentials = hasEVVehicleCredentialsConfigured(vehicle);
                 const status = evDashboardState.statusByVehicleId[vehicleId] || null;
+                const statusMeta = evDashboardState.statusMetaByVehicleId[vehicleId] || {};
+                const readinessMeta = evDashboardState.readinessMetaByVehicleId[vehicleId] || {};
+                const statusError = String(statusMeta.error || '');
+                const readinessError = String(readinessMeta.error || '');
                 const socText = formatEVSoc(status?.socPct);
                 const chargingText = formatEVChargingState(status?.chargingState);
-                const summaryText = hasCredentials
-                    ? (status ? `${socText} • ${chargingText}` : 'Status pending')
-                    : 'Setup Required';
+                const needsReconnect = isEVReconnectRequiredError(statusError) || isEVReconnectRequiredError(readinessError);
+                const needsReview = isEVPermissionDeniedError(statusError) || isEVPermissionDeniedError(readinessError);
+                const summaryText = !hasCredentials
+                    ? 'Finish setup'
+                    : needsReconnect
+                    ? 'Reconnect Tesla'
+                    : needsReview
+                    ? 'Review Tesla Setup'
+                    : (status ? `${socText} • ${chargingText}` : 'Status pending');
 
                 const button = document.createElement('button');
                 button.type = 'button';
@@ -4312,14 +4391,24 @@
                 }
 
                 if (response.ok && data && data.errno === 0 && data.result) {
-                    evDashboardState.commandReadinessByVehicleId[selectedId] = data.result;
+                    const setupRequiredMessage = extractEVSetupRequiredMessage(data);
+                    const setupRequiredReasonCode = getEVSetupRequiredReasonCode(data);
+                    evDashboardState.commandReadinessByVehicleId[selectedId] = (
+                        setupRequiredMessage && isEVSetupRequiredReasonCode(setupRequiredReasonCode)
+                    )
+                        ? {
+                            ...data.result,
+                            state: 'setup_required',
+                            reasonCode: setupRequiredReasonCode || data.result.reasonCode || 'tesla_reconnect_required'
+                        }
+                        : data.result;
                     evDashboardState.readinessMetaByVehicleId[selectedId] = {
                         source: data.result.source || 'readiness',
                         loadedAtMs: Date.now(),
-                        error: '',
+                        error: setupRequiredMessage,
                         loading: false
                     };
-                    return data.result;
+                    return evDashboardState.commandReadinessByVehicleId[selectedId];
                 }
 
                 delete evDashboardState.commandReadinessByVehicleId[selectedId];
@@ -4378,10 +4467,11 @@
 
                 if (response.ok && data && data.errno === 0 && data.result) {
                     evDashboardState.statusByVehicleId[selectedId] = data.result;
+                    const setupRequiredMessage = extractEVSetupRequiredMessage(data);
                     evDashboardState.statusMetaByVehicleId[selectedId] = {
                         source: data.source || (live ? 'live' : 'cache'),
                         loadedAtMs: Date.now(),
-                        error: ''
+                        error: setupRequiredMessage
                     };
                     return data.result;
                 }

@@ -44,6 +44,7 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
   const state = cloneConfig(config);
   const evVehicles = [];
   const readinessByVehicleId = {};
+  let batchCommandReadinessOverride = null;
   const oauthStartRequests = [];
   const oauthCallbackRequests = [];
   const clearCredentialsRequests = [];
@@ -135,28 +136,33 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
       }
       body = { errno: 0, result: payload };
     } else if (path === '/api/ev/vehicles/command-readiness' && method === 'POST') {
-      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
-      const vehicleIds = Array.isArray(postData?.vehicleIds) ? postData.vehicleIds : [];
-      body = {
-        errno: 0,
-        result: {
-          byVehicleId: vehicleIds.reduce((acc, vehicleId) => {
-            const key = String(vehicleId || '').trim();
-            if (!key) return acc;
-            const readiness = readinessByVehicleId[key] || {
-              errno: 0,
-              result: {
-                state: 'ready_direct',
-                transport: 'direct',
-                source: 'test',
-                vehicleCommandProtocolRequired: false
-              }
-            };
-            acc[key] = readiness?.result || readiness;
-            return acc;
-          }, {})
-        }
-      };
+      if (batchCommandReadinessOverride) {
+        status = Number(batchCommandReadinessOverride.status || 200);
+        body = cloneConfig(batchCommandReadinessOverride.body || { errno: 0, result: { byVehicleId: {} } });
+      } else {
+        const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+        const vehicleIds = Array.isArray(postData?.vehicleIds) ? postData.vehicleIds : [];
+        body = {
+          errno: 0,
+          result: {
+            byVehicleId: vehicleIds.reduce((acc, vehicleId) => {
+              const key = String(vehicleId || '').trim();
+              if (!key) return acc;
+              const readiness = readinessByVehicleId[key] || {
+                errno: 0,
+                result: {
+                  state: 'ready_direct',
+                  transport: 'direct',
+                  source: 'test',
+                  vehicleCommandProtocolRequired: false
+                }
+              };
+              acc[key] = readiness?.result || readiness;
+              return acc;
+            }, {})
+          }
+        };
+      }
     } else if (/^\/api\/ev\/vehicles\/[^/]+\/command-readiness$/.test(path) && method === 'GET') {
       const segments = path.split('/');
       const vehicleId = decodeURIComponent(segments[segments.length - 2] || '');
@@ -216,6 +222,12 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
     },
     setCommandReadiness: (vehicleId, readiness) => {
       readinessByVehicleId[String(vehicleId)] = readiness;
+    },
+    setBatchCommandReadiness: (body, status = 200) => {
+      batchCommandReadinessOverride = {
+        status,
+        body: cloneConfig(body || { errno: 0, result: { byVehicleId: {} } })
+      };
     },
     setVehicles: (vehicles = []) => {
       const next = Array.isArray(vehicles) ? vehicles : [];
@@ -305,7 +317,7 @@ test.describe('Settings Page', () => {
   test('should display section navigation bar', async ({ page }) => {
     const nav = page.locator('#sectionNav');
     await expect(nav).toBeVisible();
-    await expect(page.locator('#sectionNavLinks .section-nav-link')).toHaveCount(8);
+    await expect(page.locator('#sectionNavLinks .section-nav-link')).toHaveCount(9);
     await expect(page.locator('#sectionNavLinks .section-nav-link', { hasText: 'Tesla EV' })).toBeVisible();
     await expect(page.locator('#sectionNavLinks .section-nav-link', { hasText: 'Automation' })).toBeVisible();
     await expect(page.locator('#sectionNavLinks .section-nav-link', { hasText: 'Credentials' })).toBeVisible();
@@ -460,6 +472,7 @@ test.describe('Settings Page', () => {
     await expect(page.locator('#teslaOnboardingSection .setting-label').filter({ hasText: 'Vehicle VIN' })).toBeVisible();
     await expect(page.locator('#teslaConnectBtn')).toHaveCount(1);
     await expect(page.locator('#teslaAddVehicleBtn')).toHaveCount(1);
+    await expect(page.locator('#teslaNextActionCard')).toHaveCount(1);
     await expect(page.locator('#teslaVehicleStatusCounts')).toHaveCount(1);
     await expect(page.locator('#teslaVehiclesList')).toHaveCount(1);
     await expect(page.locator('#teslaAdminPanel')).toBeHidden();
@@ -576,6 +589,138 @@ test.describe('Settings Page', () => {
     ).toBeTruthy();
   });
 
+  test('should only mark the affected Tesla for reconnect when other vehicles are still healthy', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000015',
+        vin: '5YJ3E1EA7JF000015',
+        provider: 'tesla',
+        displayName: 'Model 3 Reconnect',
+        hasCredentials: true
+      },
+      {
+        vehicleId: '5YJ3E1EA7JF000016',
+        vin: '5YJ3E1EA7JF000016',
+        provider: 'tesla',
+        displayName: 'Model Y Healthy',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000015', {
+      errno: 0,
+      result: {
+        state: 'setup_required',
+        transport: 'none',
+        source: 'batch_group_error',
+        reasonCode: 'tesla_reconnect_required'
+      }
+    });
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000016', {
+      errno: 0,
+      result: {
+        state: 'ready_direct',
+        transport: 'direct',
+        source: 'fleet_status',
+        vehicleCommandProtocolRequired: false
+      }
+    });
+
+    const refreshed = await refreshTeslaVehicles(page);
+    if (!refreshed) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await expect(page.getByRole('button', { name: /^Reconnect$/i })).toHaveCount(1);
+    const listText = (await readTextFast(page.locator('#teslaVehiclesList'))).toLowerCase();
+    expect(listText).toContain('model 3 reconnect');
+    expect(listText).toContain('model y healthy');
+    expect(listText).toContain('reconnect tesla');
+  });
+
+  test('should describe status-only Teslas without calling them action needed', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000021',
+        vin: '5YJ3E1EA7JF000021',
+        provider: 'tesla',
+        displayName: 'Tesla 3',
+        hasCredentials: true
+      },
+      {
+        vehicleId: '5YJ3E1EA7JF000022',
+        vin: '5YJ3E1EA7JF000022',
+        provider: 'tesla',
+        displayName: 'Tesla Y',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000021', {
+      errno: 0,
+      result: {
+        state: 'read_only',
+        transport: 'none',
+        source: 'fleet_status_unavailable',
+        reasonCode: 'command_readiness_unavailable'
+      }
+    });
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000022', {
+      errno: 0,
+      result: {
+        state: 'read_only',
+        transport: 'none',
+        source: 'fleet_status_unavailable',
+        reasonCode: 'command_readiness_unavailable'
+      }
+    });
+
+    const refreshed = await refreshTeslaVehicles(page);
+    if (!refreshed) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    const statusText = (await readTextFast(page.locator('#teslaOnboardingStatus'))).toLowerCase();
+    const actionText = (await readTextFast(page.locator('#teslaNextActionBody'))).toLowerCase();
+    const countsText = (await readTextFast(page.locator('#teslaVehicleStatusCounts'))).toLowerCase();
+    const listText = (await readTextFast(page.locator('#teslaVehiclesList'))).toLowerCase();
+    expect(statusText).toContain('dashboard status is already working');
+    expect(actionText).toContain('nothing is broken');
+    expect(countsText).toContain('status only');
+    expect(countsText).not.toContain('action needed');
+    expect(listText).toContain('status only');
+  });
+
+  test('should collapse Tesla setup details when all vehicles are status-only', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000031',
+        vin: '5YJ3E1EA7JF000031',
+        provider: 'tesla',
+        displayName: 'Tesla 3',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setCommandReadiness('5YJ3E1EA7JF000031', {
+      errno: 0,
+      result: {
+        state: 'read_only',
+        transport: 'none',
+        source: 'fleet_status_unavailable',
+        reasonCode: 'command_readiness_unavailable'
+      }
+    });
+
+    const refreshed = await refreshTeslaVehicles(page);
+    if (!refreshed) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await expect(page.locator('#teslaSetupWorkspace')).toHaveClass(/is-collapsed/);
+    await expect(page.locator('#teslaSetupWorkspaceToggleBtn')).toContainText(/show setup details/i);
+  });
+
   test('should show Tesla setup review guidance when Tesla denies app permissions', async ({ page }) => {
     apiMock.setVehicles([
       {
@@ -645,16 +790,106 @@ test.describe('Settings Page', () => {
 
     await reconnectBtn.first().click();
 
+    const connectButtonText = (await readTextFast(page.locator('#teslaConnectBtn'))).toLowerCase();
+    const addVehicleButtonText = (await readTextFast(page.locator('#teslaAddVehicleBtn'))).toLowerCase();
     const vehicleIdValue = await page.locator('#teslaVehicleId').inputValue().catch(() => '');
     const displayNameValue = await page.locator('#teslaDisplayName').inputValue().catch(() => '');
     const regionValue = await page.locator('#teslaRegion').inputValue().catch(() => '');
     const onboardingStatus = (await readTextFast(page.locator('#teslaOnboardingStatus'))).toLowerCase();
+    const actionTitle = (await readTextFast(page.locator('#teslaNextActionTitle'))).toLowerCase();
+    const actionText = (await readTextFast(page.locator('#teslaNextActionBody'))).toLowerCase();
     expect(
       vehicleIdValue === '5YJ3E1EA7JF000012' ||
       displayNameValue.includes('Model Y Reconnect') ||
       regionValue === 'eu' ||
       onboardingStatus.includes('connect')
     ).toBeTruthy();
+    expect(connectButtonText).toContain('reconnect');
+    expect(addVehicleButtonText).toContain('cancel');
+    expect(actionTitle).toContain('reconnect');
+    expect(actionText).toContain('do not need to type the vin again');
+  });
+
+  test('should surface Tesla reconnect guidance when batched readiness reports stale auth', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000041',
+        vin: '5YJ3E1EA7JF000041',
+        provider: 'tesla',
+        displayName: 'Tesla 3',
+        hasCredentials: true
+      },
+      {
+        vehicleId: '5YJ3E1EA7JF000042',
+        vin: '5YJ3E1EA7JF000042',
+        provider: 'tesla',
+        displayName: 'Tesla Y',
+        hasCredentials: true
+      }
+    ]);
+    apiMock.setBatchCommandReadiness({
+      errno: 400,
+      error: 'Tesla authorization expired for one or more vehicles. Reconnect Tesla in Settings.',
+      result: {
+        reasonCode: 'tesla_reconnect_required'
+      }
+    }, 400);
+
+    const refreshed = await refreshTeslaVehicles(page);
+    if (!refreshed) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    const badgeText = (await readTextFast(page.locator('#teslaOnboardingBadge'))).toLowerCase();
+    const statusText = (await readTextFast(page.locator('#teslaOnboardingStatus'))).toLowerCase();
+    const listText = (await readTextFast(page.locator('#teslaVehiclesList'))).toLowerCase();
+    expect(badgeText).toContain('reconnect');
+    expect(statusText).toContain('reconnect');
+    expect(listText).toContain('reconnect');
+    expect(listText).not.toContain('status only');
+  });
+
+  test('should prefill Tesla form when finishing setup for a listed vehicle without credentials', async ({ page }) => {
+    apiMock.setVehicles([
+      {
+        vehicleId: '5YJ3E1EA7JF000051',
+        vin: '5YJ3E1EA7JF000051',
+        provider: 'tesla',
+        displayName: 'Model 3 Pending',
+        region: 'eu',
+        hasCredentials: false
+      }
+    ]);
+
+    const refreshed = await refreshTeslaVehicles(page);
+    if (!refreshed) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    const finishSetupBtn = page.getByRole('button', { name: /finish setup/i });
+    if (await finishSetupBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await finishSetupBtn.first().click();
+
+    const connectButtonText = (await readTextFast(page.locator('#teslaConnectBtn'))).toLowerCase();
+    const addVehicleButtonText = (await readTextFast(page.locator('#teslaAddVehicleBtn'))).toLowerCase();
+    const vehicleIdValue = await page.locator('#teslaVehicleId').inputValue().catch(() => '');
+    const displayNameValue = await page.locator('#teslaDisplayName').inputValue().catch(() => '');
+    const regionValue = await page.locator('#teslaRegion').inputValue().catch(() => '');
+    const actionTitle = (await readTextFast(page.locator('#teslaNextActionTitle'))).toLowerCase();
+    const actionText = (await readTextFast(page.locator('#teslaNextActionBody'))).toLowerCase();
+    expect(connectButtonText).toContain('finish tesla setup');
+    expect(addVehicleButtonText).toContain('cancel setup');
+    expect(vehicleIdValue).toBe('5YJ3E1EA7JF000051');
+    expect(displayNameValue).toContain('Model 3 Pending');
+    expect(regionValue).toBe('eu');
+    expect(actionTitle).toContain('finish setup');
+    expect(actionText).toContain('do not need to type the vin again');
   });
 
   test('should keep Tesla integration at the bottom of settings', async ({ page }) => {

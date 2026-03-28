@@ -223,7 +223,7 @@ test.describe('SEO Metadata', () => {
     await expect(page.locator('#importStarterPackLink')).toHaveAttribute('href', /\/rules-library\.html\?recommend=/);
   });
 
-  test('blog index and first post are crawlable with structured metadata', async ({ page }) => {
+  test('blog index and posts are crawlable with structured metadata', async ({ page }) => {
     await page.goto('/blog/');
 
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/blog/');
@@ -236,8 +236,25 @@ test.describe('SEO Metadata', () => {
     let ldJsonText = await structuredData.first().textContent();
     expect(ldJsonText).toContain('"@type": "CollectionPage"');
     expect(ldJsonText).toContain('"@type": "ItemList"');
+    expect(ldJsonText).toContain('Amber SmartShift vs SoCrates: Keep Amber Pricing, Replace the Black Box');
     expect(ldJsonText).toContain('Home Battery Automation Options Compared: Manual Schedules, Home Assistant, Modbus and Managed Platforms');
     expect(ldJsonText).toContain('Battery Automation ROI: What Smarter Rules Actually Look Like');
+
+    await page.goto('/amber-smartshift-vs-socrates/');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://socratesautomation.com/amber-smartshift-vs-socrates/');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+    await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article');
+    await expect(page.locator('meta[property="article:published_time"]')).toHaveAttribute('content', '2026-03-28');
+    await expect(page.locator('article h1')).toContainText('Amber SmartShift vs SoCrates: Keep Amber Pricing, Replace the Black Box');
+
+    structuredData = page.locator('script[type="application/ld+json"]');
+    await expect(structuredData).toHaveCount(1);
+    ldJsonText = await structuredData.first().textContent();
+    expect(ldJsonText).toContain('"@type": "BlogPosting"');
+    expect(ldJsonText).toContain('"@type": "BreadcrumbList"');
+    expect(ldJsonText).toContain('"@type": "FAQPage"');
+    expect(ldJsonText).toContain('"datePublished": "2026-03-28"');
 
     await page.goto('/home-battery-automation-options-compared/');
 
@@ -286,6 +303,7 @@ test.describe('SEO Metadata', () => {
     const sitemapText = await sitemapResponse.text();
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/blog/</loc>');
+    expect(sitemapText).toContain('<loc>https://socratesautomation.com/amber-smartshift-vs-socrates/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-automation-roi-examples/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/home-battery-automation-options-compared/</loc>');
     expect(sitemapText).toContain('<loc>https://socratesautomation.com/battery-roi-calculator.html</loc>');
@@ -305,6 +323,7 @@ test.describe('SEO Metadata', () => {
     expect(llmsText).toContain('/battery-wear-estimator.html');
     expect(llmsText).toContain('/market-insights/');
     expect(llmsText).toContain('/rule-template-recommender/');
+    expect(llmsText).toContain('/amber-smartshift-vs-socrates/');
     expect(llmsText).not.toContain('/market-insights.html');
     expect(llmsText).toContain('/llms-full.txt');
 
@@ -315,6 +334,7 @@ test.describe('SEO Metadata', () => {
     expect(llmsFullText).toContain('battery-wear-estimator.html');
     expect(llmsFullText).toContain('/market-insights/');
     expect(llmsFullText).toContain('/rule-template-recommender/');
+    expect(llmsFullText).toContain('amber-smartshift-vs-socrates');
     expect(llmsFullText).toContain('home-battery-automation-options-compared');
     expect(llmsFullText).toContain('Do not rely on authenticated pages');
     expect(llmsFullText).toContain('full Market Insights application view remains behind login');

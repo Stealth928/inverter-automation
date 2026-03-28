@@ -565,7 +565,7 @@ test.describe('Dashboard Page', () => {
 
     const pillsText = ((await page.locator('#evSelectedStatusPills').textContent().catch(() => '')) || '').trim();
     const controlsVisible = await page.locator('#evControls').isVisible().catch(() => false);
-    expect(pillsText.includes('Setup Required') || !controlsVisible).toBeTruthy();
+    expect(pillsText.includes('Finish setup') || !controlsVisible).toBeTruthy();
   });
 
   test('should skip EV status fetch for vehicles pending Tesla auth and show setup required', async ({ page }) => {
@@ -587,8 +587,8 @@ test.describe('Dashboard Page', () => {
       return;
     }
 
-    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('Setup Required');
-    await expect(page.locator('#evSelectedStatusPills')).toContainText('Setup Required');
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText('Finish setup');
+    await expect(page.locator('#evSelectedStatusPills')).toContainText('Finish setup');
     expect(statusCallCount).toBe(0);
   });
 
@@ -881,6 +881,60 @@ test.describe('Dashboard Page', () => {
     expect(commandRequests).toHaveLength(0);
   });
 
+  test('should not recommend waking when cached unplugged Tesla status is still fresh', async ({ page }) => {
+    const commandRequests = [];
+    const freshAsOfIso = new Date(Date.now() - (2 * 60 * 1000)).toISOString();
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-fresh-plug', displayName: 'Model 3', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-fresh-plug': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 56,
+              chargingState: 'stopped',
+              isPluggedIn: false,
+              isHome: true,
+              rangeKm: 211,
+              chargeLimitPct: 80,
+              asOfIso: freshAsOfIso
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-fresh-plug': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      },
+      onCommandRequest: async (request) => {
+        commandRequests.push(request.postDataJSON());
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).not.toContainText(/Might Need Wake/i);
+    await expect(page.locator('#evWakePrompt')).toBeHidden();
+
+    await page.locator('#evStartChargingBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/not plugged in/i);
+    expect(commandRequests).toHaveLength(0);
+  });
+
   test('should keep normal unplugged guidance when Tesla live status says the cable is disconnected', async ({ page }) => {
     const commandRequests = [];
 
@@ -1020,21 +1074,11 @@ test.describe('Dashboard Page', () => {
     }
 
     await expect(page.locator('#evControls')).toBeHidden();
-    const hintText = ((await page.locator('#evCommandHint').textContent().catch(() => '')) || '').toLowerCase();
-    const pillsText = ((await page.locator('#evSelectedStatusPills').textContent().catch(() => '')) || '').toLowerCase();
-    if (!hintText && !pillsText) {
-      expect(true).toBeTruthy();
-      return;
-    }
-    expect(
-      hintText.includes('signed command') ||
-      hintText.includes('proxy') ||
-      hintText.includes('virtual-key') ||
-      hintText.includes('virtual key') ||
-      hintText.includes('pairing') ||
-      pillsText.includes('proxy required') ||
-      pillsText.includes('pairing required')
-    ).toBeTruthy();
+    await expect.poll(async () => {
+      const hintText = ((await page.locator('#evCommandHint').textContent().catch(() => '')) || '').toLowerCase();
+      const pillsText = ((await page.locator('#evSelectedStatusPills').textContent().catch(() => '')) || '').toLowerCase();
+      return `${hintText} ${pillsText}`.trim();
+    }).toMatch(/signed command|proxy|virtual-key|virtual key|pairing|proxy required|pairing required/i);
   });
 
   test('should disable charging controls after Tesla reconnect error to avoid repeat command calls', async ({ page }) => {
@@ -1108,8 +1152,56 @@ test.describe('Dashboard Page', () => {
     await expect(page.locator('#evOverviewMessage')).toContainText(/authorization expired/i);
     await expect(page.locator('#evCommandHint')).toContainText(/reconnect tesla in settings/i);
     await expect(page.locator('#evControls')).toBeHidden();
-    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Setup Required/i);
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Reconnect Tesla/i);
     expect(commandRequests).toHaveLength(1);
+  });
+
+  test('should treat cached Tesla fallback marked actionRequired as setup required before commands are attempted', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-cache-auth-stale', displayName: 'Model 3', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-cache-auth-stale': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache_auth_stale',
+            actionRequired: true,
+            reasonCode: 'tesla_reconnect_required',
+            result: {
+              socPct: 58,
+              chargingState: 'stopped',
+              isPluggedIn: true,
+              rangeKm: 280,
+              chargeLimitPct: 80,
+              asOfIso: new Date().toISOString()
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-cache-auth-stale': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache_auth_stale',
+            actionRequired: true,
+            reasonCode: 'tesla_reconnect_required',
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Reconnect Tesla/i);
+    await expect(page.locator('#evControls')).toBeHidden();
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab').first()).toContainText(/Reconnect Tesla/i);
   });
 
   test('window.sharedUtils exposes getStoredAmberSiteId and setStoredAmberSiteId', async ({ page }) => {

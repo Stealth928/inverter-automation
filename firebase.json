@@ -52,6 +52,16 @@
         "type": 301
       },
       {
+        "source": "/blog/amber-smartshift-vs-socrates",
+        "destination": "/amber-smartshift-vs-socrates/",
+        "type": 301
+      },
+      {
+        "source": "/blog/amber-smartshift-vs-socrates/",
+        "destination": "/amber-smartshift-vs-socrates/",
+        "type": 301
+      },
+      {
         "source": "/blog/what-smarter-battery-automation-looks-like-as-you-level-up",
         "destination": "/battery-automation-roi-examples/",
         "type": 301
@@ -108,6 +118,15 @@
       },
       {
         "source": "/home-battery-automation-options-compared/**",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+          }
+        ]
+      },
+      {
+        "source": "/amber-smartshift-vs-socrates/**",
         "headers": [
           {
             "key": "X-Robots-Tag",

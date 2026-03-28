@@ -63,6 +63,8 @@ test('blog alias redirects still point to the canonical root-level post URLs', (
     ['/blog/battery-automation-roi-examples/', '/battery-automation-roi-examples/'],
     ['/blog/home-battery-automation-options-compared', '/home-battery-automation-options-compared/'],
     ['/blog/home-battery-automation-options-compared/', '/home-battery-automation-options-compared/'],
+    ['/blog/amber-smartshift-vs-socrates', '/amber-smartshift-vs-socrates/'],
+    ['/blog/amber-smartshift-vs-socrates/', '/amber-smartshift-vs-socrates/'],
     ['/blog/what-smarter-battery-automation-looks-like-as-you-level-up', '/battery-automation-roi-examples/'],
     ['/blog/what-smarter-battery-automation-looks-like-as-you-level-up/', '/battery-automation-roi-examples/']
   ]);

@@ -130,8 +130,11 @@
         let teslaRecentlyConnectedVin = '';
         let teslaRecentlyConnectedAtMs = 0;
         let teslaVehiclesState = [];
+        let teslaReconnectDraft = null;
+        let teslaLastVehicleSummary = null;
         let teslaIsAdmin = false;
         let teslaSharedAppConfig = null; // { configured, clientId, domain, domainRegistered }
+        let teslaSetupWorkspaceExpanded = true;
         const NOTIFICATION_PREF_DEFAULTS = Object.freeze({
             inboxEnabled: false,
             broadcastsEnabled: false,
@@ -181,16 +184,288 @@
                 adminTools: document.getElementById('teslaAdminTools'),
                 adminQuickSteps: document.getElementById('teslaAdminQuickSteps'),
                 userQuickSteps: document.getElementById('teslaUserQuickSteps'),
+                setupWorkspace: document.getElementById('teslaSetupWorkspace'),
+                setupWorkspaceToggleBtn: document.getElementById('teslaSetupWorkspaceToggleBtn'),
                 saveAppConfigBtn: document.getElementById('teslaSaveAppConfigBtn'),
                 saveAppConfigStatus: document.getElementById('teslaSaveAppConfigStatus'),
-                vehiclePanelStep: document.getElementById('teslaVehiclePanelStep')
+                vehiclePanelStep: document.getElementById('teslaVehiclePanelStep'),
+                vehiclePanelTitle: document.getElementById('teslaVehiclePanelTitle'),
+                vehiclePanelCopy: document.getElementById('teslaVehiclePanelCopy'),
+                nextActionCard: document.getElementById('teslaNextActionCard'),
+                nextActionTitle: document.getElementById('teslaNextActionTitle'),
+                nextActionBody: document.getElementById('teslaNextActionBody')
             };
+        }
+
+        function createTeslaStatusSummary(summary = {}) {
+            return {
+                connected: Number(summary.connected || 0),
+                status_only: Number(summary.status_only || 0),
+                setup_required: Number(summary.setup_required || 0),
+                action_needed: Number(summary.action_needed || 0),
+                reconnect_required: Number(summary.reconnect_required || 0),
+                proxy_required: Number(summary.proxy_required || 0)
+            };
+        }
+
+        function getTeslaReconnectDraftDisplayName() {
+            return String(teslaReconnectDraft?.displayName || teslaReconnectDraft?.vehicleId || 'this vehicle').trim() || 'this vehicle';
+        }
+
+        function getTeslaReconnectDraftMode() {
+            return String(teslaReconnectDraft?.mode || '').trim().toLowerCase();
+        }
+
+        function isTeslaReconnectDraftActive() {
+            return getTeslaReconnectDraftMode() === 'reconnect';
+        }
+
+        function isTeslaSetupDraftActive() {
+            return getTeslaReconnectDraftMode() === 'setup';
+        }
+
+        function isTeslaVehicleActionDraftActive() {
+            return Boolean(teslaReconnectDraft?.vehicleId);
+        }
+
+        function normalizeTeslaCommandReadinessError(response = null, source = 'settings_api') {
+            const reasonCode = String(response?.reasonCode || response?.result?.reasonCode || '').trim();
+            const warning = extractApiErrorMessage(response, 'Command readiness unavailable');
+            if (
+                reasonCode === 'vehicle_credentials_not_configured'
+                || reasonCode === 'tesla_reconnect_required'
+                || reasonCode === 'tesla_permission_denied'
+                || reasonCode === 'tesla_vehicle_lookup_failed'
+            ) {
+                return {
+                    state: 'setup_required',
+                    transport: 'none',
+                    source,
+                    reasonCode
+                };
+            }
+            if (reasonCode === 'tesla_vehicle_cmds_scope_required') {
+                return {
+                    state: 'oauth_scope_upgrade_required',
+                    transport: 'none',
+                    source,
+                    reasonCode
+                };
+            }
+            return {
+                state: 'read_only',
+                transport: 'none',
+                source,
+                ...(reasonCode ? { reasonCode } : {}),
+                ...(warning ? { warning } : {})
+            };
+        }
+
+        function shouldTeslaSetupWorkspaceAutoExpand(summary = null) {
+            const resolvedSummary = createTeslaStatusSummary(summary || teslaLastVehicleSummary || {});
+            if (readTeslaPendingOAuth()) return true;
+            if (isTeslaVehicleActionDraftActive()) return true;
+            if (teslaVehiclesState.length === 0) return true;
+            if (teslaIsAdmin && !(teslaSharedAppConfig?.configured === true)) return true;
+            return Number(resolvedSummary.setup_required || 0) > 0
+                || Number(resolvedSummary.action_needed || 0) > 0
+                || Number(resolvedSummary.reconnect_required || 0) > 0
+                || Number(resolvedSummary.proxy_required || 0) > 0;
+        }
+
+        function syncTeslaSetupWorkspaceVisibility(summary = null, options = {}) {
+            const { setupWorkspace, setupWorkspaceToggleBtn } = getTeslaOnboardingElements();
+            if (!setupWorkspace || !setupWorkspaceToggleBtn) return;
+
+            if (options.forceExpanded === true) {
+                teslaSetupWorkspaceExpanded = true;
+            } else if (options.forceCollapsed === true) {
+                teslaSetupWorkspaceExpanded = false;
+            } else {
+                teslaSetupWorkspaceExpanded = shouldTeslaSetupWorkspaceAutoExpand(summary);
+            }
+
+            setupWorkspace.classList.toggle('is-collapsed', !teslaSetupWorkspaceExpanded);
+            setupWorkspaceToggleBtn.textContent = teslaSetupWorkspaceExpanded ? 'Hide setup details' : 'Show setup details';
+            setupWorkspaceToggleBtn.setAttribute('aria-expanded', teslaSetupWorkspaceExpanded ? 'true' : 'false');
+        }
+
+        function setTeslaNextActionCard(kind = 'info', title = '', body = '') {
+            const { nextActionCard, nextActionTitle, nextActionBody } = getTeslaOnboardingElements();
+            if (!nextActionCard || !nextActionTitle || !nextActionBody) return;
+            nextActionCard.className = 'tesla-next-action-card';
+            if (kind === 'success') nextActionCard.classList.add('is-success');
+            if (kind === 'warning') nextActionCard.classList.add('is-warning');
+            nextActionTitle.textContent = String(title || 'Connect your Tesla');
+            nextActionBody.textContent = String(body || '');
+        }
+
+        function updateTeslaNextActionCard(summary = null) {
+            const resolvedSummary = createTeslaStatusSummary(summary || teslaLastVehicleSummary || {});
+            const vehicleCount = teslaVehiclesState.length;
+            const hasSharedConfig = teslaSharedAppConfig?.configured === true;
+            const pending = readTeslaPendingOAuth();
+            const reconnectRequiredCount = Number(resolvedSummary.reconnect_required || 0);
+            const proxyRequiredCount = Number(resolvedSummary.proxy_required || 0);
+            const setupRequiredCount = Number(resolvedSummary.setup_required || 0);
+            const connectedCount = Number(resolvedSummary.connected || 0);
+            const statusOnlyCount = Number(resolvedSummary.status_only || 0);
+
+            if (pending) {
+                setTeslaNextActionCard(
+                    'warning',
+                    'Finish Tesla sign-in',
+                    'Tesla sign-in is already in progress. Approve access in the Tesla page that opened, then return here automatically. If that page was closed, click Reset Tesla Login and start again.'
+                );
+                return;
+            }
+
+            if (isTeslaSetupDraftActive()) {
+                setTeslaNextActionCard(
+                    'warning',
+                    `Finish setup for ${getTeslaReconnectDraftDisplayName()}`,
+                    'The VIN and region are already filled in for you. Click Finish Tesla setup below, approve access on Tesla\'s site, and you will return here automatically. You do not need to type the VIN again.'
+                );
+                return;
+            }
+
+            if (isTeslaReconnectDraftActive()) {
+                setTeslaNextActionCard(
+                    'warning',
+                    `Reconnect ${getTeslaReconnectDraftDisplayName()}`,
+                    'The VIN and region are already filled in for you. Click Reconnect with Tesla below, approve access on Tesla\'s site, and you will return here automatically. You do not need to type the VIN again.'
+                );
+                return;
+            }
+
+            if (vehicleCount === 0 && !teslaIsAdmin && !hasSharedConfig) {
+                setTeslaNextActionCard(
+                    'warning',
+                    'Waiting for Tesla app setup',
+                    'A site admin still needs to finish the shared Tesla app setup for this domain before you can connect your Tesla here.'
+                );
+                return;
+            }
+
+            if (vehicleCount === 0 && teslaIsAdmin && !hasSharedConfig) {
+                setTeslaNextActionCard(
+                    'warning',
+                    'Finish the shared Tesla app setup',
+                    'Save the Tesla Fleet App credentials first. After that, enter a VIN and click Connect with Tesla to link a vehicle.'
+                );
+                return;
+            }
+
+            if (reconnectRequiredCount > 0) {
+                setTeslaNextActionCard(
+                    'warning',
+                    'Reconnect the affected vehicle',
+                    'Click Reconnect next to the vehicle that needs attention. We will prefill the VIN and switch the green button to Reconnect with Tesla so you can approve access again without re-entering the VIN.'
+                );
+                return;
+            }
+
+            if (setupRequiredCount > 0) {
+                setTeslaNextActionCard(
+                    'warning',
+                    'Finish setup for the listed vehicle',
+                    'Click Finish setup next to the vehicle that is listed but not yet connected. We will prefill the VIN and region, then the green button will guide you through Tesla approval without re-entering the VIN.'
+                );
+                return;
+            }
+
+            if (proxyRequiredCount > 0) {
+                setTeslaNextActionCard(
+                    'warning',
+                    teslaIsAdmin ? 'Finish charging-control setup' : 'Status works. Charging setup is optional',
+                    teslaIsAdmin
+                        ? 'Vehicle status is already working. To enable charging controls, check app ownership, register the domain if needed, then pair the virtual key on a phone with the Tesla app for supported vehicles.'
+                        : 'Vehicle status is already working. If you also want charging controls, ask the site admin to finish Tesla command setup, then pair the virtual key on a phone with the Tesla app for supported vehicles.'
+                );
+                return;
+            }
+
+            if (statusOnlyCount > 0 && resolvedSummary.action_needed === 0 && setupRequiredCount === 0) {
+                setTeslaNextActionCard(
+                    'success',
+                    'Status is already working',
+                    teslaIsAdmin
+                        ? 'Nothing is broken for dashboard status. If status visibility is all you want, you are done. Charging controls are optional and can be enabled later by finishing Tesla command setup and pairing the virtual key on supported vehicles.'
+                        : 'Nothing is broken for dashboard status. If status visibility is all you want, you are done. Charging controls are optional and may require the site admin to finish Tesla command setup before you pair the virtual key on supported vehicles.'
+                );
+                return;
+            }
+
+            if (setupRequiredCount > 0 && connectedCount === 0) {
+                setTeslaNextActionCard(
+                    'warning',
+                    'Connect your first Tesla',
+                    'Enter the 17-character VIN, choose the Tesla account region, then click Connect with Tesla. Tesla opens its own sign-in page and returns you here automatically after approval.'
+                );
+                return;
+            }
+
+            if (vehicleCount > 0) {
+                setTeslaNextActionCard(
+                    'success',
+                    'Tesla is connected',
+                    'Use Add another vehicle when you want to onboard another VIN. If any vehicle later needs attention, use its row in the list below so the reconnect flow stays prefilled and guided.'
+                );
+                return;
+            }
+
+            setTeslaNextActionCard(
+                'info',
+                'Connect your Tesla',
+                'Enter the VIN, choose your Tesla account region, then click Connect with Tesla. Tesla opens its own sign-in page and returns you here automatically.'
+            );
+        }
+
+        function updateTeslaPrimaryActionUi() {
+            const {
+                connectBtn,
+                addVehicleBtn,
+                vehiclePanelTitle,
+                vehiclePanelCopy
+            } = getTeslaOnboardingElements();
+            const draftMode = getTeslaReconnectDraftMode();
+
+            if (connectBtn) {
+                connectBtn.textContent = draftMode === 'reconnect'
+                    ? 'Reconnect with Tesla'
+                    : (draftMode === 'setup' ? 'Finish Tesla setup' : 'Connect with Tesla');
+            }
+            if (addVehicleBtn) {
+                addVehicleBtn.textContent = draftMode === 'reconnect'
+                    ? 'Cancel reconnect'
+                    : (draftMode === 'setup' ? 'Cancel setup' : 'Add another vehicle');
+                addVehicleBtn.title = draftMode === 'reconnect'
+                    ? 'Leave reconnect mode and return to adding a vehicle.'
+                    : (draftMode === 'setup'
+                        ? 'Leave finish-setup mode and return to adding a vehicle.'
+                        : 'Prepare the form to add another Tesla VIN.');
+            }
+            if (vehiclePanelTitle) {
+                vehiclePanelTitle.textContent = draftMode === 'reconnect'
+                    ? 'Reconnect vehicle'
+                    : (draftMode === 'setup' ? 'Finish vehicle setup' : 'Vehicle details');
+            }
+            if (vehiclePanelCopy) {
+                vehiclePanelCopy.textContent = draftMode === 'reconnect'
+                    ? 'We prefilled this vehicle for you. Click Reconnect with Tesla below to refresh access; no need to re-enter the VIN.'
+                    : (draftMode === 'setup'
+                        ? 'We prefilled this vehicle for you. Click Finish Tesla setup below to complete Tesla sign-in; no need to re-enter the VIN.'
+                        : 'Identify the Tesla and pick the account region for OAuth sign-in.');
+            }
+
+            updateTeslaNextActionCard(teslaLastVehicleSummary);
+            syncTeslaSetupWorkspaceVisibility(teslaLastVehicleSummary);
         }
 
         function setTeslaOnboardingBadge(label, kind = 'sync') {
             const { badge } = getTeslaOnboardingElements();
             if (!badge) return;
-            badge.textContent = String(label || 'Setup Required');
+            badge.textContent = String(label || 'Action Needed');
             badge.className = kind === 'modified' ? 'badge badge-modified' : 'badge badge-sync';
         }
 
@@ -273,6 +548,8 @@
             if (els.saveAppConfigBtn) {
                 els.saveAppConfigBtn.disabled = false;
             }
+
+            updateTeslaPrimaryActionUi();
         }
 
         async function saveTeslaAppConfig() {
@@ -878,6 +1155,7 @@
                 console.warn('[Tesla OAuth] Failed to persist pending session', e);
             }
             syncTeslaPendingAuthControls();
+            updateTeslaPrimaryActionUi();
         }
 
         function clearTeslaPendingOAuth() {
@@ -887,6 +1165,7 @@
                 console.warn('[Tesla OAuth] Failed to clear pending session', e);
             }
             syncTeslaPendingAuthControls();
+            updateTeslaPrimaryActionUi();
         }
 
         function readTeslaPendingOAuth() {
@@ -1186,7 +1465,9 @@
         function buildTeslaVehicleStatusSummaryChips(summary = {}) {
             return [
                 { key: 'connected', label: 'Connected', count: Number(summary.connected || 0) },
-                { key: 'setup_required', label: 'Setup Required', count: Number(summary.setup_required || 0) },
+                { key: 'status_only', label: 'Status Only', count: Number(summary.status_only || 0) },
+                { key: 'setup_required', label: 'Finish Setup', count: Number(summary.setup_required || 0) },
+                { key: 'reconnect_required', label: 'Reconnect Tesla', count: Number(summary.reconnect_required || 0) },
                 { key: 'action_needed', label: 'Action Needed', count: Number(summary.action_needed || 0) }
             ];
         }
@@ -1195,7 +1476,8 @@
             const { vehicleStatusCounts } = getTeslaOnboardingElements();
             if (!vehicleStatusCounts) return;
             vehicleStatusCounts.innerHTML = '';
-            const chips = buildTeslaVehicleStatusSummaryChips(summary);
+            const chips = buildTeslaVehicleStatusSummaryChips(summary)
+                .filter((chip) => chip.count > 0);
             chips.forEach((chip) => {
                 const el = document.createElement('div');
                 el.className = `tesla-status-count-chip status-${chip.key}`;
@@ -1242,8 +1524,8 @@
             if (!hasCredentials) {
                 return {
                     key: 'setup_required',
-                    label: 'Setup Required',
-                    detail: 'Vehicle is registered but not yet connected to Tesla. Enter your credentials above and click Connect with Tesla to complete setup.'
+                    label: 'Finish Setup',
+                    detail: 'Vehicle is listed but Tesla sign-in has not been completed yet. Click Finish setup to approve access for this VIN.'
                 };
             }
 
@@ -1286,50 +1568,75 @@
                     return {
                         key: 'reconnect_required',
                         label: 'Review Tesla Setup',
-                        detail: 'Tesla denied access for this vehicle. Confirm the Tesla developer app has vehicle data and charging permissions, then reconnect Tesla.'
+                        detail: 'Tesla denied access for this vehicle. Click Reconnect to approve Tesla access again after checking the app permissions.'
                     };
                 }
                 return {
                     key: 'reconnect_required',
                     label: 'Reconnect Tesla',
-                    detail: 'Reconnect Tesla OAuth for this vehicle before charging controls can be enabled.'
+                    detail: 'Access for this vehicle expired. Click Reconnect, then approve Tesla sign-in again.'
+                };
+            }
+            if (state === 'oauth_scope_upgrade_required') {
+                return {
+                    key: 'reconnect_required',
+                    label: 'Reconnect Tesla',
+                    detail: 'Charging commands need Tesla command approval again. Click Reconnect and approve command access for this vehicle.'
                 };
             }
             if (state === 'read_only') {
+                const reasonCode = String(readiness?.reasonCode || '').trim();
+                if (reasonCode === 'command_readiness_unavailable') {
+                    return {
+                        key: 'status_only',
+                        label: 'Status Only',
+                        detail: 'Dashboard status is already working. Nothing else is required unless you also want charging controls later.'
+                    };
+                }
                 return {
-                    key: 'read_only',
-                    label: 'Read Only',
-                    detail: 'Status visibility is available, but Tesla charging controls are not ready for this vehicle yet.'
+                    key: 'status_only',
+                    label: 'Status Only',
+                    detail: 'Dashboard status is already working. Charging controls for this vehicle will need extra Tesla setup before they can be used.'
                 };
             }
             if (state) {
                 return {
-                    key: 'read_only',
+                    key: 'status_only',
                     label: 'Checking Commands',
-                    detail: 'Tesla command readiness is still being verified for this vehicle.'
+                    detail: 'Tesla charging-control readiness is still being verified for this vehicle.'
                 };
             }
             return {
-                key: 'read_only',
-                label: 'Command Check Pending',
-                detail: 'Tesla command readiness has not been loaded for this vehicle yet.'
+                key: 'status_only',
+                label: 'Checking Commands',
+                detail: 'Tesla charging-control readiness has not been loaded for this vehicle yet.'
             };
         }
 
         function shouldTeslaCommandStatusCountAsActionNeeded(commandStatus = null) {
             const key = String(commandStatus?.key || '').trim();
-            return key === 'reconnect_required' || key === 'proxy_required' || key === 'read_only';
+            return key === 'reconnect_required' || key === 'proxy_required';
+        }
+
+        function shouldTeslaCommandStatusCountAsStatusOnly(commandStatus = null) {
+            return String(commandStatus?.key || '').trim() === 'status_only';
         }
 
         function updateTeslaOnboardingSummary(summary = {}, vehicleCount = 0, preserveStatus = false) {
+            const resolvedSummary = createTeslaStatusSummary(summary);
+            teslaLastVehicleSummary = resolvedSummary;
+            updateTeslaNextActionCard(resolvedSummary);
             if (preserveStatus) return;
 
-            const connectedCount = Number(summary.connected || 0);
-            const setupRequiredCount = Number(summary.setup_required || 0);
-            const actionNeededCount = Number(summary.action_needed || 0);
+            const connectedCount = Number(resolvedSummary.connected || 0);
+            const statusOnlyCount = Number(resolvedSummary.status_only || 0);
+            const setupRequiredCount = Number(resolvedSummary.setup_required || 0);
+            const actionNeededCount = Number(resolvedSummary.action_needed || 0);
+            const reconnectRequiredCount = Number(resolvedSummary.reconnect_required || 0);
+            const proxyRequiredCount = Number(resolvedSummary.proxy_required || 0);
 
             if (vehicleCount <= 0) {
-                setTeslaOnboardingBadge('Setup Required', 'modified');
+                setTeslaOnboardingBadge('Finish Setup', 'modified');
                 const noVehicleMsg = teslaIsAdmin
                     ? 'No Tesla vehicles connected yet. Complete the Tesla app setup above, then use Connect with Tesla.'
                     : 'No Tesla vehicles connected yet. Enter your VIN above and click Connect with Tesla.';
@@ -1337,14 +1644,42 @@
                 return;
             }
 
-            if (setupRequiredCount > 0 || actionNeededCount > 0) {
+            if (reconnectRequiredCount > 0) {
+                setTeslaOnboardingBadge('Reconnect Tesla', 'modified');
+                setTeslaOnboardingStatus(`${reconnectRequiredCount} vehicle(s) need Tesla sign-in again. Click Reconnect next to the vehicle, then approve Tesla access again.`, 'warning');
+                return;
+            }
+
+            if (proxyRequiredCount > 0) {
                 setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingStatus(
+                    teslaIsAdmin
+                        ? `${connectedCount} vehicle(s) connected for status. Charging controls still need Tesla command setup such as app ownership, domain registration, or virtual-key pairing.`
+                        : `${connectedCount} vehicle(s) connected for status. Charging controls still need extra Tesla setup, usually by the site admin first.`,
+                    'warning'
+                );
+                return;
+            }
+
+            if (setupRequiredCount > 0 || actionNeededCount > 0) {
+                setTeslaOnboardingBadge(setupRequiredCount > 0 && actionNeededCount === 0 ? 'Finish Setup' : 'Action Needed', 'modified');
                 if (setupRequiredCount > 0 && connectedCount === 0) {
-                    setTeslaOnboardingStatus(`${setupRequiredCount} vehicle(s) need Tesla sign-in. Click Connect with Tesla above to link your Tesla account.`, 'warning');
+                    setTeslaOnboardingStatus(`${setupRequiredCount} vehicle(s) still need Tesla sign-in. Click Finish setup next to the listed vehicle to continue with the prefilled flow.`, 'warning');
+                } else if (setupRequiredCount > 0 && actionNeededCount === 0) {
+                    setTeslaOnboardingStatus(`${connectedCount} vehicle(s) connected, ${setupRequiredCount} vehicle(s) still need Tesla sign-in. Use Finish setup in the vehicle list below for the next step.`, 'warning');
                 } else {
                     const issues = setupRequiredCount + actionNeededCount;
-                    setTeslaOnboardingStatus(`${connectedCount} vehicle(s) connected, ${issues} vehicle(s) need attention. See the vehicle list below for next steps.`, 'warning');
+                    setTeslaOnboardingStatus(`${connectedCount} vehicle(s) connected, ${issues} vehicle(s) need attention. Use the vehicle list below for the exact next step, such as reconnecting Tesla or finishing command setup.`, 'warning');
                 }
+                return;
+            }
+
+            if (statusOnlyCount > 0) {
+                setTeslaOnboardingBadge(statusOnlyCount === connectedCount ? 'Status Only' : 'Connected', 'sync');
+                const suffix = statusOnlyCount === connectedCount
+                    ? 'Dashboard status is already working. Charging controls are optional and can be enabled later if you want them.'
+                    : `${statusOnlyCount} connected vehicle(s) are currently status-only. Dashboard status is already working for them.`;
+                setTeslaOnboardingStatus(`${connectedCount} vehicle(s) connected. ${suffix}`, 'success');
                 return;
             }
 
@@ -1369,19 +1704,25 @@
             if (typeof window.apiClient.getEVVehicleCommandReadinessBatch === 'function') {
                 try {
                     const resp = await window.apiClient.getEVVehicleCommandReadinessBatch(vehicleIds, { live });
-                    const byVehicleId = resp?.result?.byVehicleId && typeof resp.result.byVehicleId === 'object'
-                        ? resp.result.byVehicleId
-                        : {};
-                    return vehicleIds.reduce((acc, vehicleId) => {
-                        if (byVehicleId[vehicleId]) {
-                            acc[vehicleId] = byVehicleId[vehicleId];
+                    if (resp && resp.errno === 0 && resp?.result?.byVehicleId && typeof resp.result.byVehicleId === 'object') {
+                        const byVehicleId = resp.result.byVehicleId;
+                        return vehicleIds.reduce((acc, vehicleId) => {
+                            if (byVehicleId[vehicleId]) {
+                                acc[vehicleId] = byVehicleId[vehicleId];
+                                return acc;
+                            }
+                            acc[vehicleId] = {
+                                state: 'read_only',
+                                source: 'settings_batch_missing',
+                                warning: 'Command readiness unavailable'
+                            };
                             return acc;
-                        }
-                        acc[vehicleId] = {
-                            state: 'read_only',
-                            source: 'settings_batch_missing',
-                            warning: 'Command readiness unavailable'
-                        };
+                        }, {});
+                    }
+
+                    const fallbackReadiness = normalizeTeslaCommandReadinessError(resp, 'settings_batch');
+                    return vehicleIds.reduce((acc, vehicleId) => {
+                        acc[vehicleId] = { ...fallbackReadiness };
                         return acc;
                     }, {});
                 } catch (error) {
@@ -1403,12 +1744,7 @@
                     if (resp && resp.errno === 0 && resp.result) {
                         return [vehicleId, resp.result];
                     }
-                    const reasonCode = String(resp?.result?.reasonCode || '').trim();
-                    return [vehicleId, {
-                        state: reasonCode === 'tesla_reconnect_required' || reasonCode === 'tesla_permission_denied' ? 'setup_required' : 'read_only',
-                        reasonCode,
-                        source: 'settings_api'
-                    }];
+                    return [vehicleId, normalizeTeslaCommandReadinessError(resp, 'settings_api')];
                 } catch (error) {
                     return [vehicleId, {
                         state: 'read_only',
@@ -1427,12 +1763,12 @@
 
         function renderTeslaVehicles(vehicles, readinessByVehicleId = {}) {
             const { vehiclesList } = getTeslaOnboardingElements();
-            if (!vehiclesList) return { connected: 0, setup_required: 0, action_needed: 0 };
+            if (!vehiclesList) return { connected: 0, status_only: 0, setup_required: 0, action_needed: 0, reconnect_required: 0, proxy_required: 0 };
             vehiclesList.innerHTML = '';
             const list = Array.isArray(vehicles) ? vehicles : [];
             const pending = readTeslaPendingOAuth();
             const pendingVin = normalizeTeslaVin(pending?.vin || pending?.vehicleId || '');
-            const statusSummary = { connected: 0, setup_required: 0, action_needed: 0 };
+            const statusSummary = { connected: 0, status_only: 0, setup_required: 0, action_needed: 0, reconnect_required: 0, proxy_required: 0 };
             if (list.length === 0) {
                 renderTeslaVehicleStatusCounts(statusSummary);
                 const empty = document.createElement('span');
@@ -1455,6 +1791,15 @@
                 statusSummary[vehicleStatus.key] = Number(statusSummary[vehicleStatus.key] || 0) + 1;
                 if (vehicleStatus.key === 'connected' && shouldTeslaCommandStatusCountAsActionNeeded(commandStatus)) {
                     statusSummary.action_needed = Number(statusSummary.action_needed || 0) + 1;
+                }
+                if (vehicleStatus.key === 'connected' && shouldTeslaCommandStatusCountAsStatusOnly(commandStatus)) {
+                    statusSummary.status_only = Number(statusSummary.status_only || 0) + 1;
+                }
+                if (commandStatus?.key === 'reconnect_required') {
+                    statusSummary.reconnect_required = Number(statusSummary.reconnect_required || 0) + 1;
+                }
+                if (commandStatus?.key === 'proxy_required') {
+                    statusSummary.proxy_required = Number(statusSummary.proxy_required || 0) + 1;
                 }
                 const isRecent = isTeslaRecentConnection(vehicleVin || vehicleId);
 
@@ -1500,11 +1845,18 @@
                     right.appendChild(newPill);
                 }
 
-                if (commandStatus?.key === 'reconnect_required') {
+                if (vehicleStatus.key === 'setup_required') {
+                    const setupBtn = document.createElement('button');
+                    setupBtn.type = 'button';
+                    setupBtn.setAttribute('data-tesla-setup-id', primaryKey);
+                    setupBtn.title = `Finish Tesla setup for ${displayName}`;
+                    setupBtn.textContent = 'Finish setup';
+                    right.appendChild(setupBtn);
+                } else if (commandStatus?.key === 'reconnect_required') {
                     const reconnectBtn = document.createElement('button');
                     reconnectBtn.type = 'button';
                     reconnectBtn.setAttribute('data-tesla-reconnect-id', primaryKey);
-                    reconnectBtn.title = `Reconnect ${displayName}`;
+                    reconnectBtn.title = `Reconnect access for ${displayName}`;
                     reconnectBtn.textContent = 'Reconnect';
                     right.appendChild(reconnectBtn);
                 }
@@ -1536,13 +1888,23 @@
                 const allVehicles = Array.isArray(resp.result) ? resp.result : [];
                 const teslaVehicles = allVehicles.filter((vehicle) => String(vehicle?.provider || '').toLowerCase() === 'tesla');
                 teslaVehiclesState = teslaVehicles;
+                if (isTeslaVehicleActionDraftActive()) {
+                    const draftVehicleId = normalizeTeslaVin(teslaReconnectDraft?.vehicleId || '');
+                    const draftStillExists = teslaVehicles.some((vehicle) => normalizeTeslaVin(vehicle?.vin || vehicle?.vehicleId || '') === draftVehicleId);
+                    if (!draftStillExists) {
+                        teslaReconnectDraft = null;
+                    }
+                }
                 const readinessByVehicleId = await loadTeslaCommandReadinessMap(teslaVehicles, { live: liveReadiness });
                 const statusSummary = renderTeslaVehicles(teslaVehicles, readinessByVehicleId);
                 updateTeslaOnboardingSummary(statusSummary, teslaVehicles.length, preserveStatus);
+                updateTeslaPrimaryActionUi();
                 return teslaVehicles;
             } catch (error) {
                 teslaVehiclesState = [];
+                teslaLastVehicleSummary = createTeslaStatusSummary();
                 renderTeslaVehicles([]);
+                updateTeslaPrimaryActionUi();
                 if (!preserveStatus) {
                     setTeslaOnboardingBadge('Error', 'modified');
                     setTeslaOnboardingStatus(error.message || 'Failed to load Tesla vehicles', 'error');
@@ -1727,7 +2089,7 @@
                     setTeslaOnboardingBadge('Pending', 'modified');
                     setTeslaOnboardingStatus('Tesla sign-in is still pending. Finish approval in Tesla, then return to this page.', 'warning');
                 } else {
-                    setTeslaOnboardingBadge('Setup Required', 'modified');
+                    setTeslaOnboardingBadge('Finish Setup', 'modified');
                     setTeslaOnboardingStatus('Start with Step 1 in Tesla Developer Dashboard, then return here to connect.', 'warning');
                 }
                 return { handled: false, success: false };
@@ -1811,6 +2173,8 @@
                     setTeslaOnboardingStatus(`Tesla connected for VIN ${pending.vehicleId}. Dashboard status should now begin syncing for this vehicle.`, 'success');
                     showMessage('success', `Tesla connected for VIN ${pending.vehicleId}`);
                 }
+                teslaReconnectDraft = null;
+                updateTeslaPrimaryActionUi();
                 return { handled: true, success: true };
             } catch (error) {
                 clearTeslaPendingOAuth();
@@ -1826,13 +2190,13 @@
             const pending = readTeslaPendingOAuth();
             if (!pending) {
                 syncTeslaPendingAuthControls();
-                setTeslaOnboardingBadge('Setup Required', 'modified');
+                setTeslaOnboardingBadge('Finish Setup', 'modified');
                 setTeslaOnboardingStatus('No pending Tesla sign-in session found. Use Connect with Tesla to start a fresh login.', 'warning');
                 showMessage('info', 'No pending Tesla login session to reset');
                 return;
             }
             clearTeslaPendingOAuth();
-            setTeslaOnboardingBadge('Setup Required', 'modified');
+            setTeslaOnboardingBadge('Finish Setup', 'modified');
             setTeslaOnboardingStatus('Reset Tesla login state. You can start the connect flow again.', 'warning');
             showMessage('info', 'Cleared pending Tesla authorization state');
         }
@@ -1845,6 +2209,7 @@
                 showMessage('warning', 'Finish or reset the current Tesla login before adding another vehicle');
                 return;
             }
+            teslaReconnectDraft = null;
             const { vehicleIdInput, displayNameInput } = getTeslaOnboardingElements();
             if (vehicleIdInput) {
                 vehicleIdInput.value = '';
@@ -1853,15 +2218,17 @@
             if (displayNameInput) {
                 displayNameInput.value = '';
             }
-            setTeslaOnboardingBadge('Setup Required', 'modified');
-            setTeslaOnboardingStatus('Adding another Tesla: enter the next VIN, optional name, then click Connect with Tesla.', 'warning');
+            setTeslaOnboardingBadge('Finish Setup', 'modified');
+            setTeslaOnboardingStatus('Adding another Tesla: enter the VIN, optional name, then click Connect with Tesla. Tesla will return you here automatically after approval.', 'warning');
+            updateTeslaPrimaryActionUi();
+            syncTeslaSetupWorkspaceVisibility(teslaLastVehicleSummary, { forceExpanded: true });
             showMessage('info', 'Ready to add another Tesla vehicle');
         }
 
         function prepareTeslaReconnectFlow(vehicle) {
             const pending = readTeslaPendingOAuth();
             if (pending) {
-                setTeslaOnboardingBadge('Action Needed', 'modified');
+                setTeslaOnboardingBadge('Reconnect Tesla', 'modified');
                 setTeslaOnboardingStatus('Finish or reset the current Tesla sign-in before reconnecting this vehicle.', 'warning');
                 showMessage('warning', 'Finish or reset the current Tesla login before reconnecting this vehicle');
                 return;
@@ -1886,9 +2253,58 @@
                 regionInput.value = region;
             }
             updateTeslaRegionHelp();
-            setTeslaOnboardingBadge('Action Needed', 'modified');
-            setTeslaOnboardingStatus(`Reconnect ${displayName || vehicleId} by reviewing the VIN details below, then click Connect with Tesla.`, 'warning');
-            showMessage('info', `Reconnect ready for ${displayName || vehicleId}. Click Connect with Tesla when you are ready.`);
+            teslaReconnectDraft = {
+                mode: 'reconnect',
+                vehicleId,
+                displayName,
+                region
+            };
+            setTeslaOnboardingBadge('Reconnect Tesla', 'modified');
+            setTeslaOnboardingStatus(`Reconnect ${displayName || vehicleId}. The VIN is already filled in below, so just click Reconnect with Tesla and approve access again.`, 'warning');
+            updateTeslaPrimaryActionUi();
+            syncTeslaSetupWorkspaceVisibility(teslaLastVehicleSummary, { forceExpanded: true });
+            showMessage('info', `Reconnect ready for ${displayName || vehicleId}. Click Reconnect with Tesla when you are ready.`);
+        }
+
+        function prepareTeslaVehicleSetupFlow(vehicle) {
+            const pending = readTeslaPendingOAuth();
+            if (pending) {
+                setTeslaOnboardingBadge('Finish Setup', 'modified');
+                setTeslaOnboardingStatus('Finish or reset the current Tesla sign-in before finishing setup for another vehicle.', 'warning');
+                showMessage('warning', 'Finish or reset the current Tesla login before continuing setup for this vehicle');
+                return;
+            }
+            const {
+                vehicleIdInput,
+                displayNameInput,
+                regionInput
+            } = getTeslaOnboardingElements();
+            const vehicleId = normalizeTeslaVin(vehicle?.vin || vehicle?.vehicleId || '');
+            const displayName = String(vehicle?.displayName || vehicleId || '').trim();
+            const region = String(vehicle?.region || TESLA_REGION_DEFAULT).trim() || TESLA_REGION_DEFAULT;
+
+            if (vehicleIdInput) {
+                vehicleIdInput.value = vehicleId;
+                vehicleIdInput.focus();
+            }
+            if (displayNameInput) {
+                displayNameInput.value = displayName;
+            }
+            if (regionInput) {
+                regionInput.value = region;
+            }
+            updateTeslaRegionHelp();
+            teslaReconnectDraft = {
+                mode: 'setup',
+                vehicleId,
+                displayName,
+                region
+            };
+            setTeslaOnboardingBadge('Finish Setup', 'modified');
+            setTeslaOnboardingStatus(`Finish setup for ${displayName || vehicleId}. The VIN is already filled in below, so just click Finish Tesla setup and approve access on Tesla's site.`, 'warning');
+            updateTeslaPrimaryActionUi();
+            syncTeslaSetupWorkspaceVisibility(teslaLastVehicleSummary, { forceExpanded: true });
+            showMessage('info', `Setup is ready for ${displayName || vehicleId}. Click Finish Tesla setup when you are ready.`);
         }
 
         function bindTeslaOnboardingHandlers() {
@@ -1927,6 +2343,15 @@
                     prepareTeslaAddAnotherVehicleFlow();
                 });
             }
+            const { setupWorkspaceToggleBtn } = getTeslaOnboardingElements();
+            if (setupWorkspaceToggleBtn) {
+                setupWorkspaceToggleBtn.addEventListener('click', () => {
+                    syncTeslaSetupWorkspaceVisibility(teslaLastVehicleSummary, {
+                        forceExpanded: !teslaSetupWorkspaceExpanded,
+                        forceCollapsed: teslaSetupWorkspaceExpanded
+                    });
+                });
+            }
             if (clearPendingBtn) {
                 clearPendingBtn.addEventListener('click', () => {
                     clearTeslaPendingAuthFlow();
@@ -1956,6 +2381,18 @@
                 vehiclesList.addEventListener('click', (event) => {
                     const target = event?.target;
                     if (!(target instanceof Element)) return;
+                    const setupId = target.getAttribute('data-tesla-setup-id');
+                    if (setupId) {
+                        const normalizedSetupId = normalizeTeslaVin(setupId);
+                        const vehicle = teslaVehiclesState.find((entry) => {
+                            const vehicleKey = normalizeTeslaVin(entry?.vin || entry?.vehicleId || '');
+                            return vehicleKey === normalizedSetupId;
+                        });
+                        if (vehicle) {
+                            prepareTeslaVehicleSetupFlow(vehicle);
+                        }
+                        return;
+                    }
                     const reconnectId = target.getAttribute('data-tesla-reconnect-id');
                     if (reconnectId) {
                         const normalizedReconnectId = normalizeTeslaVin(reconnectId);
