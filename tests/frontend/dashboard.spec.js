@@ -294,6 +294,195 @@ test.describe('Dashboard Page', () => {
     expect(hasInverterData).toBeTruthy();
   });
 
+  test('should render the live inverter house flow scene', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 26.4, unit: '°C' },
+              { variable: 'ambientTemperation', value: 22.8, unit: '°C' },
+              { variable: 'invTemperation', value: 34.9, unit: '°C' },
+              { variable: 'pv1power', value: 1.43, unit: 'kW' },
+              { variable: 'pv2power', value: 1.13, unit: 'kW' },
+              { variable: 'pv3power', value: 0.97, unit: 'kW' },
+              { variable: 'pv4power', value: 0.67, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+    await expect(page.locator('#solar-tile')).toContainText('4.20 kW');
+    await expect(page.locator('#inverterCard .energy-node--home')).toContainText('1.85 kW');
+    await expect(page.locator('#solar-tile .energy-node__state')).toHaveCount(0);
+    await expect(page.locator('#inverterCard .energy-node--home .energy-node__state')).toHaveCount(0);
+    await expect(page.locator('#inverterCard .energy-node--grid')).toContainText('1.62 kW');
+    await expect(page.locator('#inverterCard .energy-node--grid')).toContainText('Export');
+    await expect(page.locator('#inverterCard .energy-core--hub')).toContainText('68%');
+    const homeFlow = page.locator('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-home)"]').first();
+    await expect(homeFlow).not.toHaveClass(/is-reverse/);
+    const exportGridFlow = page.locator('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-grid-export)"]').first();
+    await expect(exportGridFlow).toHaveClass(/is-reverse/);
+    await expect
+      .poll(async () => exportGridFlow.evaluate((el) => window.getComputedStyle(el).animationDirection))
+      .toBe('reverse');
+    const sceneBackground = await page.locator('#inverterCard .energy-scene').evaluate((el) => {
+      return window.getComputedStyle(el).backgroundImage;
+    });
+    expect(sceneBackground).toContain('house-3d-iso.png');
+  });
+
+  test('should classify drizzle separately from heavier rain in the inverter scene', async ({ page }) => {
+    const effects = await page.evaluate(() => ({
+      drizzle: getInverterSceneWeatherState({
+        current: { weathercode: 51, is_day: 1, cloudcover: 78 }
+      }).effect,
+      rain: getInverterSceneWeatherState({
+        current: { weathercode: 63, is_day: 1, cloudcover: 78 }
+      }).effect
+    }));
+
+    expect(effects.drizzle).toBe('drizzle');
+    expect(effects.rain).toBe('rain');
+  });
+
+  test('should keep the house scene tiles separated on narrow viewports', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-NARROW-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-NARROW-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 26.4, unit: 'Â°C' },
+              { variable: 'ambientTemperation', value: 22.8, unit: 'Â°C' },
+              { variable: 'invTemperation', value: 34.9, unit: 'Â°C' },
+              { variable: 'pv1power', value: 1.43, unit: 'kW' },
+              { variable: 'pv2power', value: 1.13, unit: 'kW' },
+              { variable: 'pv3power', value: 0.97, unit: 'kW' },
+              { variable: 'pv4power', value: 0.67, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.setViewportSize({ width: 560, height: 900 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+
+    const layout = await page.locator('#inverterCard .energy-scene').evaluate(() => {
+      const readRect = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const { left, right, top, bottom } = el.getBoundingClientRect();
+        return { left, right, top, bottom };
+      };
+
+      return {
+        solar: readRect('#solar-tile'),
+        grid: readRect('#inverterCard .energy-node--grid'),
+        home: readRect('#inverterCard .energy-node--home'),
+        hub: readRect('#inverterCard .energy-core--hub')
+      };
+    });
+
+    const cards = [layout.solar, layout.grid, layout.home, layout.hub];
+    cards.forEach((card) => expect(card).not.toBeNull());
+
+    const overlaps = (a, b) => (
+      a.left < b.right &&
+      a.right > b.left &&
+      a.top < b.bottom &&
+      a.bottom > b.top
+    );
+
+    expect(overlaps(layout.solar, layout.grid)).toBeFalsy();
+    expect(overlaps(layout.solar, layout.home)).toBeFalsy();
+    expect(overlaps(layout.solar, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.grid, layout.home)).toBeFalsy();
+    expect(overlaps(layout.grid, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.home, layout.hub)).toBeFalsy();
+  });
+
+  test('should show frozen telemetry duration instead of latest sample age in automation failsafe UI', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FROZEN-UI-001'
+    });
+
+    const frozenStatus = {
+      enabled: true,
+      inBlackout: false,
+      lastCheck: Date.now(),
+      telemetryFailsafePaused: true,
+      telemetryFailsafePauseReason: 'frozen_telemetry',
+      telemetryAgeMs: 35000,
+      telemetryTimestampTrust: 'synthetic',
+      telemetryFingerprintSinceMs: Date.now() - (61 * 60 * 1000),
+      userTimezone: 'Australia/Sydney',
+      rules: {}
+    };
+
+    await page.route('**/api/automation/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: frozenStatus
+      }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: frozenStatus
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?telemetryFrozenUi=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#backendAutomationStatus')).toContainText('unchanged for 1h');
+    await expect(page.locator('#backendAutomationStatus')).not.toContainText('unchanged for 35s');
+    await expect(page.locator('#backendAutomationStatus')).toContainText('timestamp was inferred');
+  });
+
   test('should have automation toggle control', async ({ page }) => {
     // Look for toggle switch or button
     const toggle = await page.locator('input[type="checkbox"], button:has-text("Enable"), button:has-text("Disable"), .toggle').count();

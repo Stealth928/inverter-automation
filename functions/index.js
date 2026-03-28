@@ -669,6 +669,7 @@ function resolveAlphaEssBatterySignInversion(userConfig, status) {
 }
 
 function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
+  const telemetryTimestampTrust = resolveStatusTelemetryTimestampTrust(status);
   const normalizeToKw = options.normalizeToKw === true;
   const invertBatteryPowerSign = options.invertBatteryPowerSign === true;
 
@@ -700,6 +701,7 @@ function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
   return {
     errno: 0,
     msg: 'Operation successful',
+    telemetryTimestampTrust,
     result: [{
       deviceSN: String(sn || status.deviceSN || ''),
       time: status.observedAtIso || new Date().toISOString(),
@@ -720,6 +722,7 @@ function buildRealtimePayloadFromDeviceStatus(status = {}, sn, options = {}) {
 }
 
 function buildAutomationTelemetryPayloadFromStatus(status = {}) {
+  const telemetryTimestampTrust = resolveStatusTelemetryTimestampTrust(status);
   const datas = [];
   const pushNumeric = (variable, value) => {
     const numeric = Number(value);
@@ -746,6 +749,7 @@ function buildAutomationTelemetryPayloadFromStatus(status = {}) {
 
   return {
     errno: 0,
+    telemetryTimestampTrust,
     result: [{
       time: status.observedAtIso || new Date().toISOString(),
       datas
@@ -763,6 +767,40 @@ function isMatchingProviderCacheEntry(cacheRecord, provider, deviceSN) {
     : providerNormalized === 'foxess';
   const deviceMatch = cachedDeviceRaw ? (cachedDeviceRaw === deviceNormalized) : true;
   return providerMatch && deviceMatch;
+}
+
+function normalizeTelemetryTimestampTrustValue(value, fallback = null) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'source' || normalized === 'derived' || normalized === 'synthetic') {
+    return normalized;
+  }
+  return fallback;
+}
+
+function resolveStatusTelemetryTimestampTrust(status = {}, fallback = 'synthetic') {
+  return normalizeTelemetryTimestampTrustValue(
+    status.telemetryTimestampTrust ?? status.observedAtTrust,
+    fallback
+  );
+}
+
+function applyPayloadTelemetryTimestampTrust(payload, provider) {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+  const providerNormalized = String(provider || 'foxess').toLowerCase().trim();
+  const fallbackTrust = providerNormalized === 'foxess' ? 'source' : 'synthetic';
+  const telemetryTimestampTrust = normalizeTelemetryTimestampTrustValue(
+    payload.telemetryTimestampTrust ?? payload.__telemetryTimestampTrust,
+    fallbackTrust
+  );
+  if (payload.telemetryTimestampTrust === telemetryTimestampTrust) {
+    return payload;
+  }
+  return {
+    ...payload,
+    telemetryTimestampTrust
+  };
 }
 
 function isEmulatorRuntime() {
@@ -791,12 +829,17 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           cacheMetrics.record({ source: 'inverter', outcome: 'hit' });
-          return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+          return {
+            ...applyPayloadTelemetryTimestampTrust(data, provider),
+            __cacheHit: true,
+            __cacheAgeMs: ageMs,
+            __cacheTtlMs: ttlMs
+          };
         }
         if (emulatorRuntime && data && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           cacheMetrics.record({ source: 'inverter', outcome: 'hit' });
           return {
-            ...data,
+            ...applyPayloadTelemetryTimestampTrust(data, provider),
             __cacheHit: true,
             __cacheAgeMs: ageMs,
             __cacheTtlMs: ttlMs,
@@ -827,6 +870,7 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
         variables: ['SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'pvPower', 'loadsPower', 'gridConsumptionPower', 'feedinPower']
       }, userConfig, userId);
     }
+    data = applyPayloadTelemetryTimestampTrust(data, provider);
     
     // Store in cache if successful
     if (data?.errno === 0) {
@@ -845,7 +889,12 @@ async function getCachedInverterData(userId, deviceSN, userConfig, forceRefresh 
     }
 
     cacheMetrics.record({ source: 'inverter', outcome: 'miss' });
-    return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
+    return {
+      ...data,
+      __cacheHit: false,
+      __cacheAgeMs: 0,
+      __cacheTtlMs: ttlMs
+    };
   } catch (err) {
     cacheMetrics.record({ source: 'inverter', outcome: 'error' });
     logger.error(`[Cache] Error in getCachedInverterData: ${err.message}`);
@@ -883,12 +932,17 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         const ageMs = Date.now() - timestamp;
         if (ageMs < ttlMs && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           cacheMetrics.record({ source: 'inverter-realtime', outcome: 'hit' });
-          return { ...data, __cacheHit: true, __cacheAgeMs: ageMs, __cacheTtlMs: ttlMs };
+          return {
+            ...applyPayloadTelemetryTimestampTrust(data, provider),
+            __cacheHit: true,
+            __cacheAgeMs: ageMs,
+            __cacheTtlMs: ttlMs
+          };
         }
         if (emulatorRuntime && data && isMatchingProviderCacheEntry(cachePayload, provider, resolvedDeviceSN)) {
           cacheMetrics.record({ source: 'inverter-realtime', outcome: 'hit' });
           return {
-            ...data,
+            ...applyPayloadTelemetryTimestampTrust(data, provider),
             __cacheHit: true,
             __cacheAgeMs: ageMs,
             __cacheTtlMs: ttlMs,
@@ -939,6 +993,7 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
         variables: ['generationPower', 'pvPower', 'pv1Power', 'pv2Power', 'pv3Power', 'pv4Power', 'pv1Volt', 'pv2Volt', 'pv3Volt', 'pv4Volt', 'pv1Current', 'pv2Current', 'pv3Current', 'pv4Current', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower', 'batChargePower', 'batDischargePower', 'SoC', 'SoC1', 'batTemperature', 'ambientTemperation', 'invTemperation', 'boostTemperation']
       }, userConfig, userId);
     }
+    data = applyPayloadTelemetryTimestampTrust(data, provider);
     
     // Store in cache if successful
     if (data?.errno === 0) {
@@ -957,7 +1012,12 @@ async function getCachedInverterRealtimeData(userId, deviceSN, userConfig, force
     }
 
     cacheMetrics.record({ source: 'inverter-realtime', outcome: 'miss' });
-    return { ...data, __cacheHit: false, __cacheAgeMs: 0, __cacheTtlMs: ttlMs };
+    return {
+      ...data,
+      __cacheHit: false,
+      __cacheAgeMs: 0,
+      __cacheTtlMs: ttlMs
+    };
   } catch (err) {
     cacheMetrics.record({ source: 'inverter-realtime', outcome: 'error' });
     logger.error(`[Cache] Error in getCachedInverterRealtimeData: ${err.message}`);

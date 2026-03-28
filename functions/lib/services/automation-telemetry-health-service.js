@@ -2,6 +2,9 @@
 
 const DEFAULT_FRESHNESS_MAX_AGE_MS = 30 * 60 * 1000;
 const DEFAULT_FROZEN_MAX_AGE_MS = 60 * 60 * 1000;
+const TELEMETRY_TIMESTAMP_TRUST_SOURCE = 'source';
+const TELEMETRY_TIMESTAMP_TRUST_DERIVED = 'derived';
+const TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC = 'synthetic';
 
 const SOC_VARIABLE_ALIASES = Object.freeze(['SoC', 'SoC1', 'SoC_1']);
 const PV_POWER_VARIABLE_ALIASES = Object.freeze(['pvPower', 'pv_power', 'generationPower']);
@@ -85,6 +88,18 @@ function parseTimestampMs(value) {
   return NaN;
 }
 
+function normalizeTelemetryTimestampTrust(value, fallback = null) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized === TELEMETRY_TIMESTAMP_TRUST_SOURCE ||
+    normalized === TELEMETRY_TIMESTAMP_TRUST_DERIVED ||
+    normalized === TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC
+  ) {
+    return normalized;
+  }
+  return fallback;
+}
+
 function getTelemetryDatas(inverterData) {
   const result = inverterData && inverterData.result;
   if (Array.isArray(result) && result.length > 0) {
@@ -162,6 +177,27 @@ function extractTelemetryTimestampMs(inverterData) {
   return null;
 }
 
+function extractTelemetryTimestampTrust(inverterData) {
+  const firstResult = Array.isArray(inverterData?.result) ? inverterData.result[0] : null;
+  const candidates = [
+    inverterData?.telemetryTimestampTrust,
+    inverterData?.__telemetryTimestampTrust,
+    inverterData?.observedAtTrust,
+    firstResult?.telemetryTimestampTrust,
+    inverterData?.raw?.telemetryTimestampTrust,
+    inverterData?.raw?.result?.[0]?.telemetryTimestampTrust
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeTelemetryTimestampTrust(candidate, null);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
 function evaluateTelemetryHealth(options = {}) {
   const nowMs = toFiniteNumber(options.nowMs, Date.now());
   const freshnessMaxAgeMs = Math.max(
@@ -179,6 +215,8 @@ function evaluateTelemetryHealth(options = {}) {
   const telemetryTimestampMs = extractTelemetryTimestampMs(options.inverterData);
   const hasTimestamp = Number.isFinite(telemetryTimestampMs);
   const telemetryAgeMs = hasTimestamp ? Math.max(0, nowMs - telemetryTimestampMs) : null;
+  const telemetryTimestampTrust = extractTelemetryTimestampTrust(options.inverterData) ||
+    (hasTimestamp ? TELEMETRY_TIMESTAMP_TRUST_SOURCE : TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC);
   const staleDueToMissingTimestamp = !hasTimestamp;
   const staleDueToAge = hasTimestamp && telemetryAgeMs > freshnessMaxAgeMs;
 
@@ -195,12 +233,13 @@ function evaluateTelemetryHealth(options = {}) {
     : null;
   const fingerprintAgeMs = fingerprintSinceMs !== null ? Math.max(0, nowMs - fingerprintSinceMs) : null;
 
-  const frozen = Boolean(fingerprint) &&
+  const frozenCandidate = Boolean(fingerprint) &&
     hasTimestamp &&
     !staleDueToAge &&
     sameFingerprint &&
     Number.isFinite(fingerprintAgeMs) &&
     fingerprintAgeMs > frozenMaxAgeMs;
+  const frozen = frozenCandidate && telemetryTimestampTrust !== TELEMETRY_TIMESTAMP_TRUST_SOURCE;
 
   const pauseReason = staleDueToMissingTimestamp
     ? 'stale_telemetry_missing_timestamp'
@@ -218,10 +257,12 @@ function evaluateTelemetryHealth(options = {}) {
     shouldPauseAutomation: Boolean(pauseReason),
     telemetryTimestampMs: hasTimestamp ? telemetryTimestampMs : null,
     telemetryAgeMs: hasTimestamp ? telemetryAgeMs : null,
+    telemetryTimestampTrust,
     freshnessMaxAgeMs,
     frozenMaxAgeMs,
     staleDueToMissingTimestamp,
     staleDueToAge,
+    frozenCandidate,
     frozen,
     fingerprint,
     fingerprintSinceMs,
@@ -229,6 +270,7 @@ function evaluateTelemetryHealth(options = {}) {
     statePatch: {
       telemetryTimestampMs: hasTimestamp ? telemetryTimestampMs : null,
       telemetryAgeMs: hasTimestamp ? telemetryAgeMs : null,
+      telemetryTimestampTrust,
       telemetryFreshnessMaxAgeMs: freshnessMaxAgeMs,
       telemetryFrozenMaxAgeMs: frozenMaxAgeMs,
       telemetryFingerprint: fingerprint || null,
@@ -244,10 +286,14 @@ function evaluateTelemetryHealth(options = {}) {
 module.exports = {
   DEFAULT_FRESHNESS_MAX_AGE_MS,
   DEFAULT_FROZEN_MAX_AGE_MS,
+  TELEMETRY_TIMESTAMP_TRUST_SOURCE,
+  TELEMETRY_TIMESTAMP_TRUST_DERIVED,
+  TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC,
   buildTelemetryFingerprint,
   evaluateTelemetryHealth,
   extractTelemetryTimestampMs,
   getTelemetryDatas,
+  normalizeTelemetryTimestampTrust,
   parseFoxessCloudTimeToMs,
   parseTimestampMs
 };

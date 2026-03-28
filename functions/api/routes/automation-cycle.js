@@ -48,6 +48,12 @@ function buildTelemetryCyclePayload(telemetryHealth) {
     ageMs: Number.isFinite(Number(telemetryHealth.telemetryAgeMs))
       ? Number(telemetryHealth.telemetryAgeMs)
       : null,
+    fingerprintAgeMs: Number.isFinite(Number(telemetryHealth.fingerprintAgeMs))
+      ? Number(telemetryHealth.fingerprintAgeMs)
+      : null,
+    timestampTrust: typeof telemetryHealth.telemetryTimestampTrust === 'string'
+      ? telemetryHealth.telemetryTimestampTrust
+      : null,
     freshnessMaxAgeMs: Number.isFinite(Number(telemetryHealth.freshnessMaxAgeMs))
       ? Number(telemetryHealth.freshnessMaxAgeMs)
       : DEFAULT_FRESHNESS_MAX_AGE_MS,
@@ -64,6 +70,7 @@ function buildTelemetryResetStatePatch(nowMs = Date.now()) {
   return {
     telemetryTimestampMs: null,
     telemetryAgeMs: null,
+    telemetryTimestampTrust: null,
     telemetryFingerprint: null,
     telemetryFingerprintSinceMs: null,
     telemetryFailsafePaused: false,

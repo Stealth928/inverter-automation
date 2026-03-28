@@ -1551,57 +1551,6 @@
                 if (batteryIsDischarging) batteryIconClasses.push('discharging');
                 if (batteryFillDurationMs > 0 && Math.abs(batteryFillTarget - batteryFillCurrent) > 0.0001) batteryIconClasses.push('is-animating');
                 const batteryIconStyle = `--battery-fill-current:${batteryFillCurrent.toFixed(4)};--battery-fill-target:${batteryFillTarget.toFixed(4)};--battery-fill-duration:${batteryFillDurationMs}ms;`;
-
-                const html = `<div class="stat-row">
-                    <div class="${solarTileClass}" id="solar-tile"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('solar', 'app-overview-icon--tile')}</div><div class="value">${solarDisplay}</div><div class="label">Solar Production${curtailmentLabel}</div></div>
-                    <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('home', 'app-overview-icon--tile')}</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
-                    <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('grid', 'app-overview-icon--tile')}</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
-                    <div class="stat-item battery-tile"><div class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}">
-                                <!-- Inline SVG battery: fill level reflects SoC -->
-                                ${(() => {
-                                    const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
-                                    // Conditional coloring: green >=50%, amber 25-44%, red <25%
-                                    const fillColor = socPct >= 50 ? 'var(--color-success-dark)' : (socPct >= 25 ? 'var(--color-warning)' : 'var(--color-danger)');
-                                    return `
-                                    <svg viewBox="0 0 24 40" aria-hidden="true">
-                                        <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
-                                        <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
-                                        <rect x="3" y="4" width="18" height="28" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
-                                        <rect x="9" y="1" width="6" height="2" rx="1" ry="1" fill="var(--battery-shell-color)"></rect>
-                                    </svg>`;
-                                })()}
-                            </div>
-                            <div class="value ${batteryClass}" style="font-size:20px;font-weight:600">${batteryDisplay}</div>
-                        <div style="font-size:28px;font-weight:700;color:var(--accent-blue);margin-top:4px">${socNum !== null ? socNum.toFixed(0) + '%' : '-'}</div>
-                        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${currentEnergyKWh !== null ? (currentEnergyKWh.toFixed(2) + ' kWh') : ''}</div>
-                        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${batteryTimeText || ''}</div>
-                    </div>
-                </div>
-
-                <!-- Inline temps row for real-time display -->
-                <div class="stat-row" style="margin-top:8px">
-                        <div class="stat-item" style="min-width:140px">
-                            ${makeThermSVG(batTempVal)}
-                            <div class="value ${batTempCls}" style="font-size:18px">${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</div>
-                            <div class="label">Battery Temp</div>
-                        </div>
-                    <div class="stat-item" style="min-width:140px">
-                        ${makeThermSVG(ambTempVal)}
-                        <div class="value ${ambTempCls}" style="font-size:18px">${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</div>
-                        <div class="label">Ambient Temp</div>
-                    </div>
-                    <div class="stat-item" style="min-width:140px">
-                        ${makeThermSVG(invTempVal)}
-                        <div class="value ${invTempCls}" style="font-size:18px">${invTempVal !== null && invTempVal !== undefined ? fmtTemp(invTempVal) : '-'}</div>
-                        <div class="label">Inverter Temp</div>
-                    </div>
-                </div>`;
-                const tempNoticeHtml = alphaTempsLikelyUnavailable
-                    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);text-align:center;">AlphaESS is currently not reporting temperature sensors.</div>`
-                    : '';
-                // Debug raw view removed for stable inverter status
-                const rawHtml = '';
-
                 // Display per-PV-string outputs if present (pv1Power..pv4Power)
                 const pvStrings = [];
                 for (let i = 1; i <= 4; i++) {
@@ -1618,48 +1567,181 @@
                 const hasAcSolarBreakdown = acSolarPower !== null && acSolarPower !== undefined;
                 const hasSolarBreakdown = pvStrings.length > 0 || hasAcSolarBreakdown;
 
-                if (hasSolarBreakdown) {
-                    let pvHtml = '<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);font-weight:600">';
-                    pvHtml += hasAcSolarBreakdown ? '🔸 Solar Inputs' : '🔸 PV String Outputs';
-                    const breakdownTotal = solarPowerTotal !== null && solarPowerTotal !== undefined
-                        ? solarPowerTotal
-                        : (pvPowerTotal !== null && pvPowerTotal !== undefined ? pvPowerTotal : finalSolar);
-                    if (breakdownTotal !== null && breakdownTotal !== undefined) {
-                        pvHtml += ` <span style="color:var(--color-success);font-weight:700">(Total: ${fmtKW(breakdownTotal)})</span>`;
-                    }
-                    pvHtml += '</div>';
-                    pvHtml += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">';
-                    pvStrings.forEach(s => {
-                        const voltStr = s.volt !== null && s.volt !== undefined ? `${Number(s.volt).toFixed(1)}V` : '-';
-                        const currStr = s.current !== null && s.current !== undefined ? `${Number(s.current).toFixed(1)}A` : '-';
-                        const pvColor = (Number(s.power) === 0) ? 'var(--text-secondary)' : 'var(--color-success)';
-                        pvHtml += `<div class="stat-item" style="min-width:90px;padding:10px;text-align:center">
-                            <div class="value" style="font-size:18px;font-weight:700;color:${pvColor}">${fmtKW(s.power)}</div>
-                            <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">PV${s.idx}</div>
-                            <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">${voltStr} · ${currStr}</div>
-                        </div>`;
-                    });
-
-                    if (hasAcSolarBreakdown) {
-                        if (!pvStrings.length && pvPowerTotal !== null && pvPowerTotal !== undefined) {
-                            pvHtml += `<div class="stat-item" style="min-width:110px;padding:10px;text-align:center">
-                                <div class="value" style="font-size:18px;font-weight:700;color:var(--color-success)">${fmtKW(pvPowerTotal)}</div>
-                                <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">DC Solar</div>
-                                <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">Fox PV input</div>
-                            </div>`;
-                        }
-                        pvHtml += `<div class="stat-item" style="min-width:110px;padding:10px;text-align:center">
-                            <div class="value" style="font-size:18px;font-weight:700;color:var(--accent)">${fmtKW(acSolarPower)}</div>
-                            <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">AC Solar</div>
-                            <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">Mapped external source</div>
-                        </div>`;
-                    }
-
-                    pvHtml += '</div>';
-                    card.innerHTML = html + tempNoticeHtml + pvHtml;
-                } else {
-                    card.innerHTML = html + tempNoticeHtml;
+                function toSceneAbsKw(v, item) {
+                    const normalized = normalizedKWFromValue(v, item);
+                    return Number.isFinite(normalized) ? Math.abs(normalized) : null;
                 }
+
+                function flowOpacityForKw(kW) {
+                    if (!Number.isFinite(kW) || kW < 0.05) return '0';
+                    return Math.min(0.95, 0.45 + (Math.min(8, Math.abs(kW)) / 8) * 0.45).toFixed(2);
+                }
+
+                function flowSpeedForKw(kW) {
+                    if (!Number.isFinite(kW) || kW < 0.05) return '3000ms';
+                    const clamped = Math.max(0.1, Math.min(8, Math.abs(kW)));
+                    const speed = Math.round(3800 - ((clamped - 0.1) / (8 - 0.1)) * 3000);
+                    return `${speed}ms`;
+                }
+
+                function flowPathMarkup(pathD, flowColor, magnitudeKw, reverse = false) {
+                    const isActive = Number.isFinite(magnitudeKw) && Math.abs(magnitudeKw) >= 0.05;
+                    const classes = ['energy-flow-path', isActive ? 'is-active' : 'is-idle'];
+                    if (reverse) classes.push('is-reverse');
+                    return `<path class="${classes.join(' ')}" d="${pathD}" style="--flow-color:${flowColor};--flow-opacity:${flowOpacityForKw(magnitudeKw)};--flow-speed:${flowSpeedForKw(magnitudeKw)};"></path>`;
+                }
+
+                const solarSceneItem = findItemByKeys(['solarPowerTotal', 'solarpowertotal', 'pvPower', 'pvpower', 'generationpower', 'generation', 'outputpower', 'meterPower2']);
+                const loadSceneItem = findItemByKeys(loadKeys);
+                const solarKW = toSceneAbsKw(finalSolar, solarSceneItem);
+                const loadKW = toSceneAbsKw(houseLoad, loadSceneItem);
+                const batteryAbsKW = Number.isFinite(batteryPowerKW) ? Math.abs(batteryPowerKW) : 0;
+                const importMagnitudeKW = gridIsImport && gKW !== null ? Math.abs(gKW) : 0;
+                const exportMagnitudeKW = gridIsExport && fKW !== null ? Math.abs(fKW) : 0;
+                const gridFlowMode = Math.max(importMagnitudeKW, exportMagnitudeKW) >= 0.05
+                    ? (importMagnitudeKW >= exportMagnitudeKW ? 'import' : 'export')
+                    : 'idle';
+                const gridPanelClass = gridFlowMode === 'import' ? 'is-import' : (gridFlowMode === 'export' ? 'is-export' : 'is-idle');
+                const gridPrimaryValue = gridFlowMode === 'import'
+                    ? `${importMagnitudeKW.toFixed(2)} kW`
+                    : (gridFlowMode === 'export' ? `${exportMagnitudeKW.toFixed(2)} kW` : '0.00 kW');
+                const gridPillText = gridFlowMode === 'import' ? 'Import' : (gridFlowMode === 'export' ? 'Export' : 'Balanced');
+                const gridMetaText = importMagnitudeKW >= 0.05 && exportMagnitudeKW >= 0.05
+                    ? `Import ${importMagnitudeKW.toFixed(2)} kW / Export ${exportMagnitudeKW.toFixed(2)} kW`
+                    : (gridFlowMode === 'import'
+                        ? 'House drawing from grid'
+                        : (gridFlowMode === 'export' ? 'Solar surplus leaving site' : 'No significant grid exchange'));
+                const activePvCount = pvStrings.filter((entry) => {
+                    const powerKw = normalizedKWFromValue(entry.power, null);
+                    return Number.isFinite(powerKw) && Math.abs(powerKw) >= 0.02;
+                }).length;
+                const solarStateText = curtailmentActive ? 'Curtailed' : '';
+                const solarSubText = hasSolarBreakdown ? `${activePvCount || pvStrings.length || 1} input${(activePvCount || pvStrings.length || 1) === 1 ? '' : 's'}` : '';
+                const batteryStateText = batteryIsCharging ? 'Charging' : (batteryIsDischarging ? 'Discharging' : 'Standby');
+                const batteryLevelText = socNum !== null ? `${socNum.toFixed(0)}%` : '-';
+                const batteryEnergyText = currentEnergyKWh !== null ? `${currentEnergyKWh.toFixed(2)} kWh stored` : 'Battery energy unavailable';
+                const batteryEtaText = batteryTimeText || '';
+                const batteryIconSvg = (() => {
+                    const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
+                    const fillColor = socPct >= 50 ? 'var(--color-success-dark)' : (socPct >= 25 ? 'var(--color-warning)' : 'var(--color-danger)');
+                    return `
+                        <svg viewBox="0 0 24 40" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
+                            <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
+                            <rect x="3" y="4" width="18" height="28" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
+                            <rect x="9" y="1" width="6" height="2" rx="1" ry="1" fill="var(--battery-shell-color)"></rect>
+                        </svg>`;
+                })();
+                const sceneWeather = getInverterSceneWeatherState(getLatestWeatherSceneData());
+                const sceneWeatherClass = sceneWeather && sceneWeather.effect ? `weather-${sceneWeather.effect}` : 'weather-clear';
+                const sceneDayClass = sceneWeather && sceneWeather.isDay ? 'is-daylight' : 'is-night';
+
+                // Compact inline PV strings for solar tile
+                let pvInlineSolar = '';
+                if (pvStrings.length > 0) {
+                    pvInlineSolar = '<div class="energy-node__pv-grid">' +
+                        pvStrings.map(s => {
+                            const kwNum = normalizedKWFromValue(s.power, null);
+                            const active = Number.isFinite(kwNum) && Math.abs(kwNum) >= 0.02;
+                            const voltStr = (s.volt !== null && s.volt !== undefined) ? `${Number(s.volt).toFixed(0)}V` : '';
+                            return `<div class="pv-item${active ? ' pv-item--active' : ''}">`
+                                + `<span class="pv-item__idx">PV${s.idx}</span>`
+                                + `<span class="pv-item__val">${fmtKW(s.power)}</span>`
+                                + (voltStr ? `<span class="pv-item__volt">${escapeHtml(voltStr)}</span>` : '')
+                                + '</div>';
+                        }).join('') +
+                    '</div>';
+                } else if (hasAcSolarBreakdown) {
+                    pvInlineSolar = '<div class="energy-node__pv-grid">'
+                        + `<div class="pv-item pv-item--active"><span class="pv-item__idx">AC</span><span class="pv-item__val">${fmtKW(acSolarPower)}</span></div>`
+                        + '</div>';
+                }
+
+                const html = `<div class="energy-topology">
+                    <div class="energy-scene ${sceneWeatherClass} ${sceneDayClass}" data-weather-effect="${escapeHtml(sceneWeather.effect || 'clear')}" data-weather-label="${escapeHtml(sceneWeather.label || 'Clear')}">
+                        <div class="energy-scene__weather" aria-hidden="true">
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--cloud"></div>
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--mist"></div>
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--rain"></div>
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--flash"></div>
+                        </div>
+                        <svg class="energy-scene__wiring" viewBox="0 0 1536 1024" preserveAspectRatio="none" aria-hidden="true">
+                            <!-- Anchor: solar node (TL) → solar panels on roof -->
+                            <line class="energy-anchor-line" x1="80" y1="50" x2="590" y2="220"/>
+                            <circle class="energy-anchor-dot energy-anchor-dot--solar" cx="590" cy="220" r="8"/>
+                            <!-- Anchor: home node (BL) → glass-door living area -->
+                            <line class="energy-anchor-line" x1="80" y1="960" x2="455" y2="645"/>
+                            <circle class="energy-anchor-dot energy-anchor-dot--home" cx="455" cy="645" r="8"/>
+                            <!-- Anchor: hub node (BR) → wall-mounted battery unit -->
+                            <line class="energy-anchor-line" x1="1280" y1="900" x2="980" y2="720"/>
+                            <circle class="energy-anchor-dot energy-anchor-dot--hub" cx="980" cy="720" r="8"/>
+                            <!-- Flow track: Solar (TL) → Hub (BR) diagonal arch -->
+                            <path class="energy-flow-track" d="M 80 50 C 360 380, 840 700, 1280 900"/>
+                            <!-- Flow track: Hub (BR) → Home (BL) bottom sweep -->
+                            <path class="energy-flow-track" d="M 1280 900 C 940 960, 580 970, 80 960"/>
+                            <!-- Flow track: Grid (TR) → Hub (BR) right-side arc -->
+                            <path class="energy-flow-track" d="M 1460 50 C 1490 380, 1420 680, 1280 900"/>
+                            <!-- Flow track: Hub ↔ Battery unit (short stub) -->
+                            <path class="energy-flow-track" d="M 1280 900 C 1180 840, 1090 780, 980 722"/>
+                            <!-- Active flows -->
+                            ${flowPathMarkup('M 80 50 C 360 380, 840 700, 1280 900', 'var(--energy-solar)', solarKW, false)}
+                            ${flowPathMarkup('M 1280 900 C 940 960, 580 970, 80 960', 'var(--energy-home)', loadKW, false)}
+                            ${flowPathMarkup('M 1460 50 C 1490 380, 1420 680, 1280 900', gridFlowMode === 'import' ? 'var(--energy-grid-import)' : 'var(--energy-grid-export)', Math.max(importMagnitudeKW, exportMagnitudeKW), gridFlowMode === 'export')}
+                            ${flowPathMarkup('M 1280 900 C 1180 840, 1090 780, 980 722', batteryIsDischarging ? 'var(--energy-battery-discharge)' : 'var(--energy-battery-charge)', batteryAbsKW, batteryIsDischarging)}
+                        </svg>
+                        <section class="energy-node energy-node--solar ${curtailmentActive ? 'is-curtailed' : ''}" id="solar-tile">
+                            <div class="energy-node__top">
+                                <span class="energy-node__title">Solar</span>
+                                ${solarStateText ? `<span class="energy-node__state">${escapeHtml(solarStateText)}</span>` : ''}
+                            </div>
+                            <div class="energy-node__value value price-low">${solarDisplay}</div>
+                            ${pvInlineSolar}
+                        </section>
+                        <section class="energy-node energy-node--home">
+                            <div class="energy-node__top">
+                                <span class="energy-node__title">Home</span>
+                            </div>
+                            <div class="energy-node__value value price-low">${loadDisplay}</div>
+                        </section>
+                        <section class="energy-core energy-core--hub">
+                            <div class="energy-core__top">
+                                <span class="energy-core__title">Inverter</span>
+                                <span class="energy-core__state">${escapeHtml(batteryStateText)}</span>
+                            </div>
+                            <div class="energy-core__main">
+                                <div class="energy-core__copy">
+                                    <div class="energy-core__soc value">${escapeHtml(batteryLevelText)}</div>
+                                    <div class="energy-core__label">Battery level</div>
+                                    <div class="energy-core__storage">${escapeHtml(batteryEnergyText)}</div>
+                                    <div class="energy-core__status"><span class="${batteryClass}">${batteryDisplay}</span></div>
+                                </div>
+                                <div class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}">
+                                    ${batteryIconSvg}
+                                </div>
+                            </div>
+                            ${batteryEtaText ? `<div class="energy-core__eta">${escapeHtml(batteryEtaText)}</div>` : ''}
+                            <div class="energy-core__temps">
+                                <span class="energy-core__temp ${batTempCls}">Bat ${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</span>
+                                <span class="energy-core__temp ${ambTempCls}">Amb ${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</span>
+                                <span class="energy-core__temp ${invTempCls}">Inv ${invTempVal !== null && invTempVal !== undefined ? fmtTemp(invTempVal) : '-'}</span>
+                            </div>
+                        </section>
+                        <section class="energy-node energy-node--grid ${gridPanelClass}">
+                            <div class="energy-node__top">
+                                <span class="energy-node__title">Grid</span>
+                                <span class="energy-node__state">${escapeHtml(gridPillText)}</span>
+                            </div>
+                            <div class="energy-node__value value ${gridClass}">${escapeHtml(gridPrimaryValue)}</div>
+                        </section>
+                    </div>
+                </div>`;
+                const tempNoticeHtml = alphaTempsLikelyUnavailable
+                    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);text-align:center;">AlphaESS is currently not reporting temperature sensors.</div>`
+                    : '';
+                // Debug raw view removed for stable inverter status
+                const rawHtml = '';
+
+                card.innerHTML = html + tempNoticeHtml;
             } else if (name === 'Battery SoC' && data.result) {
                 const r = data.result;
                 card.innerHTML = `<div class="stat-row">
@@ -1884,6 +1966,81 @@
             return 'Unknown';
         }
 
+        const INVERTER_SCENE_WEATHER_CLASSES = ['weather-clear', 'weather-cloudy', 'weather-fog', 'weather-drizzle', 'weather-rain', 'weather-storm', 'weather-snow'];
+
+        function getLatestWeatherSceneData() {
+            try {
+                if (window.__latestWeatherForDashboard && (window.__latestWeatherForDashboard.current || window.__latestWeatherForDashboard.daily)) {
+                    return window.__latestWeatherForDashboard;
+                }
+            } catch (error) { /* ignore */ }
+            try {
+                const cached = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                if (cached && (cached.current || cached.daily)) return cached;
+            } catch (error) { /* ignore */ }
+            return null;
+        }
+
+        function getInverterSceneWeatherState(weatherData) {
+            const current = weatherData?.current || {};
+            const code = Number(current.weathercode);
+            const cloudCoverRaw = current.cloudcover ?? current.cloud_cover ?? null;
+            const cloudCover = cloudCoverRaw === null || cloudCoverRaw === undefined || Number.isNaN(Number(cloudCoverRaw))
+                ? null
+                : Number(cloudCoverRaw);
+
+            // Daylight: prefer API is_day field. Fallback to timezone-aware local estimate
+            // (6am–8pm local time treated as day when no weather data is available).
+            let isDay;
+            if (current.is_day !== undefined && current.is_day !== null) {
+                isDay = Number(current.is_day) === 1;
+            } else {
+                // Derive from the user's location timezone if available, else browser local time
+                const tz = (typeof CONFIG !== 'undefined' && CONFIG?.preferences?.timezone) || null;
+                let localHour;
+                try {
+                    const now = new Date();
+                    if (tz) {
+                        localHour = Number(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+                    } else {
+                        localHour = now.getHours();
+                    }
+                } catch (_) {
+                    localHour = new Date().getHours();
+                }
+                isDay = localHour >= 6 && localHour < 20;
+            }
+
+            let effect = 'clear';
+            if ([95, 96, 99].includes(code)) effect = 'storm';
+            else if ([71, 73, 75, 77, 85, 86].includes(code)) effect = 'snow';
+            else if ([51, 53, 55, 56, 57].includes(code)) effect = 'drizzle';
+            else if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) effect = 'rain';
+            else if ([45, 48].includes(code)) effect = 'fog';
+            else if (code === 3 || (cloudCover !== null && cloudCover >= 70)) effect = 'cloudy';
+            else if ([1, 2].includes(code) || (cloudCover !== null && cloudCover >= 35)) effect = 'cloudy';
+
+            return {
+                effect,
+                label: Number.isFinite(code) ? weatherCodeToWord(code) : 'Clear',
+                isDay
+            };
+        }
+
+        function applyInverterSceneWeatherEffect(weatherData) {
+            const scene = document.querySelector('#inverterCard .energy-scene');
+            if (!scene) return;
+            const state = getInverterSceneWeatherState(weatherData);
+            INVERTER_SCENE_WEATHER_CLASSES.forEach((className) => scene.classList.remove(className));
+            scene.classList.add(`weather-${state.effect}`);
+            scene.classList.remove('is-daylight', 'is-night');
+            scene.classList.add(state.isDay ? 'is-daylight' : 'is-night');
+            scene.setAttribute('data-weather-effect', state.effect);
+            scene.setAttribute('data-weather-label', state.label || 'Clear');
+            const chip = scene.querySelector('.energy-scene__weather-chip');
+            if (chip) chip.textContent = state.label || 'Clear';
+        }
+
         // Ensure Leaflet is loaded (returns a Promise). Loads CSS+JS once via CDN.
         function ensureLeafletLoaded() {
             if (window._leafletPromise) return window._leafletPromise;
@@ -1951,6 +2108,10 @@
         function renderWeatherCard(data) {
             const card = document.getElementById('weatherCard');
             if (!data) { card.innerHTML = '<div style="color:var(--color-danger)">No data</div>'; return; }
+            try {
+                window.__latestWeatherForDashboard = data;
+                applyInverterSceneWeatherEffect(data);
+            } catch (error) { /* ignore */ }
 
             const place = data.place || {};
             const current = data.current || null;
@@ -7289,9 +7450,16 @@
                 // Also update the detailed inverter check label.
                 try {
                     const fetchAgoEl = document.getElementById('inverterFetchAgo');
+                    const fetchLabelEl = document.getElementById('inverterFetchLabel');
                     if (fetchAgoEl) {
                         const text = lastUpdated.inverter ? formatSince(lastUpdated.inverter) : '—';
                         fetchAgoEl.textContent = text;
+                    }
+                    if (fetchLabelEl) {
+                        const hasCloudAge = Number.isFinite(lastUpdated.inverterCloud);
+                        const hasFetchAge = Number.isFinite(lastUpdated.inverter);
+                        const showFetchAge = hasCloudAge && hasFetchAge && Math.abs(lastUpdated.inverter - lastUpdated.inverterCloud) >= 15000;
+                        fetchLabelEl.style.display = showFetchAge ? 'inline' : 'none';
                     }
                 } catch (e) { console.error('Error updating inverter display details:', e); }
             } catch (e) { console.error('Error in updateLastUpdateDisplays:', e); }
@@ -7857,6 +8025,57 @@
             }
         }
 
+        function normalizeTelemetryTimestampTrustClient(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            return (normalized === 'source' || normalized === 'derived' || normalized === 'synthetic')
+                ? normalized
+                : '';
+        }
+
+        function readTelemetryFrozenDurationMs(status = {}) {
+            const explicitAgeMs = Number(status.telemetryFingerprintAgeMs ?? status.fingerprintAgeMs);
+            if (Number.isFinite(explicitAgeMs) && explicitAgeMs >= 0) {
+                return explicitAgeMs;
+            }
+            const fingerprintSinceMs = Number(status.telemetryFingerprintSinceMs);
+            const referenceNowMs = Number(status.serverTime);
+            const nowMs = Number.isFinite(referenceNowMs) ? referenceNowMs : Date.now();
+            if (Number.isFinite(fingerprintSinceMs)) {
+                return Math.max(0, nowMs - fingerprintSinceMs);
+            }
+            return null;
+        }
+
+        function buildTelemetryPauseMessage(status = {}) {
+            const telemetryPauseReason = String(status.telemetryFailsafePauseReason || status.pauseReason || '').trim();
+            const telemetryAgeMs = Number(status.telemetryAgeMs ?? status.ageMs);
+            const telemetryAgeText = Number.isFinite(telemetryAgeMs)
+                ? formatMsToReadable(telemetryAgeMs)
+                : 'unknown age';
+
+            if (telemetryPauseReason === 'stale_telemetry') {
+                return `Automation paused: inverter telemetry is stale (${telemetryAgeText} old).`;
+            }
+            if (telemetryPauseReason === 'stale_telemetry_missing_timestamp') {
+                return 'Automation paused: inverter telemetry timestamp missing or unreadable.';
+            }
+            if (telemetryPauseReason === 'frozen_telemetry') {
+                const frozenDurationMs = readTelemetryFrozenDurationMs(status);
+                const frozenDurationText = Number.isFinite(frozenDurationMs)
+                    ? formatMsToReadable(frozenDurationMs)
+                    : 'an extended period';
+                const timestampTrust = normalizeTelemetryTimestampTrustClient(
+                    status.telemetryTimestampTrust || status.timestampTrust
+                );
+                if (timestampTrust === 'derived' || timestampTrust === 'synthetic') {
+                    return `Automation paused: inverter telemetry values were unchanged for ${frozenDurationText} while the timestamp was inferred.`;
+                }
+                return `Automation paused: inverter telemetry values were unchanged for ${frozenDurationText}.`;
+            }
+
+            return '';
+        }
+
         // Update the backend automation section UI
         function updateBackendAutomationUI(status) {
             try {
@@ -7870,19 +8089,7 @@
                 const inBlackout = status.inBlackout || false;
                 const blackoutWindow = status.currentBlackoutWindow;
                 const telemetryFailsafePaused = masterEnabled && status.telemetryFailsafePaused === true;
-                const telemetryPauseReason = String(status.telemetryFailsafePauseReason || '').trim();
-                const telemetryAgeMs = Number(status.telemetryAgeMs);
-                const telemetryAgeText = Number.isFinite(telemetryAgeMs)
-                    ? formatMsToReadable(telemetryAgeMs)
-                    : 'unknown age';
-                let telemetryPauseText = '';
-                if (telemetryPauseReason === 'stale_telemetry') {
-                    telemetryPauseText = `Automation paused: inverter telemetry is stale (${telemetryAgeText} old).`;
-                } else if (telemetryPauseReason === 'stale_telemetry_missing_timestamp') {
-                    telemetryPauseText = 'Automation paused: inverter telemetry timestamp missing or unreadable.';
-                } else if (telemetryPauseReason === 'frozen_telemetry') {
-                    telemetryPauseText = `Automation paused: inverter telemetry appears frozen (unchanged for ${telemetryAgeText}).`;
-                }
+                const telemetryPauseText = buildTelemetryPauseMessage(status);
                 // Normalize lastCheck (handle Firestore Timestamp shapes and seconds/ms ambiguity)
                 let lastCheckRaw = status.lastCheck;
                 let lastCheck = Date.now();
@@ -8307,15 +8514,13 @@
                     } else if (data.result?.skipped) {
                         const skipReason = String(data.result.reason || '');
                         if (skipReason === 'stale_telemetry' || skipReason === 'stale_telemetry_missing_timestamp' || skipReason === 'frozen_telemetry') {
-                            const ageMs = Number(data.result?.telemetry?.ageMs);
-                            const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
-                            if (skipReason === 'stale_telemetry') {
-                                showMessage('warning', `Automation paused: inverter telemetry is stale (${ageLabel} old).`, 6000);
-                            } else if (skipReason === 'stale_telemetry_missing_timestamp') {
-                                showMessage('warning', 'Automation paused: inverter telemetry timestamp missing or unreadable.', 6000);
-                            } else {
-                                showMessage('warning', `Automation paused: inverter telemetry appears frozen (${ageLabel}).`, 6000);
-                            }
+                            const pauseMessage = buildTelemetryPauseMessage({
+                                pauseReason: skipReason,
+                                ageMs: data.result?.telemetry?.ageMs,
+                                fingerprintAgeMs: data.result?.telemetry?.fingerprintAgeMs,
+                                timestampTrust: data.result?.telemetry?.timestampTrust
+                            });
+                            showMessage('warning', pauseMessage || 'Automation paused by telemetry fail-safe.', 6000);
                         }
                     } else {
                     }

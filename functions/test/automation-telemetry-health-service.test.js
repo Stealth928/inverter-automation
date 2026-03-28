@@ -88,7 +88,10 @@ describe('automation telemetry health service', () => {
 
   test('evaluateTelemetryHealth pauses when fingerprint is unchanged for over frozen threshold', () => {
     const nowMs = Date.parse('2026-03-12T10:00:00.000Z');
-    const payload = buildPayload({ time: new Date(nowMs).toISOString() });
+    const payload = {
+      ...buildPayload({ time: new Date(nowMs).toISOString() }),
+      telemetryTimestampTrust: 'synthetic'
+    };
     const fingerprint = buildTelemetryFingerprint(payload);
 
     const result = evaluateTelemetryHealth({
@@ -103,6 +106,28 @@ describe('automation telemetry health service', () => {
     expect(result.shouldPauseAutomation).toBe(true);
     expect(result.pauseReason).toBe('frozen_telemetry');
     expect(result.frozen).toBe(true);
+    expect(result.telemetryTimestampTrust).toBe('synthetic');
+  });
+
+  test('evaluateTelemetryHealth does not pause steady telemetry when source timestamp is trusted', () => {
+    const nowMs = Date.parse('2026-03-12T10:00:00.000Z');
+    const payload = buildPayload({ time: new Date(nowMs).toISOString() });
+    const fingerprint = buildTelemetryFingerprint(payload);
+
+    const result = evaluateTelemetryHealth({
+      inverterData: payload,
+      nowMs,
+      previousState: {
+        telemetryFingerprint: fingerprint,
+        telemetryFingerprintSinceMs: nowMs - (DEFAULT_FROZEN_MAX_AGE_MS + 60000)
+      }
+    });
+
+    expect(result.shouldPauseAutomation).toBe(false);
+    expect(result.pauseReason).toBeNull();
+    expect(result.frozenCandidate).toBe(true);
+    expect(result.frozen).toBe(false);
+    expect(result.telemetryTimestampTrust).toBe('source');
   });
 
   test('evaluateTelemetryHealth remains healthy when fingerprint changes', () => {

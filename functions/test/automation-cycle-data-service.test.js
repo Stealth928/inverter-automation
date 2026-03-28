@@ -56,9 +56,25 @@ describe('automation cycle data service', () => {
       expect(result).toBe(payload);
       expect(result.observedAtIso).toBe('2026-03-19T00:08:55.000Z');
       expect(result.result[0].time).toBe('2026-03-19T00:08:55.000Z');
+      expect(result.telemetryTimestampTrust).toBe('derived');
     } finally {
       nowSpy.mockRestore();
     }
+  });
+
+  test('ensureAutomationTelemetryTimestamp treats embedded frame timestamps as source-trusted', () => {
+    const payload = {
+      errno: 0,
+      result: [{
+        time: '2026-03-19T00:08:55.000Z',
+        datas: [{ variable: 'SoC', value: 70 }]
+      }]
+    };
+
+    const result = ensureAutomationTelemetryTimestamp(payload);
+
+    expect(result.telemetryTimestampTrust).toBe('source');
+    expect(result.observedAtIso).toBe('2026-03-19T00:08:55.000Z');
   });
 
   test('fetchAutomationInverterData uses shared realtime cache for non-fox providers', async () => {
@@ -135,6 +151,7 @@ describe('automation cycle data service', () => {
     expect(getCachedInverterData).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       errno: 0,
+      telemetryTimestampTrust: 'synthetic',
       result: [expect.objectContaining({
         time: '2026-03-12T01:02:03.000Z',
         datas: expect.arrayContaining([

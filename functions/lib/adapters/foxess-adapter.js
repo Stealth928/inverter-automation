@@ -87,6 +87,7 @@ class FoxessDeviceAdapter extends DeviceAdapter {
     const observedAtIso = context.observedAtIso || new Date().toISOString();
     return {
       ...normalizeDeviceStatusPayload(result, observedAtIso),
+      telemetryTimestampTrust: 'source',
       deviceSN,
       raw: result
     };
