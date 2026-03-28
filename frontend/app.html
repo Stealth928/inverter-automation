@@ -3975,23 +3975,23 @@
             border: 1px solid rgba(114, 219, 255, 0.24);
         }
         #inverterCard .energy-core__main {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
             justify-content: center;
-            gap: 16px;
+            column-gap: 14px;
             margin-top: 8px;
         }
         #inverterCard .energy-core__visual {
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            width: auto;
             flex-shrink: 0;
         }
         #inverterCard .energy-core__copy {
             display: grid;
-            flex: 1 1 0;
+            flex: 0 1 auto;
             gap: 4px;
             min-width: 0;
             justify-items: center;
@@ -4006,15 +4006,11 @@
             color: var(--accent-blue);
             text-shadow: 0 0 18px rgba(88, 166, 255, 0.18);
         }
-        #inverterCard .energy-core__main {
-            align-items: center;
-            gap: 8px;
-        }
         #inverterCard .energy-core__visual {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 100%;
+            width: auto;
         }
         #inverterCard .energy-core .tile-icon.battery {
             width: 64px;
@@ -4103,11 +4099,10 @@
                 bottom: 4%;
             }
             #inverterCard .energy-core__main {
-                align-items: center;
-                gap: 8px;
+                grid-template-columns: minmax(0, 1fr) auto;
+                column-gap: 12px;
             }
             #inverterCard .energy-core__visual {
-                gap: 7px;
                 justify-content: center;
             }
             #inverterCard svg.tile-icon.battery {
