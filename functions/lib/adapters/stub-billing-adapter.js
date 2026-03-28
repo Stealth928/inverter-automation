@@ -31,17 +31,18 @@ function nowMs() {
   return Date.now();
 }
 
+const WEEKLY_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * Calculate next renewal epoch for a cadence from a given startMs.
  */
 function nextRenewalMs(startMs, cadence) {
-  const d = new Date(startMs);
   if (cadence === 'WEEKLY') {
-    d.setDate(d.getDate() + 7);
-  } else {
-    // MONTHLY
-    d.setMonth(d.getMonth() + 1);
+    return startMs + WEEKLY_PERIOD_MS;
   }
+
+  const d = new Date(startMs);
+  d.setUTCMonth(d.getUTCMonth() + 1);
   return d.getTime();
 }
 
