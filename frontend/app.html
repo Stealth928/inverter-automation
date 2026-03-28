@@ -1029,24 +1029,32 @@
         .inverter-card-header {
             align-items: flex-start;
             padding: 10px 18px 8px;
+            gap: 12px;
         }
         .inverter-card-header__meta {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
+            display: grid;
+            justify-items: end;
             gap: 4px;
+            min-width: 0;
         }
         .inverter-card-header__status {
             display: flex;
             align-items: center;
             gap: 8px;
             min-height: 28px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .inverter-card-header__status .btn {
+            margin-bottom: 0;
+            flex: 0 0 auto;
         }
         #inverterLastUpdate,
         .inverter-card-header__age {
             font-size: 11px;
             color: var(--text-secondary);
             line-height: 1.1;
+            white-space: nowrap;
         }
         .inverter-card-header__fetch-row {
             line-height: 1.1;
@@ -1054,13 +1062,31 @@
         }
         #inverterFetchLabel,
         .inverter-card-header__fetch {
-            display: none;
+            display: inline-block;
             font-size: 10px;
             color: var(--text-muted);
             line-height: 1.1;
+            white-space: nowrap;
+        }
+        #inverterFetchAgo {
+            margin-left: 0.25ch;
         }
         .inverter-card-header__fetch[hidden] {
             display: none !important;
+        }
+        @media (max-width: 700px) {
+            .inverter-card-header {
+                flex-wrap: wrap;
+            }
+            .inverter-card-header__meta {
+                width: 100%;
+                justify-items: start;
+            }
+            .inverter-card-header__status,
+            .inverter-card-header__fetch-row {
+                justify-content: flex-start;
+                text-align: left;
+            }
         }
 
         /* Buttons */
@@ -1210,6 +1236,10 @@
 
         #inverterCard {
             border-left: none !important;
+            container-type: inline-size;
+            container-name: inverter-card;
+            width: min(100%, 920px);
+            margin-inline: auto;
             --battery-shell-color: rgba(255, 255, 255, 0.32);
             --battery-shell-bg: rgba(255, 255, 255, 0.05);
             --energy-panel-surface: linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 72%, transparent), color-mix(in srgb, var(--bg-input) 94%, transparent));
@@ -3059,6 +3089,71 @@
             border: 1px solid var(--border-secondary) !important;
             position: relative;
         }
+        .weather-card-layout {
+            display: grid;
+            gap: 12px;
+        }
+        .weather-card-summary,
+        .weather-card-forecast {
+            min-width: 0;
+        }
+        .weather-card-layout--has-map {
+            grid-template-columns: minmax(0, 1fr) clamp(132px, 22vw, 180px);
+            grid-template-areas:
+                "summary map"
+                "details details"
+                "forecast forecast";
+            align-items: start;
+        }
+        .weather-card-layout--has-map .weather-card-summary {
+            grid-area: summary;
+        }
+        .weather-card-layout--has-map .weather-card-forecast {
+            grid-area: forecast;
+        }
+        .weather-card-layout--has-map .weather-card-details-row {
+            grid-area: details;
+            margin-top: -4px;
+        }
+        .weather-card-layout--has-map .weather-map--inline {
+            grid-area: map;
+            min-height: 112px;
+            height: 112px !important;
+            margin-top: 0;
+        }
+        .weather-card-details-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            margin-top: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }
+        .weather-card-details-row strong {
+            color: var(--text-primary);
+        }
+        .weather-card-details-sep {
+            color: var(--text-muted);
+            flex: 0 0 auto;
+        }
+        @media (max-width: 720px) {
+            .weather-card-layout--has-map {
+                grid-template-columns: 1fr;
+                grid-template-areas:
+                    "summary"
+                    "map"
+                    "details"
+                    "forecast";
+            }
+            .weather-card-layout--has-map .weather-map--inline {
+                min-height: 120px;
+                height: 120px !important;
+            }
+        }
         /* Simple modal for Amber history date selection */
         .modal-backdrop { position: fixed; inset: 0; background: rgba(3,6,9,0.6); display:none; align-items:center; justify-content:center; z-index:1200 }
         .modal-backdrop.show { display:flex }
@@ -3299,32 +3394,130 @@
             filter: blur(18px);
         }
         #inverterCard .energy-scene__weather-layer--rain {
-            background-image: repeating-linear-gradient(102deg, rgba(157, 210, 255, 0.0) 0 15px, rgba(157, 210, 255, 0.22) 15px 17px, rgba(157, 210, 255, 0.0) 17px 36px);
-            background-size: 180px 180px;
-            animation: inverter-rainfall 1.35s linear infinite;
+            --rain-base-duration: 1.45s;
+            --rain-far-duration: 2.5s;
+            --rain-near-duration: 1.02s;
+            --rain-base-blur: 0.35px;
+            --rain-far-opacity: 0.48;
+            --rain-near-opacity: 0.28;
+            background-image:
+                repeating-linear-gradient(102deg, rgba(157, 210, 255, 0) 0 18px, rgba(175, 223, 255, 0.12) 18px 19px, rgba(157, 210, 255, 0) 19px 44px),
+                repeating-linear-gradient(103deg, rgba(157, 210, 255, 0) 0 38px, rgba(202, 236, 255, 0.14) 38px 40px, rgba(157, 210, 255, 0) 40px 92px);
+            background-size: 210px 210px, 300px 300px;
+            filter: blur(var(--rain-base-blur));
+            mix-blend-mode: screen;
+            will-change: transform, opacity;
+            animation: inverter-rainfall var(--rain-base-duration) linear infinite;
+        }
+        #inverterCard .energy-scene__weather-layer--rain::before,
+        #inverterCard .energy-scene__weather-layer--rain::after {
+            content: "";
+            position: absolute;
+            inset: -6%;
+            background-repeat: repeat;
+            pointer-events: none;
+        }
+        #inverterCard .energy-scene__weather-layer--rain::before {
+            opacity: var(--rain-far-opacity);
+            background-image: repeating-linear-gradient(101deg, rgba(157, 210, 255, 0) 0 28px, rgba(190, 228, 255, 0.11) 28px 29px, rgba(157, 210, 255, 0) 29px 62px);
+            background-size: 260px 260px;
+            filter: blur(0.75px);
+            animation: inverter-rainfall-far var(--rain-far-duration) linear infinite;
+        }
+        #inverterCard .energy-scene__weather-layer--rain::after {
+            opacity: var(--rain-near-opacity);
+            background-image: repeating-linear-gradient(104deg, rgba(157, 210, 255, 0) 0 23px, rgba(214, 242, 255, 0.22) 23px 25px, rgba(157, 210, 255, 0) 25px 54px);
+            background-size: 170px 170px;
+            filter: blur(0.18px);
+            animation: inverter-rainfall-near var(--rain-near-duration) linear infinite;
         }
         #inverterCard .energy-scene__weather-layer--flash {
+            --lightning-duration: 6.8s;
             background:
-                radial-gradient(circle at 52% 24%, rgba(184, 225, 255, 0.26), transparent 12%),
-                radial-gradient(circle at 68% 20%, rgba(184, 225, 255, 0.18), transparent 16%);
+                radial-gradient(circle at 54% 18%, rgba(225, 244, 255, 0.34), transparent 14%),
+                radial-gradient(circle at 60% 34%, rgba(174, 220, 255, 0.18), transparent 28%),
+                radial-gradient(circle at 78% 16%, rgba(214, 236, 255, 0.18), transparent 18%),
+                linear-gradient(180deg, rgba(196, 228, 255, 0.12), rgba(196, 228, 255, 0) 42%);
+            mix-blend-mode: screen;
+            will-change: opacity, filter;
+        }
+        #inverterCard .energy-scene__weather-layer--flash::before,
+        #inverterCard .energy-scene__weather-layer--flash::after {
+            content: "";
+            position: absolute;
+            pointer-events: none;
+            opacity: 0;
+            will-change: opacity, transform, filter;
+        }
+        #inverterCard .energy-scene__weather-layer--flash::before {
+            top: 7%;
+            left: 55%;
+            width: 15%;
+            height: 48%;
+            background:
+                linear-gradient(166deg, transparent 0 32%, rgba(246, 252, 255, 0.98) 32% 38%, transparent 38% 100%),
+                linear-gradient(198deg, transparent 0 42%, rgba(193, 231, 255, 0.92) 42% 48%, transparent 48% 100%),
+                linear-gradient(162deg, transparent 0 62%, rgba(240, 250, 255, 0.88) 62% 67%, transparent 67% 100%);
+            filter: drop-shadow(0 0 8px rgba(214, 240, 255, 0.95)) drop-shadow(0 0 18px rgba(168, 214, 255, 0.55));
+            transform: skewX(-8deg);
+        }
+        #inverterCard .energy-scene__weather-layer--flash::after {
+            top: 20%;
+            left: 60%;
+            width: 11%;
+            height: 24%;
+            background:
+                linear-gradient(152deg, transparent 0 38%, rgba(239, 249, 255, 0.92) 38% 44%, transparent 44% 100%),
+                linear-gradient(212deg, transparent 0 50%, rgba(177, 223, 255, 0.82) 50% 56%, transparent 56% 100%);
+            filter: drop-shadow(0 0 6px rgba(214, 240, 255, 0.85));
+            transform: skewX(-18deg) rotate(-4deg);
         }
         @keyframes inverter-cloud-drift {
             from { transform: translateX(-2%); }
             to { transform: translateX(2%); }
         }
         @keyframes inverter-rainfall {
-            from { transform: translate3d(0, -8%, 0); }
-            to { transform: translate3d(-2%, 12%, 0); }
+            from { transform: translate3d(1%, -10%, 0); }
+            to { transform: translate3d(-3%, 12%, 0); }
+        }
+        @keyframes inverter-rainfall-far {
+            from { transform: translate3d(2%, -14%, 0) scale(1); }
+            to { transform: translate3d(-4%, 10%, 0) scale(1.02); }
+        }
+        @keyframes inverter-rainfall-near {
+            from { transform: translate3d(0, -12%, 0) scale(1); }
+            to { transform: translate3d(-6%, 16%, 0) scale(1.04); }
         }
         @keyframes inverter-snowfall {
             from { transform: translate3d(0, -8%, 0); }
             to { transform: translate3d(-1%, 10%, 0); }
         }
         @keyframes inverter-storm-flash {
-            0%, 88%, 100% { opacity: 0; }
-            90% { opacity: 0.10; }
-            92% { opacity: 0.24; }
-            95% { opacity: 0.05; }
+            0%, 82%, 100% { opacity: 0; filter: brightness(1); }
+            83% { opacity: 0.06; filter: brightness(1.02); }
+            84% { opacity: 0.30; filter: brightness(1.18); }
+            84.6% { opacity: 0.10; filter: brightness(1.04); }
+            85.3% { opacity: 0.46; filter: brightness(1.32); }
+            86.1% { opacity: 0.14; filter: brightness(1.06); }
+            87.2% { opacity: 0.24; filter: brightness(1.14); }
+            88.8% { opacity: 0.04; filter: brightness(1.01); }
+        }
+        @keyframes inverter-lightning-bolt {
+            0%, 82%, 100% { opacity: 0; }
+            84% { opacity: 0.86; }
+            84.4% { opacity: 0.16; }
+            85.3% { opacity: 1; }
+            85.8% { opacity: 0.24; }
+            87.1% { opacity: 0.52; }
+            88% { opacity: 0; }
+        }
+        @keyframes inverter-lightning-branch {
+            0%, 82.4%, 100% { opacity: 0; }
+            84.1% { opacity: 0.26; }
+            85.35% { opacity: 0.72; }
+            85.9% { opacity: 0.14; }
+            87.15% { opacity: 0.34; }
+            88.1% { opacity: 0; }
         }
         #inverterCard .energy-scene.weather-cloudy .energy-scene__weather-layer--cloud {
             opacity: 0.28;
@@ -3342,27 +3535,42 @@
             opacity: 0.22;
         }
         #inverterCard .energy-scene.weather-drizzle .energy-scene__weather-layer--rain {
-            opacity: 0.14;
-            background-image:
-                repeating-linear-gradient(102deg, rgba(157, 210, 255, 0.0) 0 26px, rgba(187, 224, 255, 0.12) 26px 27px, rgba(157, 210, 255, 0.0) 27px 56px);
-            background-size: 220px 220px;
-            filter: blur(0.4px);
-            animation-duration: 2.8s;
+            opacity: 0.15;
+            --rain-base-duration: 2.8s;
+            --rain-far-duration: 3.9s;
+            --rain-near-duration: 2.15s;
+            --rain-base-blur: 0.5px;
+            --rain-far-opacity: 0.28;
+            --rain-near-opacity: 0.14;
         }
         #inverterCard .energy-scene.weather-rain .energy-scene__weather-layer--cloud {
             opacity: 0.22;
         }
         #inverterCard .energy-scene.weather-rain .energy-scene__weather-layer--rain {
             opacity: 0.34;
+            --rain-far-opacity: 0.54;
+            --rain-near-opacity: 0.32;
         }
         #inverterCard .energy-scene.weather-storm .energy-scene__weather-layer--cloud {
             opacity: 0.26;
         }
         #inverterCard .energy-scene.weather-storm .energy-scene__weather-layer--rain {
-            opacity: 0.30;
+            opacity: 0.32;
+            --rain-base-duration: 1.12s;
+            --rain-far-duration: 1.85s;
+            --rain-near-duration: 0.82s;
+            --rain-base-blur: 0.45px;
+            --rain-far-opacity: 0.62;
+            --rain-near-opacity: 0.38;
         }
         #inverterCard .energy-scene.weather-storm .energy-scene__weather-layer--flash {
-            animation: inverter-storm-flash 6s ease-in-out infinite;
+            animation: inverter-storm-flash var(--lightning-duration) linear infinite;
+        }
+        #inverterCard .energy-scene.weather-storm .energy-scene__weather-layer--flash::before {
+            animation: inverter-lightning-bolt var(--lightning-duration) linear infinite;
+        }
+        #inverterCard .energy-scene.weather-storm .energy-scene__weather-layer--flash::after {
+            animation: inverter-lightning-branch var(--lightning-duration) linear infinite;
         }
         #inverterCard .energy-scene.weather-snow .energy-scene__weather-layer--cloud {
             opacity: 0.20;
@@ -3379,18 +3587,48 @@
             z-index: 2;
             mix-blend-mode: normal;
             opacity: 1;
+            --inverter-conduit-aura-width: 22;
+            --inverter-conduit-shell-width: 13;
+            --inverter-conduit-lane-width: 7;
+            --inverter-flow-width: 4.2;
         }
-        #inverterCard .energy-flow-track {
-            stroke-width: 12;
-            stroke: rgba(91, 186, 255, 0.08);
+        #inverterCard .energy-flow-track,
+        #inverterCard .energy-flow-path {
+            vector-effect: non-scaling-stroke;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        #inverterCard .energy-flow-track--aura {
+            stroke-width: var(--inverter-conduit-aura-width);
+            stroke: color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 54%, transparent);
+            opacity: 0.16;
+            filter: drop-shadow(0 0 18px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 62%, transparent));
+            animation: inverter-flow-aura 4.25s ease-in-out infinite;
+        }
+        #inverterCard .energy-flow-track--jacket {
+            stroke-width: var(--inverter-conduit-shell-width);
+            stroke: color-mix(in srgb, rgba(6, 14, 26, 0.92) 76%, var(--flow-color, var(--energy-cyan)) 24%);
+            opacity: 0.98;
+            filter: drop-shadow(0 6px 12px rgba(4, 10, 20, 0.34));
+        }
+        #inverterCard .energy-flow-track--sheen {
+            stroke-width: var(--inverter-conduit-lane-width);
+            stroke: color-mix(in srgb, rgba(144, 214, 255, 0.22) 12%, var(--flow-color, var(--energy-cyan)) 88%);
+            opacity: 0.34;
+            filter: drop-shadow(0 0 10px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 44%, transparent));
         }
         #inverterCard .energy-flow-path {
-            stroke-width: 7;
-            filter: drop-shadow(0 0 12px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 80%, transparent));
+            stroke-width: var(--inverter-flow-width);
+            stroke: color-mix(in srgb, white 18%, var(--flow-color, var(--energy-cyan)) 82%);
+            opacity: var(--flow-opacity, 0.24);
+            filter:
+                drop-shadow(0 0 6px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 80%, transparent))
+                drop-shadow(0 0 18px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 62%, transparent));
         }
         #inverterCard .energy-flow-path.is-active {
-            stroke-dasharray: 20 20;
-            animation: inverter-flow-dash var(--flow-speed, 2500ms) linear infinite;
+            stroke-dasharray: 10 24 3 54;
+            animation: inverter-flow-dash var(--flow-speed, 3125ms) linear infinite;
         }
         /* Keep reverse direction after the scoped animation shorthand above. */
         #inverterCard .energy-flow-path.is-active.is-reverse {
@@ -3399,24 +3637,57 @@
         #inverterCard .energy-flow-path.is-idle {
             opacity: 0;
             pointer-events: none;
+            filter: none;
+        }
+        #inverterCard .energy-flow-packet {
+            pointer-events: none;
+            opacity: 0;
+        }
+        #inverterCard .energy-flow-packet__halo {
+            fill: color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 70%, transparent);
+            opacity: calc(var(--flow-opacity, 0.8) * 0.28);
+            filter: drop-shadow(0 0 8px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 92%, transparent));
+        }
+        #inverterCard .energy-flow-packet__core {
+            fill: color-mix(in srgb, white 20%, var(--flow-color, var(--energy-cyan)) 80%);
+            opacity: var(--flow-opacity, 0.8);
+            filter:
+                drop-shadow(0 0 4px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 94%, transparent))
+                drop-shadow(0 0 10px color-mix(in srgb, var(--flow-color, var(--energy-cyan)) 76%, transparent));
+        }
+        [data-theme="light"] #inverterCard .energy-flow-track--aura {
+            opacity: 0.20;
+        }
+        [data-theme="light"] #inverterCard .energy-flow-track--jacket {
+            stroke: color-mix(in srgb, rgba(234, 242, 248, 0.96) 56%, var(--flow-color, var(--energy-cyan)) 44%);
+            opacity: 0.82;
+            filter: drop-shadow(0 3px 8px rgba(27, 31, 36, 0.08));
+        }
+        [data-theme="light"] #inverterCard .energy-flow-track--sheen {
+            opacity: 0.48;
         }
         @keyframes inverter-flow-dash {
             from { stroke-dashoffset: 0; }
-            to { stroke-dashoffset: -400; }
+            to { stroke-dashoffset: -420; }
+        }
+        @keyframes inverter-flow-aura {
+            0%, 100% { opacity: 0.12; }
+            50% { opacity: 0.24; }
         }
         /* Anchor connector lines: thin dashes from node to physical element on house */
         #inverterCard .energy-anchor-line {
-            stroke: rgba(255, 255, 255, 0.20);
-            stroke-width: 1.5;
-            stroke-dasharray: 5 6;
+            stroke: rgba(214, 239, 255, 0.34);
+            stroke-width: 1.6;
+            stroke-dasharray: 4 7;
             fill: none;
+            filter: drop-shadow(0 0 4px rgba(120, 210, 255, 0.18));
         }
         /* Anchor dots: glow dot at physical element location */
         #inverterCard .energy-anchor-dot {
-            fill: rgba(255, 255, 255, 0.55);
-            stroke: rgba(255, 255, 255, 0.85);
+            fill: rgba(198, 235, 255, 0.72);
+            stroke: rgba(255, 255, 255, 0.94);
             stroke-width: 2.5;
-            filter: drop-shadow(0 0 6px rgba(255,255,255,0.55));
+            filter: drop-shadow(0 0 10px rgba(126, 219, 255, 0.55));
         }
         #inverterCard .energy-anchor-dot--solar {
             fill: color-mix(in srgb, var(--energy-solar) 60%, transparent);
@@ -3458,12 +3729,18 @@
             background: linear-gradient(180deg, rgba(4, 15, 28, 0.56), rgba(4, 12, 22, 0.80));
             border: 1px solid rgba(100, 205, 255, 0.18);
         }
-        #inverterCard .energy-node__top,
-        #inverterCard .energy-core__top {
+        #inverterCard .energy-node__top {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-start;
             gap: 8px;
+        }
+        #inverterCard .energy-core__top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 6px 8px;
+            flex-wrap: wrap;
         }
         #inverterCard .energy-node__title,
         #inverterCard .energy-core__title {
@@ -3488,9 +3765,25 @@
             color: #8ff5aa;
             white-space: nowrap;
         }
+        #inverterCard .energy-core__state.is-charging {
+            background: rgba(126, 231, 135, 0.10);
+            border-color: rgba(126, 231, 135, 0.24);
+            color: #8ff5aa;
+        }
+        #inverterCard .energy-core__state.is-discharging {
+            background: rgba(248, 81, 73, 0.14);
+            border-color: rgba(248, 81, 73, 0.30);
+            color: #ff938d;
+        }
+        #inverterCard .energy-core__state.is-standby {
+            background: rgba(114, 219, 255, 0.10);
+            border-color: rgba(114, 219, 255, 0.18);
+            color: #9be8ff;
+        }
         #inverterCard .energy-node__value {
             white-space: nowrap;
             font-size: clamp(22px, 2.9vw, 36px);
+            font-size: clamp(22px, 5.4cqw, 34px);
             line-height: 0.92;
             font-weight: 700;
             letter-spacing: -0.04em;
@@ -3590,13 +3883,23 @@
             gap: 10px;
             margin-top: 8px;
         }
+        #inverterCard .energy-core__visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
         #inverterCard .energy-core__copy {
             display: grid;
+            flex: 1 1 0;
             gap: 4px;
             min-width: 0;
         }
         #inverterCard .energy-core__soc {
             font-size: clamp(44px, 5.8vw, 78px);
+            font-size: clamp(42px, 9.6cqw, 72px);
             line-height: 0.86;
             font-weight: 700;
             letter-spacing: -0.06em;
@@ -3653,42 +3956,328 @@
             border-color: rgba(114, 219, 255, 0.18);
             color: #9be8ff;
         }
-        /* --- Grid-layout fallback for very narrow viewports (phone portrait) --- */
-        @media (max-width: 500px) {
+        @container inverter-card (min-width: 740px) {
             #inverterCard .energy-scene {
-                display: grid;
-                grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-                grid-template-areas:
-                    "solar grid"
-                    "home hub";
-                grid-template-rows: auto auto;
-                align-content: space-between;
-                align-items: start;
-                gap: 10px;
-                aspect-ratio: auto;
-                min-height: 480px;
-                padding: 12px;
-                background-size: 100% 100%;
-                background-position: center center;
+                /* On very wide cards, scale the near-square house art by height so it doesn't balloon edge-to-edge. */
+                background-size: auto 92%;
+                background-position: center 58%;
             }
-            #inverterCard .energy-scene__wiring { display: none; }
+        }
+        @container inverter-card (min-width: 940px) {
+            #inverterCard .energy-scene {
+                background-size: auto 88%;
+                background-position: center 60%;
+            }
+        }
+        @container inverter-card (max-width: 760px) {
+            #inverterCard .energy-scene {
+                aspect-ratio: 5 / 4;
+            }
             #inverterCard .energy-node,
             #inverterCard .energy-core {
-                position: relative;
-                inset: auto;
-                width: auto;
-                left: auto; right: auto; top: auto; bottom: auto;
-                transform: none;
-                min-width: 0;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.18);
             }
-            #inverterCard .energy-node--solar { grid-area: solar; overflow: visible; }
-            #inverterCard .energy-node--grid  { grid-area: grid; }
-            #inverterCard .energy-node--home  { grid-area: home; align-self: end; }
-            #inverterCard .energy-core--hub   { grid-area: hub;  align-self: end; }
+            #inverterCard .energy-node__top,
+            #inverterCard .energy-core__top {
+                gap: 6px;
+            }
+            #inverterCard .energy-node__state,
+            #inverterCard .energy-core__state {
+                font-size: 9px;
+                padding: 3px 7px;
+            }
+            #inverterCard .energy-core--hub {
+                width: 45%;
+                bottom: 4%;
+            }
+            #inverterCard .energy-node--home {
+                width: 39%;
+                bottom: 4%;
+            }
+            #inverterCard .energy-core__main {
+                align-items: flex-start;
+                gap: 8px;
+            }
+            #inverterCard .energy-core__visual {
+                gap: 7px;
+            }
+            #inverterCard .energy-core .tile-icon.battery {
+                width: 56px;
+                height: 70px;
+            }
+            #inverterCard .energy-core .tile-icon.battery svg {
+                width: 40px;
+                height: 62px;
+            }
+            #inverterCard .energy-core__temps {
+                gap: 5px;
+            }
+            #inverterCard .energy-core__temp {
+                font-size: 10px;
+                padding: 4px 7px;
+            }
+        }
+        @container inverter-card (max-width: 640px) {
+            #inverterCard .energy-scene {
+                aspect-ratio: 21 / 19;
+                background-size: auto 100%;
+                background-position: center 58%;
+            }
+            #inverterCard .energy-anchor-line,
+            #inverterCard .energy-anchor-dot {
+                display: none;
+            }
+            #inverterCard .energy-node--solar,
+            #inverterCard .energy-node--grid {
+                top: 2.5%;
+            }
+            #inverterCard .energy-node--solar {
+                width: 43%;
+            }
+            #inverterCard .energy-node--grid {
+                width: 35%;
+            }
+            #inverterCard .energy-node--home {
+                width: 37%;
+                bottom: 3.5%;
+            }
+            #inverterCard .energy-core--hub {
+                width: 44%;
+                bottom: 3.5%;
+            }
+            #inverterCard .energy-node__pv-grid {
+                gap: 2px;
+                margin-top: 6px;
+                padding-top: 6px;
+            }
+            #inverterCard .pv-item {
+                padding: 3px 5px;
+            }
+            #inverterCard .pv-item__volt {
+                display: none;
+            }
+        }
+        @container inverter-card (max-width: 500px) {
+            #inverterCard .energy-scene {
+                aspect-ratio: 7 / 9;
+                background-size: 100% auto;
+                background-position: center 58%;
+            }
+            #inverterCard .energy-node,
+            #inverterCard .energy-core {
+                padding: 8px 10px 9px;
+                border-radius: 12px;
+                box-shadow: 0 9px 18px rgba(0,0,0,0.17);
+            }
+            #inverterCard .energy-node__top,
+            #inverterCard .energy-core__top {
+                gap: 5px;
+            }
+            #inverterCard .energy-node__title,
+            #inverterCard .energy-core__title {
+                font-size: 10px;
+                letter-spacing: 0.14em;
+            }
+            #inverterCard .energy-node__state,
+            #inverterCard .energy-core__state {
+                font-size: 8px;
+                padding: 2px 6px;
+            }
+            #inverterCard .energy-node__value {
+                font-size: clamp(18px, 6.8cqw, 28px);
+            }
+            #inverterCard .energy-core__soc {
+                font-size: clamp(34px, 11.8cqw, 56px);
+            }
+            #inverterCard .energy-node__label,
+            #inverterCard .energy-core__label {
+                font-size: 10px;
+            }
+            #inverterCard .energy-node__meta,
+            #inverterCard .energy-core__storage,
+            #inverterCard .energy-core__status,
+            #inverterCard .energy-core__eta {
+                font-size: 11px;
+                line-height: 1.3;
+            }
+            #inverterCard .energy-node--solar {
+                left: 3%;
+                top: 3%;
+                width: 42%;
+            }
+            #inverterCard .energy-node--grid {
+                right: 3%;
+                top: 3%;
+                width: 34%;
+            }
+            #inverterCard .energy-node--home {
+                left: 3%;
+                bottom: 3%;
+                width: 34%;
+            }
+            #inverterCard .energy-core--hub {
+                right: 3%;
+                bottom: 3%;
+                width: 47%;
+                padding: 10px 12px;
+                text-align: center;
+            }
             #inverterCard .energy-node__pv-grid { display: none; }
-            #inverterCard .energy-core .tile-icon.battery { width: 46px; height: 60px; }
-            #inverterCard .energy-core .tile-icon.battery svg { width: 34px; height: 52px; }
-            #inverterCard .energy-core__main { align-items: flex-start; gap: 8px; }
+            #inverterCard .energy-core__top {
+                justify-content: center;
+            }
+            #inverterCard .energy-core__main {
+                align-items: flex-start;
+                justify-content: center;
+                gap: 8px;
+                margin-top: 6px;
+            }
+            #inverterCard .energy-core__copy {
+                gap: 3px;
+                justify-items: center;
+            }
+            #inverterCard .energy-core__visual {
+                gap: 6px;
+                align-items: center;
+            }
+            #inverterCard .energy-core .tile-icon.battery {
+                width: 44px;
+                height: 58px;
+            }
+            #inverterCard .energy-core .tile-icon.battery svg {
+                width: 32px;
+                height: 48px;
+            }
+            #inverterCard .energy-core__temps {
+                gap: 4px;
+                margin-top: 6px;
+                justify-content: center;
+            }
+            #inverterCard .energy-core__temp {
+                font-size: 9px;
+                padding: 3px 6px;
+            }
+            #inverterCard .energy-scene__wiring {
+                --inverter-conduit-aura-width: 18;
+                --inverter-conduit-shell-width: 11;
+                --inverter-conduit-lane-width: 6;
+                --inverter-flow-width: 3.75;
+            }
+        }
+        @container inverter-card (max-width: 430px) {
+            #inverterCard .energy-scene {
+                aspect-ratio: 13 / 18;
+                background-size: 100% auto;
+            }
+            #inverterCard .energy-scene__wiring {
+                --inverter-conduit-aura-width: 16;
+                --inverter-conduit-shell-width: 10;
+                --inverter-conduit-lane-width: 5.4;
+                --inverter-flow-width: 3.5;
+            }
+            #inverterCard .energy-node--solar {
+                width: 43%;
+            }
+            #inverterCard .energy-node--grid {
+                width: 35%;
+            }
+            #inverterCard .energy-node--home {
+                width: 33%;
+            }
+            #inverterCard .energy-core--hub {
+                width: 48%;
+            }
+            #inverterCard .energy-core__top {
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+            }
+            #inverterCard .energy-core__state {
+                max-width: 100%;
+            }
+            #inverterCard .energy-core__main {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                gap: 7px;
+            }
+            #inverterCard .energy-core__visual {
+                gap: 5px;
+                align-items: center;
+            }
+            #inverterCard .energy-core__soc {
+                font-size: clamp(30px, 11cqw, 46px);
+            }
+            #inverterCard .energy-core__storage,
+            #inverterCard .energy-core__status,
+            #inverterCard .energy-core__eta {
+                font-size: 10px;
+            }
+            #inverterCard .energy-core__temps {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 4px;
+            }
+            #inverterCard .energy-core__temp {
+                min-width: 0;
+                justify-content: center;
+                text-align: center;
+            }
+            #inverterCard .energy-core .tile-icon.battery {
+                width: 40px;
+                height: 54px;
+            }
+            #inverterCard .energy-core .tile-icon.battery svg {
+                width: 29px;
+                height: 44px;
+            }
+        }
+        @container inverter-card (max-width: 380px) {
+            #inverterCard .energy-scene {
+                aspect-ratio: 3 / 5;
+            }
+            #inverterCard .energy-node,
+            #inverterCard .energy-core {
+                padding: 7px 9px 8px;
+            }
+            #inverterCard .energy-node__state,
+            #inverterCard .energy-core__state {
+                font-size: 7px;
+                padding: 2px 5px;
+            }
+            #inverterCard .energy-node__value {
+                font-size: clamp(16px, 6.2cqw, 24px);
+            }
+            #inverterCard .energy-core__soc {
+                font-size: clamp(27px, 10.2cqw, 40px);
+            }
+            #inverterCard .energy-node--solar {
+                width: 44%;
+            }
+            #inverterCard .energy-node--grid {
+                width: 36%;
+            }
+            #inverterCard .energy-node--home {
+                width: 35%;
+            }
+            #inverterCard .energy-core--hub {
+                width: 50%;
+            }
+            #inverterCard .energy-core__storage,
+            #inverterCard .energy-core__status,
+            #inverterCard .energy-core__eta {
+                font-size: 9px;
+            }
+            #inverterCard .energy-core__temps {
+                grid-template-columns: minmax(0, 1fr);
+            }
+            #inverterCard .energy-core .tile-icon.battery {
+                width: 36px;
+                height: 48px;
+            }
+            #inverterCard .energy-core .tile-icon.battery svg {
+                width: 26px;
+                height: 39px;
+            }
         }
         @media (prefers-reduced-motion: reduce) {
             #inverterCard .energy-scene__weather-layer--cloud,
@@ -3858,7 +4447,7 @@
                 <div class="card priority" data-dashboard-card="inverter">
                     <div class="card-header inverter-card-header">
                         <div class="card-title"><span class="icon">⚡</span> Inverter Status</div>
-                            <div class="inverter-card-header__meta">
+                        <div class="inverter-card-header__meta">
                             <div class="inverter-card-header__status">
                                 <span class="card-badge" id="inverterSourceBadge" title="Showing live inverter data when available">Live</span>
                                 <div id="inverterLastUpdate" style="font-size:11px;color:var(--text-secondary);" title="How old the latest inverter reading is">Data age: —</div>
@@ -3922,7 +4511,6 @@
                     <div class="card-header">
                         <div class="card-title"><span class="icon">🌤️</span> Weather Forecast <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:rgba(139,148,158,0.2);color:var(--text-secondary);font-size:10px;font-weight:600;cursor:default;margin-left:4px;vertical-align:middle;position:relative;top:-1px" title="Location also controls the timezone used by automation rules">i</span></div>
                         <div style="display:flex;align-items:center;gap:8px">
-                            <span class="card-badge">Open-Meteo</span>
                             <div id="weatherLastUpdate" style="font-size:11px;color:var(--text-secondary);">—</div>
                             <button class="btn btn-icon" onclick="getWeather(true)" title="Force refresh from API (bypasses cache)">🔄</button>
                         </div>
