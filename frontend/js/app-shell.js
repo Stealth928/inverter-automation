@@ -1678,12 +1678,6 @@
         const widgets = document.querySelectorAll('.api-metrics-footer');
         if (!widgets.length) return;
         const primary = widgets[0];
-        if (primary.dataset.inlineMetrics === 'true') {
-            widgets.forEach((widget, idx) => {
-                if (idx > 0) widget.remove();
-            });
-            return;
-        }
         if (!primary.dataset.injected) {
             document.body.appendChild(primary);
             primary.dataset.injected = 'true';
