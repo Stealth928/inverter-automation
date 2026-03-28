@@ -1578,6 +1578,8 @@
                 }
 
                 const INVERTER_FLOW_SLOWDOWN = 1.25;
+                const INVERTER_FLOW_LOW_POWER_WINDOW_KW = 2.2;
+                const INVERTER_FLOW_LOW_POWER_BONUS_MS = 1400;
 
                 function scaleInverterFlowDuration(ms) {
                     return Math.round(ms * INVERTER_FLOW_SLOWDOWN);
@@ -1591,9 +1593,11 @@
                 function flowSpeedForKw(kW) {
                     if (!Number.isFinite(kW) || kW < 0.05) return `${scaleInverterFlowDuration(3000)}ms`;
                     const clamped = Math.max(0.1, Math.min(8, Math.abs(kW)));
+                    const lowPowerRatio = Math.max(0, 1 - ((clamped - 0.1) / INVERTER_FLOW_LOW_POWER_WINDOW_KW));
+                    const lowPowerBonus = Math.round(lowPowerRatio * INVERTER_FLOW_LOW_POWER_BONUS_MS);
                     const speed = scaleInverterFlowDuration(
                         Math.round(3800 - ((clamped - 0.1) / (8 - 0.1)) * 3000)
-                    );
+                    ) + lowPowerBonus;
                     return `${speed}ms`;
                 }
 

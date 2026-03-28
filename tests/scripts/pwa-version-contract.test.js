@@ -30,6 +30,7 @@ test('PWA runtime forces fresh service worker upgrades and release migrations', 
   assert.match(appShellSource, /function\s+enforceCurrentRelease\s*\(/);
   assert.match(appShellSource, /updateViaCache:\s*'none'/);
   assert.match(swSource, /const\s+CACHE_VERSION\s*=\s*'socrates-v\d+'/);
+  assert.match(swSource, /const\s+DASHBOARD_VERSION\s*=\s*'[^']+'/);
   assert.match(swSource, /request\.mode === 'navigate'/);
   assert.match(swSource, /cache:\s*'no-store'/);
 });
@@ -47,15 +48,15 @@ test('PWA version contract exposes non-empty release metadata', () => {
 
 test('PWA runtime fingerprint comparison detects matching and mismatched shells', () => {
   const matching = collectPwaRuntimeFingerprintFromSources({
-    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '23'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9';",
+    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '23'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9'; const DASHBOARD_VERSION = '6';",
     appShellSource: "const APP_RELEASE_ID = '2026-03-20-pwa-refresh-1'; const SERVICE_WORKER_VERSION = '53';"
   });
   const same = collectPwaRuntimeFingerprintFromSources({
-    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '23'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9';",
+    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '23'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9'; const DASHBOARD_VERSION = '6';",
     appShellSource: "const APP_RELEASE_ID = '2026-03-20-pwa-refresh-1'; const SERVICE_WORKER_VERSION = '53';"
   });
   const different = collectPwaRuntimeFingerprintFromSources({
-    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '24'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9';",
+    swSource: "const CACHE_VERSION = 'socrates-v60'; const API_CLIENT_VERSION = '5'; const SHARED_UTILS_VERSION = '13'; const APP_SHELL_VERSION = '24'; const TOUR_VERSION = '31'; const ADMIN_VERSION = '9'; const DASHBOARD_VERSION = '6';",
     appShellSource: "const APP_RELEASE_ID = '2026-03-20-pwa-refresh-2'; const SERVICE_WORKER_VERSION = '54';"
   });
 

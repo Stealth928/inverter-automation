@@ -23,6 +23,10 @@ const ASSET_VERSION_PATTERNS = {
   admin: {
     assetName: 'admin.js',
     regex: /admin\.js\?v=(\d+)/
+  },
+  dashboard: {
+    assetName: 'dashboard.js',
+    regex: /dashboard\.js\?v=(\d+)/
   }
 };
 
@@ -48,7 +52,8 @@ function collectPwaRuntimeFingerprintFromSources({ swSource, appShellSource, swP
       sharedUtils: extractConstantValue(swSource, 'SHARED_UTILS_VERSION', swPath),
       appShell: extractConstantValue(swSource, 'APP_SHELL_VERSION', swPath),
       tour: extractConstantValue(swSource, 'TOUR_VERSION', swPath),
-      admin: extractConstantValue(swSource, 'ADMIN_VERSION', swPath)
+      admin: extractConstantValue(swSource, 'ADMIN_VERSION', swPath),
+      dashboard: extractConstantValue(swSource, 'DASHBOARD_VERSION', swPath)
     },
     cacheVersion: extractConstantValue(swSource, 'CACHE_VERSION', swPath),
     serviceWorkerVersion: extractConstantValue(appShellSource, 'SERVICE_WORKER_VERSION', appShellPath),
@@ -86,7 +91,7 @@ function comparePwaRuntimeFingerprints(left, right) {
   const leftExpected = (left && left.expectedVersions) || {};
   const rightExpected = (right && right.expectedVersions) || {};
 
-  ['apiClient', 'sharedUtils', 'appShell', 'tour', 'admin'].forEach((key) => {
+  ['apiClient', 'sharedUtils', 'appShell', 'tour', 'admin', 'dashboard'].forEach((key) => {
     addMismatch(`expectedVersions.${key}`, leftExpected[key], rightExpected[key]);
   });
   addMismatch('cacheVersion', left && left.cacheVersion, right && right.cacheVersion);

@@ -1,8 +1,8 @@
 (function (window, document) {
-    const APP_RELEASE_ID = '2026-03-27-notifications-v1';
+    const APP_RELEASE_ID = '2026-03-29-inverter-card-v1';
     const APP_RELEASE_STORAGE_KEY = 'socratesAppReleaseId';
     const APP_RELEASE_RELOAD_SESSION_KEY = `socratesAppReleaseReload:${APP_RELEASE_ID}`;
-    const SERVICE_WORKER_VERSION = '56';
+    const SERVICE_WORKER_VERSION = '57';
     const NOTIFICATION_POLL_INTERVAL_MS = 60000;
     const NOTIFICATION_PAGE_LIMIT = 20;
     const SOCRATES_CACHE_PREFIX = 'socrates-';
