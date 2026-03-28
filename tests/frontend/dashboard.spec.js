@@ -756,12 +756,20 @@ test.describe('Dashboard Page', () => {
     });
     await expect(page.locator('#evChargingAmpsDisplay')).toContainText('26A target');
     await expect(page.locator('#evChargingAmpsDisplay')).toContainText('now 24A');
+    await page.locator('#evSetChargingAmpsBtn').click();
+
+    await expect(page.locator('#evOverviewMessage')).toContainText(/charging amps updated to 26a/i);
+    await expect(page.locator('#evChargingAmpsInput')).toHaveValue('26');
+    await expect(page.locator('#evChargingAmpsDisplay')).toHaveText('26A');
     await page.locator('#evSetChargeLimitBtn').click();
 
     await expect(page.locator('#evOverviewMessage')).toContainText(/charge limit updated to 85%/i);
+    await expect(page.locator('#evChargeLimitInput')).toHaveValue('85');
+    await expect(page.locator('#evChargeLimitDisplay')).toHaveText('85%');
+    expect(commandRequests).toContainEqual({ command: 'setChargingAmps', chargingAmps: 26 });
     expect(commandRequests).toContainEqual({ command: 'setChargeLimit', targetSocPct: 85 });
     expect(readinessRequests).toHaveLength(1);
-    expect(statusRequests).toHaveLength(2);
+    expect(statusRequests).toHaveLength(1);
   });
 
   test('should show a manual wake button when Tesla reports the vehicle asleep and send a wake request explicitly', async ({ page }) => {

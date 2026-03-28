@@ -4688,6 +4688,39 @@
             await fetchEVVehicleStatus(selectedId, { live: false, silent: true });
         }
 
+        function applyEVAdjustmentCommandResult(vehicleId, command, extraPayload = {}, commandResult = null) {
+            const selectedId = String(vehicleId || '');
+            if (!selectedId) return false;
+            if (command !== 'setChargeLimit' && command !== 'setChargingAmps') return false;
+
+            const currentStatus = evDashboardState.statusByVehicleId[selectedId] || {};
+            const nextStatus = {
+                ...currentStatus,
+                asOfIso: commandResult?.asOfIso || currentStatus?.asOfIso || new Date().toISOString()
+            };
+
+            if (command === 'setChargeLimit') {
+                const nextLimit = Number(commandResult?.targetSocPct ?? extraPayload.targetSocPct);
+                if (!Number.isFinite(nextLimit)) return false;
+                nextStatus.chargeLimitPct = Math.max(50, Math.min(100, Math.round(nextLimit)));
+            }
+
+            if (command === 'setChargingAmps') {
+                const nextAmps = Number(commandResult?.chargingAmps ?? extraPayload.chargingAmps);
+                if (!Number.isFinite(nextAmps)) return false;
+                nextStatus.chargingAmps = Math.max(1, Math.min(48, Math.round(nextAmps)));
+            }
+
+            evDashboardState.statusByVehicleId[selectedId] = nextStatus;
+            evDashboardState.statusMetaByVehicleId[selectedId] = {
+                ...(evDashboardState.statusMetaByVehicleId[selectedId] || {}),
+                source: 'command_confirmed',
+                loadedAtMs: Date.now(),
+                error: ''
+            };
+            return true;
+        }
+
         async function submitEVVehicleCommand(command, extraPayload = {}) {
             const selectedVehicle = getSelectedEVVehicle();
             const vehicleId = String(selectedVehicle?.vehicleId || '');
@@ -4755,6 +4788,7 @@
                     }
                 }
 
+                const commandResult = data?.result || null;
                 const successMessage = command === 'setChargeLimit'
                     ? `Tesla charge limit updated to ${extraPayload.targetSocPct}%.`
                     : command === 'setChargingAmps'
@@ -4763,18 +4797,21 @@
                             ? 'Tesla charging stop request accepted.'
                             : 'Tesla charging start request accepted.';
                 setEVOverviewMessage('success', successMessage);
-                if (data?.result?.readiness) {
-                    evDashboardState.commandReadinessByVehicleId[vehicleId] = data.result.readiness;
+                if (commandResult?.readiness) {
+                    evDashboardState.commandReadinessByVehicleId[vehicleId] = commandResult.readiness;
                     evDashboardState.readinessMetaByVehicleId[vehicleId] = {
                         ...(evDashboardState.readinessMetaByVehicleId[vehicleId] || {}),
-                        source: data.result.readiness.source || data.result.readiness.transport || 'command',
+                        source: commandResult.readiness.source || commandResult.readiness.transport || 'command',
                         loadedAtMs: Date.now(),
                         error: '',
                         loading: false
                     };
                 }
-                await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
-                return data?.result || null;
+                const appliedLocalAdjustment = applyEVAdjustmentCommandResult(vehicleId, command, extraPayload, commandResult);
+                if (!appliedLocalAdjustment) {
+                    await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
+                }
+                return commandResult;
             } catch (error) {
                 const message = String(error?.message || 'Tesla command failed');
                 const reasonCode = String(error?.reasonCode || '').trim().toLowerCase();
