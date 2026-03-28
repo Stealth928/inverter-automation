@@ -356,6 +356,91 @@ test.describe('Dashboard Page', () => {
     expect(sceneBackground).toContain('house-3d-iso.png');
   });
 
+  test('should keep inverter telemetry inline and readable in light theme', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'LIGHT-THEME-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.addInitScript(() => {
+      window.localStorage.setItem('uiTheme', 'light');
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'LIGHT-THEME-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 56, unit: '%' },
+              { variable: 'pvPower', value: 0.22, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.22, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 25.7, unit: '°C' },
+              { variable: 'ambientTemperation', value: 30.2, unit: '°C' },
+              { variable: 'invTemperation', value: 22.8, unit: '°C' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/metrics/api-calls*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          '2026-03-29': {
+            foxess: 3,
+            amber: 1,
+            weather: 2,
+            ev: 0
+          }
+        }
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('.inverter-card-header__subtitle')).toHaveText('Live power flow across solar, home, grid, and battery.');
+    await expect(page.locator('#inverterLastUpdate')).toContainText('Data age:');
+    await expect(page.locator('#inverterFetchLabel')).toContainText('Last checked:');
+    await expect(page.locator('#apiMetricsFooter')).toContainText('Inv: 3');
+
+    const metricsStyle = await page.locator('#apiMetricsFooter').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        position: style.position,
+        backgroundColor: style.backgroundColor
+      };
+    });
+
+    expect(metricsStyle.position).toBe('static');
+    expect(metricsStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+    const timeChipStyle = await page.locator('#inverterLastUpdate').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        display: style.display,
+        backgroundColor: style.backgroundColor
+      };
+    });
+
+    expect(timeChipStyle.display).toContain('flex');
+    expect(timeChipStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+    await expect(page.locator('#inverterCard .energy-node--grid')).toContainText('Balanced');
+    await expect
+      .poll(async () => page.locator('#inverterCard .energy-node--grid .energy-node__value').evaluate((el) => window.getComputedStyle(el).color))
+      .toBe('rgb(95, 106, 120)');
+  });
+
   test('should classify drizzle separately from heavier rain in the inverter scene', async ({ page }) => {
     const effects = await page.evaluate(() => ({
       drizzle: getInverterSceneWeatherState({
@@ -2241,7 +2326,7 @@ test.describe('Dashboard Page', () => {
       const level = el.querySelector('.level');
       const computed = level ? window.getComputedStyle(level) : null;
       return {
-        className: el.className,
+        classList: Array.from(el.classList || []),
         fillCurrent: parseFloat(el.style.getPropertyValue('--battery-fill-current')),
         fillTarget: parseFloat(el.style.getPropertyValue('--battery-fill-target')),
         fillDurationMs: parseFloat(el.style.getPropertyValue('--battery-fill-duration')),
@@ -2251,8 +2336,8 @@ test.describe('Dashboard Page', () => {
       };
     });
 
-    expect(animationState.className).toContain('charging');
-    expect(animationState.className).toContain('is-animating');
+    expect(animationState.classList).toContain('charging');
+    expect(animationState.classList).toContain('is-animating');
     expect(animationState.fillCurrent).toBeCloseTo(0.42, 5);
     expect(animationState.fillTarget).toBe(1);
     expect(animationState.fillDurationMs).toBeGreaterThan(0);
@@ -2306,7 +2391,7 @@ test.describe('Dashboard Page', () => {
       const level = el.querySelector('.level');
       const computed = level ? window.getComputedStyle(level) : null;
       return {
-        className: el.className,
+        classList: Array.from(el.classList || []),
         fillCurrent: parseFloat(el.style.getPropertyValue('--battery-fill-current')),
         fillTarget: parseFloat(el.style.getPropertyValue('--battery-fill-target')),
         fillDurationMs: parseFloat(el.style.getPropertyValue('--battery-fill-duration')),
@@ -2316,8 +2401,8 @@ test.describe('Dashboard Page', () => {
       };
     });
 
-    expect(animationState.className).toContain('discharging');
-    expect(animationState.className).toContain('is-animating');
+    expect(animationState.classList).toContain('discharging');
+    expect(animationState.classList).toContain('is-animating');
     expect(animationState.fillCurrent).toBeCloseTo(0.49, 5);
     expect(animationState.fillTarget).toBe(0);
     expect(animationState.fillDurationMs).toBeGreaterThan(0);

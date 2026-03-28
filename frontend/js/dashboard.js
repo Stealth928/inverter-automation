@@ -7815,9 +7815,6 @@
                     if (lastUpdated.inverterCloud) {
                         const text = `Data age: ${formatSince(lastUpdated.inverterCloud)}`;
                         inv.textContent = text;
-                    } else if (lastUpdated.inverter) {
-                        const text = `Last checked: ${formatSince(lastUpdated.inverter)}`;
-                        inv.textContent = text;
                     } else {
                         inv.textContent = 'Data age: —';
                     }
@@ -7841,7 +7838,7 @@
                     }
                     if (fetchLabelEl) {
                         const hasFetchAge = Number.isFinite(lastUpdated.inverter);
-                        fetchLabelEl.style.display = hasFetchAge ? 'inline-block' : 'none';
+                        fetchLabelEl.style.display = hasFetchAge ? 'inline-flex' : 'none';
                     }
                 } catch (e) { console.error('Error updating inverter display details:', e); }
             } catch (e) { console.error('Error in updateLastUpdateDisplays:', e); }
