@@ -4023,10 +4023,6 @@
                 background-size: auto 100%;
                 background-position: center 58%;
             }
-            #inverterCard .energy-anchor-line,
-            #inverterCard .energy-anchor-dot {
-                display: none;
-            }
             #inverterCard .energy-node--solar,
             #inverterCard .energy-node--grid {
                 top: 2.5%;
@@ -4277,6 +4273,12 @@
             #inverterCard .energy-core .tile-icon.battery svg {
                 width: 26px;
                 height: 39px;
+            }
+        }
+        @media (max-width: 640px) {
+            #inverterCard .energy-anchor-line,
+            #inverterCard .energy-anchor-dot {
+                display: none;
             }
         }
         @media (prefers-reduced-motion: reduce) {
