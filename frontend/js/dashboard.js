@@ -1702,7 +1702,7 @@
                     const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
                     const fillColor = socPct >= 50 ? 'var(--color-success-dark)' : (socPct >= 25 ? 'var(--color-warning)' : 'var(--color-danger)');
                     return `
-                        <svg viewBox="0 0 24 40" aria-hidden="true">
+                        <svg class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}" viewBox="0 0 24 40" aria-hidden="true">
                             <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
                             <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
                             <rect x="3" y="4" width="18" height="28" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
@@ -1826,9 +1826,7 @@
                                     <div class="energy-core__status"><span class="${batteryClass}">${batteryDisplay}</span></div>
                                 </div>
                                 <div class="energy-core__visual">
-                                    <div class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}">
-                                        ${batteryIconSvg}
-                                    </div>
+                                    ${batteryIconSvg}
                                 </div>
                             </div>
                             ${batteryEtaText ? `<div class="energy-core__eta">${escapeHtml(batteryEtaText)}</div>` : ''}
