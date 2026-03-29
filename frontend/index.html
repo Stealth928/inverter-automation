@@ -160,6 +160,7 @@
     ]
   }
   </script>
+  <link rel="preload" as="image" href="/images/screenshots/optimized/hero-poster-900.webp" imagesrcset="/images/screenshots/optimized/hero-poster-640.webp 640w, /images/screenshots/optimized/hero-poster-900.webp 900w" imagesizes="(max-width: 540px) calc(100vw - 32px), 92vw" media="(max-width: 900px)">
   <link rel="stylesheet" href="/css/landing.css">
 </head>
 <body>
@@ -222,16 +223,16 @@
       <!-- Compatible-with strip -->
       <div class="brand-strip">
         <span class="brand-strip__label">Works with</span>
-        <img src="/icons/logo-foxess.svg" alt="FoxESS" class="brand-logo brand-logo--foxess">
+        <img src="/icons/logo-foxess.svg" alt="FoxESS" class="brand-logo brand-logo--foxess" width="250" height="90" decoding="async">
         <span class="brand-logo-wrap">
-          <img src="/icons/logo-alphaess.svg" alt="AlphaESS" class="brand-logo brand-logo--alphaess">
+          <img src="/icons/logo-alphaess.svg" alt="AlphaESS" class="brand-logo brand-logo--alphaess" width="196" height="67" decoding="async">
         </span>
         <span class="brand-logo-wrap brand-logo-wrap--soon">
-          <img src="/icons/logo-sigenergy.svg" alt="Sigenergy" class="brand-logo brand-logo--sigenergy">
+          <img src="/icons/logo-sigenergy.svg" alt="Sigenergy" class="brand-logo brand-logo--sigenergy" width="500" height="72" decoding="async">
           <span class="brand-soon">Soon</span>
         </span>
         <span class="brand-logo-wrap brand-logo-wrap--soon">
-          <img src="/icons/logo-sungrow.svg" alt="SunGrow" class="brand-logo brand-logo--sungrow">
+          <img src="/icons/logo-sungrow.svg" alt="SunGrow" class="brand-logo brand-logo--sungrow" width="330" height="72" decoding="async">
           <span class="brand-soon">Soon</span>
         </span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
@@ -242,8 +243,22 @@
         <span class="brand-badge brand-badge--tesla">Tesla EV Integration</span>
       </div>
 
+      <picture class="hero-poster">
+        <source
+          type="image/webp"
+          srcset="/images/screenshots/optimized/hero-poster-640.webp 640w, /images/screenshots/optimized/hero-poster-900.webp 900w"
+          sizes="(max-width: 540px) calc(100vw - 32px), 92vw">
+        <img
+          src="/images/screenshots/optimized/hero-poster-640.webp"
+          alt="SoCrates dashboard showing battery state, live pricing, active rules, and savings"
+          width="3838"
+          height="1438"
+          decoding="async"
+          fetchpriority="high">
+      </picture>
+
       <!-- Animated app preview window -->
-      <div class="hero-preview" aria-hidden="true">
+      <div class="hero-preview hero-preview--interactive" aria-hidden="true">
 
         <div class="hero-preview__bar">
           <span class="hero-preview__dot"></span>
@@ -825,45 +840,78 @@
           <div class="sc-track" id="scTrack">
 
             <div class="sc-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 11" data-caption="Automation Dashboard & Overview - live pricing, active rules, battery status, and savings in one place.">
-              <img src="/images/screenshots/screen-1.png" alt="Automation dashboard overview with battery SoC, active rule, live pricing and savings" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/hero-poster-900.webp" type="image/webp">
+                <img src="/images/screenshots/screen-1.png" alt="Automation dashboard overview with battery SoC, active rule, live pricing and savings" loading="lazy" decoding="async" fetchpriority="low" width="3838" height="1438">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="2 of 11" data-caption="Quick Controls - instantly charge or discharge with one tap, plus power and duration controls.">
-              <img src="/images/screenshots/screen-2.png" alt="Quick Controls panel with action type, power and duration controls" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-2.webp" type="image/webp">
+                <img src="/images/screenshots/screen-2.png" alt="Quick Controls panel with action type, power and duration controls" loading="lazy" decoding="async" fetchpriority="low" width="2560" height="676">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="3 of 11" data-caption="Automation Rules - priority-based rules evaluate continuously and trigger the best next action.">
-              <img src="/images/screenshots/screen-3.png" alt="Automation rules list with priorities, conditions and status" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-3.webp" type="image/webp">
+                <img src="/images/screenshots/screen-3.png" alt="Automation rules list with priorities, conditions and status" loading="lazy" decoding="async" fetchpriority="low" width="1450" height="1768">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="4 of 11" data-caption="Automation ROI - measure dollar impact by rule, mode, and timeframe.">
-              <img src="/images/screenshots/screen-4.png" alt="Automation ROI dashboard with savings metrics and trend summaries" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-4.webp" type="image/webp">
+                <img src="/images/screenshots/screen-4.png" alt="Automation ROI dashboard with savings metrics and trend summaries" loading="lazy" decoding="async" fetchpriority="low" width="2088" height="1201">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="5 of 11" data-caption="Rule History - audit every evaluation with clear pass/fail condition traces.">
-              <img src="/images/screenshots/screen-5.png" alt="Rule history timeline showing condition-by-condition evaluation results" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-5.webp" type="image/webp">
+                <img src="/images/screenshots/screen-5.png" alt="Rule history timeline showing condition-by-condition evaluation results" loading="lazy" decoding="async" fetchpriority="low" width="2329" height="1218">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="6 of 11" data-caption="Automation Lab - test and validate scenarios before applying them to your live inverter.">
-              <img src="/images/screenshots/screen-6.png" alt="Automation Lab simulation panel with scenario testing and outcomes" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-6.webp" type="image/webp">
+                <img src="/images/screenshots/screen-6.png" alt="Automation Lab simulation panel with scenario testing and outcomes" loading="lazy" decoding="async" fetchpriority="low" width="1717" height="1843">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="7 of 11" data-caption="Price History - review buy and feed-in history alongside live operating traces and broader performance trends.">
-              <img src="/images/screenshots/screen-7.png" alt="Price history view with historical buy and feed-in trends" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-7.webp" type="image/webp">
+                <img src="/images/screenshots/screen-7.png" alt="Price history view with historical buy and feed-in trends" loading="lazy" decoding="async" fetchpriority="low" width="2085" height="1918">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="8 of 11" data-caption="Advanced Controls - configure deeper inverter behavior and automation constraints.">
-              <img src="/images/screenshots/screen-8.png" alt="Advanced controls panel with inverter behavior and automation settings" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-8.webp" type="image/webp">
+                <img src="/images/screenshots/screen-8.png" alt="Advanced controls panel with inverter behavior and automation settings" loading="lazy" decoding="async" fetchpriority="low" width="648" height="1330">
+              </picture>
             </div>
 
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="9 of 11" data-caption="Blackout & Curtailment - protect your battery strategy during grid events and export constraints.">
-              <img src="/images/screenshots/screen-9.png" alt="Blackout and curtailment controls for grid events and export limits" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-9.webp" type="image/webp">
+                <img src="/images/screenshots/screen-9.png" alt="Blackout and curtailment controls for grid events and export limits" loading="lazy" decoding="async" fetchpriority="low" width="1789" height="1251">
+              </picture>
             </div>
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="10 of 11" data-caption="Weather Tile Demo - forecast tiles feed tomorrow's automation decisions.">
-              <img src="/images/screenshots/screen-10.png" alt="Weather tile demo with forecast data used for automation planning" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-10.webp" type="image/webp">
+                <img src="/images/screenshots/screen-10.png" alt="Weather tile demo with forecast data used for automation planning" loading="lazy" decoding="async" fetchpriority="low" width="631" height="1308">
+              </picture>
             </div>
             <div class="sc-slide" role="group" aria-roledescription="slide" aria-label="11 of 11" data-caption="Tesla EV Integration - monitor charging, range, and plug-in status alongside your home energy automation.">
-              <img src="/images/screenshots/screen-11.png" alt="Tesla EV dashboard showing charging state, range, and plug-in status" loading="lazy" width="900" height="562">
+              <picture>
+                <source srcset="/images/screenshots/optimized/screen-11.webp" type="image/webp">
+                <img src="/images/screenshots/screen-11.png" alt="Tesla EV dashboard showing charging state, range, and plug-in status" loading="lazy" decoding="async" fetchpriority="low" width="1246" height="993">
+              </picture>
             </div>
           </div><!-- /.sc-track -->
         </div><!-- /.sc-track-wrap -->
@@ -1378,6 +1426,11 @@
       document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('is-visible'); });
     }
 
+    var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var enableInteractiveHero = !prefersReducedMotion &&
+      (window.matchMedia ? window.matchMedia('(min-width: 901px)').matches : window.innerWidth > 900) &&
+      !!document.querySelector('.hero-preview--interactive');
+
     /* ── Hero live data ticker ───────────────────────── */
     var soc = 76;
     var prices = [8.6, 8.2, 7.9, 7.6, 7.8, 8.1, 8.5, 9.4, 11.2, 12.4, 11.0, 9.6, 8.8, 8.2];
@@ -1566,7 +1619,9 @@
       chartTooltipEl.hidden = false;
     }
 
-    renderHeroChartSeries();
+    if (enableInteractiveHero) {
+      renderHeroChartSeries();
+    }
 
     function setHeroDecision(id, label, matched) {
       var node = document.getElementById(id);
@@ -1921,37 +1976,39 @@
       if (el) el.textContent = countdown;
     }
 
-    if (chartHitEl && chartShellEl) {
-      chartHitEl.addEventListener('mousemove', function (e) {
-        var rect = chartShellEl.getBoundingClientRect();
-        var contentStart = rect.width * (chartMinX / chartSvgWidth);
-        var contentEnd = rect.width * (chartMaxX / chartSvgWidth);
-        var relX = Math.max(contentStart, Math.min(contentEnd, e.clientX - rect.left));
-        var t = (relX - contentStart) / Math.max(1, (contentEnd - contentStart));
-        var hoverIdx = Math.round(t * (prices.length - 1));
-        updateHeroChartMarker(hoverIdx);
-        setChartTooltip(hoverIdx, e.clientX);
-      });
+    if (enableInteractiveHero) {
+      if (chartHitEl && chartShellEl) {
+        chartHitEl.addEventListener('mousemove', function (e) {
+          var rect = chartShellEl.getBoundingClientRect();
+          var contentStart = rect.width * (chartMinX / chartSvgWidth);
+          var contentEnd = rect.width * (chartMaxX / chartSvgWidth);
+          var relX = Math.max(contentStart, Math.min(contentEnd, e.clientX - rect.left));
+          var t = (relX - contentStart) / Math.max(1, (contentEnd - contentStart));
+          var hoverIdx = Math.round(t * (prices.length - 1));
+          updateHeroChartMarker(hoverIdx);
+          setChartTooltip(hoverIdx, e.clientX);
+        });
 
-      chartHitEl.addEventListener('mouseleave', function () {
-        if (chartTooltipEl) chartTooltipEl.hidden = true;
-        updateHeroChartMarker(priceIdx);
-      });
+        chartHitEl.addEventListener('mouseleave', function () {
+          if (chartTooltipEl) chartTooltipEl.hidden = true;
+          updateHeroChartMarker(priceIdx);
+        });
+      }
+
+      var heroSceneEl = document.getElementById('heroEnergyScene');
+      if (heroSceneEl && 'ResizeObserver' in window) {
+        var heroSceneResizeObserver = new ResizeObserver(function () {
+          syncHeroSceneGeometry();
+        });
+        heroSceneResizeObserver.observe(heroSceneEl);
+      } else {
+        window.addEventListener('resize', syncHeroSceneGeometry);
+      }
+
+      updateHero();
+      setInterval(tickHeroCountdown, 1000);
+      setInterval(updateHero, 2800);
     }
-
-    var heroSceneEl = document.getElementById('heroEnergyScene');
-    if (heroSceneEl && 'ResizeObserver' in window) {
-      var heroSceneResizeObserver = new ResizeObserver(function () {
-        syncHeroSceneGeometry();
-      });
-      heroSceneResizeObserver.observe(heroSceneEl);
-    } else {
-      window.addEventListener('resize', syncHeroSceneGeometry);
-    }
-
-    updateHero();
-    setInterval(tickHeroCountdown, 1000);
-    setInterval(updateHero, 2800);
 
     /* ── Hero toast ──────────────────────────────────── */
     function showToast(strong, sub) {
@@ -1980,13 +2037,15 @@
       showToast(m[0], m[1]);
     }
 
-    setTimeout(function () {
-      emitHeroToast();
-    }, 1800);
+    if (enableInteractiveHero) {
+      setTimeout(function () {
+        emitHeroToast();
+      }, 1800);
 
-    setInterval(function () {
-      emitHeroToast();
-    }, 14000);
+      setInterval(function () {
+        emitHeroToast();
+      }, 14000);
+    }
 
     /* ── Screenshot carousel ─────────────────────────── */
     var scSlides  = Array.prototype.slice.call(document.querySelectorAll('.sc-slide'));
@@ -1995,6 +2054,7 @@
     var scIdx     = 0;
     var scAuto    = null;
     var scCapEl   = document.getElementById('scCaption');
+    var scIsVisible = !('IntersectionObserver' in window);
 
     function scGoTo(n) {
       if (scTotal === 0) return;
@@ -2022,7 +2082,7 @@
 
     function scResetAuto() {
       clearInterval(scAuto);
-      if (scTotal > 1) scAuto = setInterval(scAdvance, 4500);
+      if (!prefersReducedMotion && scIsVisible && scTotal > 1) scAuto = setInterval(scAdvance, 4500);
     }
 
     var scPrevBtn = document.getElementById('scPrev');
@@ -2038,10 +2098,24 @@
     if (scCarouselEl) {
       scCarouselEl.addEventListener('mouseenter', function () { clearInterval(scAuto); });
       scCarouselEl.addEventListener('mouseleave', scResetAuto);
+
+      if ('IntersectionObserver' in window) {
+        var scCarouselObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            scIsVisible = entry.isIntersecting;
+            if (scIsVisible) {
+              scResetAuto();
+            } else {
+              clearInterval(scAuto);
+            }
+          });
+        }, { threshold: 0.3 });
+        scCarouselObserver.observe(scCarouselEl);
+      }
     }
 
     scGoTo(0);
-    if (scTotal > 1) scAuto = setInterval(scAdvance, 4500);
+    if (scIsVisible && scTotal > 1) scResetAuto();
 
   })();
   </script>
