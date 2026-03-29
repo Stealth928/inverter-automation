@@ -408,6 +408,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiEnvelopeAdminAnnouncement"
+  /api/admin/announcement/audience-count:
+    post:
+      tags: [Admin]
+      summary: Preview the live audience and dismissal visibility for an announcement
+      operationId: previewAdminAnnouncementAudience
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                announcement:
+                  $ref: "#/components/schemas/AnnouncementPayload"
+                audience:
+                  $ref: "#/components/schemas/AnnouncementAudience"
+      responses:
+        "200":
+          description: Audience count and show-once dismissal visibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelopeAdminAnnouncementAudienceCount"
   /api/admin/platform-stats:
     get:
       tags: [Admin]
@@ -763,6 +788,35 @@ components:
               properties:
                 announcement:
                   $ref: "#/components/schemas/AnnouncementPayloadWithMetadata"
+    AnnouncementAudiencePerformance:
+      type: object
+      properties:
+        trackedDismissals:
+          type: boolean
+        announcementId:
+          type: string
+          nullable: true
+        dismissedCount:
+          type: integer
+          nullable: true
+        visibleCount:
+          type: integer
+        dismissalRate:
+          type: number
+          format: float
+          nullable: true
+    ApiEnvelopeAdminAnnouncementAudienceCount:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBase"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                count:
+                  type: integer
+                performance:
+                  $ref: "#/components/schemas/AnnouncementAudiencePerformance"
     ApiEnvelopeAdminPlatformStats:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBase"

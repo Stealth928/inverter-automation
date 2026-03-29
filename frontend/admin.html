@@ -2629,6 +2629,160 @@
             text-transform: uppercase;
             letter-spacing: 0.045em;
         }
+        .announcement-summary-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .announcement-performance-row {
+            align-items: stretch;
+        }
+        .announcement-performance-content {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .announcement-performance-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px 12px;
+            flex-wrap: wrap;
+        }
+        .announcement-performance-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 9px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+            background: color-mix(in srgb, var(--bg-overlay) 80%, transparent);
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .announcement-performance-badge[data-tone="tracked"] {
+            border-color: color-mix(in srgb, var(--color-success) 28%, transparent);
+            background: color-mix(in srgb, var(--color-success) 12%, transparent);
+            color: color-mix(in srgb, var(--color-success) 78%, white 10%);
+        }
+        .announcement-performance-badge[data-tone="repeatable"] {
+            border-color: color-mix(in srgb, var(--accent-blue) 24%, transparent);
+            background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+            color: color-mix(in srgb, var(--accent-blue) 78%, white 8%);
+        }
+        .announcement-performance-badge[data-tone="warning"] {
+            border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+            color: color-mix(in srgb, var(--color-warning) 82%, white 8%);
+        }
+        .announcement-performance-badge[data-tone="muted"] {
+            border-color: color-mix(in srgb, var(--border-primary) 72%, transparent);
+            background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+            color: var(--text-secondary);
+        }
+        .announcement-performance-badge[data-tone="error"] {
+            border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
+            background: color-mix(in srgb, var(--color-danger) 11%, transparent);
+            color: color-mix(in srgb, var(--color-danger) 82%, white 8%);
+        }
+        .announcement-performance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+            gap: 8px;
+        }
+        .announcement-performance-card {
+            min-height: 104px;
+            padding: 12px 13px;
+            border-radius: var(--radius-lg);
+            border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 82%, transparent), color-mix(in srgb, var(--bg-overlay) 84%, transparent)),
+                color-mix(in srgb, var(--bg-secondary) 68%, transparent);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+            transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+        }
+        .announcement-performance-card.emphasis {
+            border-color: color-mix(in srgb, var(--accent-blue) 28%, var(--border-primary));
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 65%),
+                color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+        }
+        .announcement-performance-card.muted {
+            border-style: dashed;
+        }
+        .announcement-performance-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            line-height: 1.3;
+        }
+        .announcement-performance-value {
+            font-size: 27px;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+        }
+        .announcement-performance-value.is-text {
+            font-size: 15px;
+            letter-spacing: 0;
+            line-height: 1.25;
+        }
+        .announcement-performance-value.is-placeholder {
+            color: var(--text-secondary);
+        }
+        .announcement-performance-sub {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .announcement-performance-meter {
+            display: grid;
+            gap: 7px;
+        }
+        .announcement-performance-meter[hidden] {
+            display: none;
+        }
+        .announcement-performance-meter-track {
+            position: relative;
+            overflow: hidden;
+            height: 8px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 55%, transparent);
+            background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent);
+        }
+        .announcement-performance-meter-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, color-mix(in srgb, var(--accent-blue) 72%, var(--color-warning)), color-mix(in srgb, var(--color-warning) 82%, white 4%));
+            transition: width 0.24s ease;
+        }
+        .announcement-performance-meter-labels {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 10px;
+            color: var(--text-secondary);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .announcement-performance-note {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
         .notifications-toolbar {
             display: flex;
             align-items: center;
@@ -3341,6 +3495,42 @@
                                     <div class="announcement-summary-content">
                                         <strong id="announcementAudienceSummaryTitle">Current audience summary</strong>
                                         <div class="announcement-audience-list" id="announcementAudienceSummary">No filters loaded yet.</div>
+                                    </div>
+                                </div>
+                                <div class="announcement-summary-row announcement-performance-row" id="announcementPerformanceRow" data-state="idle">
+                                    <span class="announcement-summary-icon">📈</span>
+                                    <div class="announcement-summary-content announcement-performance-content">
+                                        <div class="announcement-performance-head">
+                                            <strong id="announcementPerformanceTitle">Live delivery status</strong>
+                                            <span class="announcement-performance-badge" id="announcementPerformanceBadge" data-tone="muted">Awaiting refresh</span>
+                                        </div>
+                                        <div class="announcement-performance-grid">
+                                            <div class="announcement-performance-card emphasis" id="announcementPerformanceEligibleCard">
+                                                <span class="announcement-performance-label">Eligible now</span>
+                                                <span class="announcement-performance-value is-placeholder" id="announcementPerformanceEligibleValue">--</span>
+                                                <span class="announcement-performance-sub" id="announcementPerformanceEligibleSub">Matches the current audience filters.</span>
+                                            </div>
+                                            <div class="announcement-performance-card muted" id="announcementPerformanceDismissedCard">
+                                                <span class="announcement-performance-label">Dismissed</span>
+                                                <span class="announcement-performance-value is-placeholder is-text" id="announcementPerformanceDismissedValue">--</span>
+                                                <span class="announcement-performance-sub" id="announcementPerformanceDismissedSub">Tracked for show-once announcements with an ID.</span>
+                                            </div>
+                                            <div class="announcement-performance-card" id="announcementPerformanceVisibleCard">
+                                                <span class="announcement-performance-label">Still visible</span>
+                                                <span class="announcement-performance-value is-placeholder" id="announcementPerformanceVisibleValue">--</span>
+                                                <span class="announcement-performance-sub" id="announcementPerformanceVisibleSub">Users who would still see the banner on next load.</span>
+                                            </div>
+                                        </div>
+                                        <div class="announcement-performance-meter" id="announcementPerformanceMeter" hidden>
+                                            <div class="announcement-performance-meter-track">
+                                                <div class="announcement-performance-meter-fill" id="announcementPerformanceMeterFill"></div>
+                                            </div>
+                                            <div class="announcement-performance-meter-labels">
+                                                <span id="announcementPerformanceMeterLabelStart">0% dismissed</span>
+                                                <span id="announcementPerformanceMeterLabelEnd">100%</span>
+                                            </div>
+                                        </div>
+                                        <div class="announcement-performance-note" id="announcementPerformanceNote">Live counts refresh against the current audience filters.</div>
                                     </div>
                                 </div>
                             </div>

@@ -478,7 +478,101 @@ describe('admin route module', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({
       errno: 0,
-      result: { count: 2 }
+      result: {
+        count: 2,
+        performance: {
+          trackedDismissals: false,
+          announcementId: null,
+          dismissedCount: null,
+          visibleCount: 2,
+          dismissalRate: null
+        }
+      }
+    });
+  });
+
+  test('admin announcement audience count reports tracked dismissals for show-once IDs', async () => {
+    const oldCreatedAt = new Date(Date.now() - (45 * 24 * 60 * 60 * 1000)).toISOString();
+    const users = {
+      'uid-1': { automationEnabled: true, createdAt: oldCreatedAt },
+      'uid-2': { automationEnabled: false, createdAt: oldCreatedAt }
+    };
+    const configByUid = {
+      'uid-1': { announcementDismissedIds: ['release-note-1'] },
+      'uid-2': { announcementDismissedIds: [] }
+    };
+
+    const makeUserConfigDoc = (uid) => ({
+      get: jest.fn(async () => ({
+        exists: Object.prototype.hasOwnProperty.call(configByUid, uid),
+        data: () => configByUid[uid] || {}
+      }))
+    });
+
+    const app = buildApp(createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(users).map(
+              ([uid, profile]) => makeDocSnapshot(uid, profile)
+            ))),
+            doc: jest.fn((uid) => ({
+              collection: jest.fn((subName) => {
+                if (subName !== 'config') throw new Error(`Unexpected users subcollection: ${subName}`);
+                return {
+                  doc: jest.fn((docId) => {
+                    if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+                    return makeUserConfigDoc(uid);
+                  })
+                };
+              })
+            }))
+          };
+        }),
+        getAll: jest.fn(async (...docRefs) => Promise.all(docRefs.map((docRef) => docRef.get())))
+      }
+    }));
+
+    const response = await request(app)
+      .post('/api/admin/announcement/audience-count')
+      .set('Authorization', 'Bearer token')
+      .send({
+        announcement: {
+          enabled: true,
+          id: ' Release Note 1 ',
+          showOnce: true,
+          audience: {
+            requireTourComplete: false,
+            requireSetupComplete: false,
+            requireAutomationEnabled: false,
+            minAccountAgeDays: null,
+            onlyIncludeUids: [],
+            includeUids: [],
+            excludeUids: []
+          }
+        }
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: {
+        count: 2,
+        performance: {
+          trackedDismissals: true,
+          announcementId: 'release-note-1',
+          dismissedCount: 1,
+          visibleCount: 1,
+          dismissalRate: 0.5
+        }
+      }
     });
   });
 

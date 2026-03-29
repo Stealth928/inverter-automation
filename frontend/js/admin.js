@@ -134,6 +134,7 @@
         signature: '',
         status: 'idle',
         count: null,
+        performance: null,
         error: ''
     };
     let notificationsEditorBound = false;
@@ -2332,8 +2333,276 @@
             previewBody: document.getElementById('announcementPreviewBody'),
             previewMeta: document.getElementById('announcementPreviewMeta'),
             audienceSummaryTitle: document.getElementById('announcementAudienceSummaryTitle'),
-            audienceSummary: document.getElementById('announcementAudienceSummary')
+            audienceSummary: document.getElementById('announcementAudienceSummary'),
+            performanceRow: document.getElementById('announcementPerformanceRow'),
+            performanceTitle: document.getElementById('announcementPerformanceTitle'),
+            performanceBadge: document.getElementById('announcementPerformanceBadge'),
+            performanceEligibleCard: document.getElementById('announcementPerformanceEligibleCard'),
+            performanceEligibleValue: document.getElementById('announcementPerformanceEligibleValue'),
+            performanceEligibleSub: document.getElementById('announcementPerformanceEligibleSub'),
+            performanceDismissedCard: document.getElementById('announcementPerformanceDismissedCard'),
+            performanceDismissedValue: document.getElementById('announcementPerformanceDismissedValue'),
+            performanceDismissedSub: document.getElementById('announcementPerformanceDismissedSub'),
+            performanceVisibleCard: document.getElementById('announcementPerformanceVisibleCard'),
+            performanceVisibleValue: document.getElementById('announcementPerformanceVisibleValue'),
+            performanceVisibleSub: document.getElementById('announcementPerformanceVisibleSub'),
+            performanceMeter: document.getElementById('announcementPerformanceMeter'),
+            performanceMeterFill: document.getElementById('announcementPerformanceMeterFill'),
+            performanceMeterLabelStart: document.getElementById('announcementPerformanceMeterLabelStart'),
+            performanceMeterLabelEnd: document.getElementById('announcementPerformanceMeterLabelEnd'),
+            performanceNote: document.getElementById('announcementPerformanceNote')
         };
+    }
+
+    function formatAnnouncementMetricCount(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return '--';
+        return Math.max(0, Math.round(numeric)).toLocaleString('en-AU');
+    }
+
+    function normalizeAnnouncementPerformanceData(rawPerformance, fallbackCount = null) {
+        const source = rawPerformance && typeof rawPerformance === 'object' ? rawPerformance : {};
+        const eligibleCount = Number.isFinite(Number(fallbackCount))
+            ? Math.max(0, Math.round(Number(fallbackCount)))
+            : null;
+        const trackedDismissals = source.trackedDismissals === true;
+        const dismissedCountRaw = Number(source.dismissedCount);
+        const visibleCountRaw = Number(source.visibleCount);
+        const dismissedCount = trackedDismissals && Number.isFinite(dismissedCountRaw)
+            ? Math.max(0, Math.round(dismissedCountRaw))
+            : null;
+        const visibleCount = Number.isFinite(visibleCountRaw)
+            ? Math.max(0, Math.round(visibleCountRaw))
+            : eligibleCount;
+        const dismissalRateRaw = Number(source.dismissalRate);
+        const dismissalRate = trackedDismissals
+            ? (Number.isFinite(dismissalRateRaw)
+                ? Math.max(0, Math.min(1, dismissalRateRaw))
+                : (Number.isFinite(eligibleCount) && eligibleCount > 0 && Number.isFinite(dismissedCount)
+                    ? dismissedCount / eligibleCount
+                    : null))
+            : null;
+        const announcementId = normalizeAnnouncementId(source.announcementId || '');
+
+        return {
+            trackedDismissals,
+            announcementId: announcementId || null,
+            dismissedCount,
+            visibleCount,
+            dismissalRate
+        };
+    }
+
+    function setAnnouncementPerformanceCard(cardEl, valueEl, subEl, config = {}) {
+        if (!cardEl || !valueEl || !subEl) return;
+
+        valueEl.textContent = config.valueText || '--';
+        valueEl.classList.toggle('is-text', config.asText === true);
+        valueEl.classList.toggle('is-placeholder', config.placeholder === true);
+        subEl.textContent = config.subText || '';
+        cardEl.classList.toggle('muted', config.muted === true);
+    }
+
+    function renderAnnouncementPerformance(announcement) {
+        const els = getAnnouncementElements();
+        if (
+            !els.performanceRow
+            || !els.performanceTitle
+            || !els.performanceBadge
+            || !els.performanceEligibleCard
+            || !els.performanceEligibleValue
+            || !els.performanceEligibleSub
+            || !els.performanceDismissedCard
+            || !els.performanceDismissedValue
+            || !els.performanceDismissedSub
+            || !els.performanceVisibleCard
+            || !els.performanceVisibleValue
+            || !els.performanceVisibleSub
+            || !els.performanceMeter
+            || !els.performanceMeterFill
+            || !els.performanceMeterLabelStart
+            || !els.performanceMeterLabelEnd
+            || !els.performanceNote
+        ) {
+            return;
+        }
+
+        const signature = buildAnnouncementAudienceSignature(announcement);
+        const stateMatches = announcementAudienceCountState.signature === signature;
+        const status = stateMatches ? announcementAudienceCountState.status : 'idle';
+        const eligibleCount = stateMatches && Number.isFinite(Number(announcementAudienceCountState.count))
+            ? Math.max(0, Math.round(Number(announcementAudienceCountState.count)))
+            : null;
+        const performance = normalizeAnnouncementPerformanceData(
+            stateMatches ? announcementAudienceCountState.performance : null,
+            eligibleCount
+        );
+        const enabled = announcement?.enabled === true;
+        const showOnce = announcement?.showOnce !== false;
+        const announcementId = normalizeAnnouncementId(announcement?.id || '');
+        const canTrackDismissals = showOnce && Boolean(announcementId);
+        const eligibleSubText = enabled
+            ? 'Users currently matching the saved filters.'
+            : 'Users who currently match these filters if you launch it.';
+
+        let title = `${enabled ? 'Live' : 'Draft'} delivery status`;
+        let badgeText = 'Awaiting refresh';
+        let badgeTone = 'muted';
+        let note = 'Live counts refresh against the current audience filters.';
+        let meterVisible = false;
+        let meterStart = '0% dismissed';
+        let meterEnd = '100%';
+        let meterWidth = 0;
+
+        els.performanceRow.dataset.state = status;
+
+        setAnnouncementPerformanceCard(els.performanceEligibleCard, els.performanceEligibleValue, els.performanceEligibleSub, {
+            valueText: '--',
+            subText: eligibleSubText,
+            placeholder: true
+        });
+        setAnnouncementPerformanceCard(els.performanceDismissedCard, els.performanceDismissedValue, els.performanceDismissedSub, {
+            valueText: '--',
+            subText: 'Tracked for show-once announcements with an ID.',
+            placeholder: true,
+            asText: true,
+            muted: true
+        });
+        setAnnouncementPerformanceCard(els.performanceVisibleCard, els.performanceVisibleValue, els.performanceVisibleSub, {
+            valueText: '--',
+            subText: enabled
+                ? 'Users who would still see the banner on their next app load.'
+                : 'Users who would see the banner if you launch it now.',
+            placeholder: true
+        });
+
+        if (status === 'loading') {
+            badgeText = 'Refreshing';
+            note = 'Recalculating audience and delivery status against the current filters...';
+        } else if (status === 'error') {
+            badgeText = 'Unavailable';
+            badgeTone = 'error';
+            note = announcementAudienceCountState.error || 'Recipient count unavailable.';
+        } else if (status === 'ready' && Number.isFinite(eligibleCount)) {
+            setAnnouncementPerformanceCard(els.performanceEligibleCard, els.performanceEligibleValue, els.performanceEligibleSub, {
+                valueText: formatAnnouncementMetricCount(eligibleCount),
+                subText: eligibleSubText,
+                placeholder: false,
+                muted: false
+            });
+
+            if (canTrackDismissals && performance.trackedDismissals) {
+                const dismissedCount = Number.isFinite(performance.dismissedCount) ? performance.dismissedCount : 0;
+                const visibleCount = Number.isFinite(performance.visibleCount) ? performance.visibleCount : eligibleCount;
+                const dismissalRate = Number.isFinite(performance.dismissalRate)
+                    ? performance.dismissalRate
+                    : (eligibleCount > 0 ? dismissedCount / eligibleCount : 0);
+
+                title = `${enabled ? 'Live' : 'Draft'} delivery status · ${formatAnnouncementMetricCount(visibleCount)} still visible`;
+                badgeText = enabled ? 'Show-once tracking' : 'Draft with history';
+                badgeTone = 'tracked';
+                note = eligibleCount === 0
+                    ? 'No users currently match the saved audience filters.'
+                    : (dismissedCount > 0
+                        ? `${Math.round(dismissalRate * 100)}% of the current eligible audience has already dismissed this announcement ID.`
+                        : 'No eligible users have dismissed this announcement ID yet.');
+
+                setAnnouncementPerformanceCard(els.performanceDismissedCard, els.performanceDismissedValue, els.performanceDismissedSub, {
+                    valueText: formatAnnouncementMetricCount(dismissedCount),
+                    subText: enabled
+                        ? 'Eligible users who already dismissed this announcement ID.'
+                        : 'Saved dismissal history for users who currently match these filters.',
+                    placeholder: false,
+                    muted: false
+                });
+                setAnnouncementPerformanceCard(els.performanceVisibleCard, els.performanceVisibleValue, els.performanceVisibleSub, {
+                    valueText: formatAnnouncementMetricCount(visibleCount),
+                    subText: enabled
+                        ? 'Would still see the banner on their next app load.'
+                        : 'Would see the banner if you relaunch this ID today.',
+                    placeholder: false,
+                    muted: false
+                });
+
+                meterVisible = eligibleCount > 0;
+                meterWidth = dismissalRate * 100;
+                meterStart = `${Math.round(dismissalRate * 100)}% dismissed`;
+                meterEnd = `${formatAnnouncementMetricCount(visibleCount)} visible`;
+            } else if (canTrackDismissals) {
+                badgeText = 'History unavailable';
+                badgeTone = 'warning';
+                note = 'This announcement ID is set, but dismissal history was not available for the current refresh.';
+
+                setAnnouncementPerformanceCard(els.performanceDismissedCard, els.performanceDismissedValue, els.performanceDismissedSub, {
+                    valueText: 'Unavailable',
+                    subText: 'Dismissal history could not be read for this refresh.',
+                    placeholder: false,
+                    asText: true,
+                    muted: true
+                });
+                setAnnouncementPerformanceCard(els.performanceVisibleCard, els.performanceVisibleValue, els.performanceVisibleSub, {
+                    valueText: formatAnnouncementMetricCount(eligibleCount),
+                    subText: enabled
+                        ? 'All eligible users are treated as still visible until history is available.'
+                        : 'This many users would match the current filters on launch.',
+                    placeholder: false,
+                    muted: false
+                });
+            } else if (showOnce) {
+                badgeText = 'Show-once needs ID';
+                badgeTone = 'warning';
+                note = enabled
+                    ? 'This announcement is marked show-once, but dismissals cannot persist until an announcement ID is set.'
+                    : 'Add an announcement ID before launch if you want dismissals to stay suppressed across reloads.';
+
+                setAnnouncementPerformanceCard(els.performanceDismissedCard, els.performanceDismissedValue, els.performanceDismissedSub, {
+                    valueText: 'Need ID',
+                    subText: 'Add an ID before launch to persist dismissals.',
+                    placeholder: false,
+                    asText: true,
+                    muted: true
+                });
+                setAnnouncementPerformanceCard(els.performanceVisibleCard, els.performanceVisibleValue, els.performanceVisibleSub, {
+                    valueText: formatAnnouncementMetricCount(eligibleCount),
+                    subText: enabled
+                        ? 'Everyone in this audience would still see the banner on next load.'
+                        : 'This many users would match the audience on launch.',
+                    placeholder: false,
+                    muted: false
+                });
+            } else {
+                badgeText = enabled ? 'Repeatable' : 'Draft preview';
+                badgeTone = enabled ? 'repeatable' : 'muted';
+                note = enabled
+                    ? 'Repeatable announcements do not persist dismissals, so this view only tracks the current live audience size.'
+                    : 'This draft shows who currently matches the audience filters. User hides remain session-only once launched.';
+
+                setAnnouncementPerformanceCard(els.performanceDismissedCard, els.performanceDismissedValue, els.performanceDismissedSub, {
+                    valueText: 'N/A',
+                    subText: 'Repeatable announcements only support in-session hides.',
+                    placeholder: false,
+                    asText: true,
+                    muted: true
+                });
+                setAnnouncementPerformanceCard(els.performanceVisibleCard, els.performanceVisibleValue, els.performanceVisibleSub, {
+                    valueText: formatAnnouncementMetricCount(eligibleCount),
+                    subText: enabled
+                        ? 'All eligible users can see it again on a later refresh.'
+                        : 'This many users would match the audience if you launch it.',
+                    placeholder: false,
+                    muted: false
+                });
+            }
+        }
+
+        els.performanceTitle.textContent = title;
+        els.performanceBadge.textContent = badgeText;
+        els.performanceBadge.dataset.tone = badgeTone;
+        els.performanceNote.textContent = note;
+        els.performanceMeter.hidden = !meterVisible;
+        els.performanceMeterFill.style.width = `${Math.max(0, Math.min(100, meterWidth))}%`;
+        els.performanceMeterLabelStart.textContent = meterStart;
+        els.performanceMeterLabelEnd.textContent = meterEnd;
     }
 
     function bindAnnouncementEditorHandlers() {
@@ -2475,6 +2744,8 @@
     function buildAnnouncementAudienceSignature(announcement) {
         const audience = announcement && announcement.audience ? announcement.audience : {};
         return JSON.stringify({
+            showOnce: announcement?.showOnce !== false,
+            announcementId: normalizeAnnouncementId(announcement?.id || ''),
             requireTourComplete: audience.requireTourComplete !== false,
             requireSetupComplete: audience.requireSetupComplete !== false,
             requireAutomationEnabled: audience.requireAutomationEnabled === true,
@@ -2502,15 +2773,17 @@
             signature,
             status: 'loading',
             count: null,
+            performance: null,
             error: ''
         };
         updateAnnouncementAudienceSummaryTitle(announcement);
+        renderAnnouncementPerformance(announcement);
 
         try {
             const resp = await adminApiClient.fetch('/api/admin/announcement/audience-count', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audience: announcement?.audience || {} })
+                body: JSON.stringify({ announcement })
             });
             const data = await resp.json();
             if (!resp.ok || data.errno !== 0) {
@@ -2519,10 +2792,12 @@
 
             if (requestSequence !== announcementAudienceCountRequestSequence) return;
             const rawCount = Number(data.result?.count);
+            const count = Number.isFinite(rawCount) ? Math.max(0, Math.round(rawCount)) : 0;
             announcementAudienceCountState = {
                 signature,
                 status: 'ready',
-                count: Number.isFinite(rawCount) ? Math.max(0, Math.round(rawCount)) : 0,
+                count,
+                performance: normalizeAnnouncementPerformanceData(data.result?.performance, count),
                 error: ''
             };
         } catch (error) {
@@ -2531,11 +2806,14 @@
                 signature,
                 status: 'error',
                 count: null,
+                performance: null,
                 error: error?.message || String(error)
             };
         } finally {
             if (requestSequence !== announcementAudienceCountRequestSequence) return;
-            updateAnnouncementAudienceSummaryTitle(collectAdminAnnouncementForm());
+            const latestAnnouncement = collectAdminAnnouncementForm();
+            updateAnnouncementAudienceSummaryTitle(latestAnnouncement);
+            renderAnnouncementPerformance(latestAnnouncement);
         }
     }
 
@@ -2550,6 +2828,7 @@
             && (announcementAudienceCountState.status === 'loading' || announcementAudienceCountState.status === 'ready')
         ) {
             updateAnnouncementAudienceSummaryTitle(announcement);
+            renderAnnouncementPerformance(announcement);
             return;
         }
 
@@ -2574,7 +2853,22 @@
         if (announcementAudienceCountState.signature === signature) {
             if (announcementAudienceCountState.status === 'ready' && Number.isFinite(announcementAudienceCountState.count)) {
                 const count = announcementAudienceCountState.count;
-                return `Current audience summary · ${count} user${count === 1 ? '' : 's'} would receive this`;
+                const performance = normalizeAnnouncementPerformanceData(announcementAudienceCountState.performance, count);
+                const showOnce = announcement?.showOnce !== false;
+                const announcementId = normalizeAnnouncementId(announcement?.id || '');
+
+                if (showOnce && announcementId && performance.trackedDismissals) {
+                    const visibleCount = Number.isFinite(performance.visibleCount) ? performance.visibleCount : count;
+                    const dismissedCount = Number.isFinite(performance.dismissedCount) ? performance.dismissedCount : 0;
+                    const visibleLabel = `${formatAnnouncementMetricCount(visibleCount)} user${visibleCount === 1 ? '' : 's'} would still see this`;
+                    return dismissedCount > 0
+                        ? `Current audience summary · ${visibleLabel} · ${formatAnnouncementMetricCount(dismissedCount)} dismissed`
+                        : `Current audience summary · ${visibleLabel}`;
+                }
+
+                return announcement?.enabled === true
+                    ? `Current audience summary · ${formatAnnouncementMetricCount(count)} user${count === 1 ? '' : 's'} would receive this`
+                    : `Current audience summary · ${formatAnnouncementMetricCount(count)} user${count === 1 ? '' : 's'} match these filters`;
             }
             if (announcementAudienceCountState.status === 'loading') {
                 return 'Current audience summary · calculating recipients...';
@@ -2608,6 +2902,7 @@
         els.audienceSummary.innerHTML = buildAudienceSummaryLines(announcement)
             .map((line) => `<div>${escapeHtml(line)}</div>`)
             .join('');
+        renderAnnouncementPerformance(announcement);
         updateAnnouncementLifecycleSummary(announcement);
     }
 

@@ -1216,11 +1216,43 @@ function registerAdminRoutes(app, deps = {}) {
     return configByUid;
   }
 
-  async function countAnnouncementAudienceUsers(audienceInput = {}) {
+  function buildAnnouncementAudiencePerformance(announcementInput, eligibleCount, dismissedCount) {
+    const announcement = announcementInput && typeof announcementInput === 'object'
+      ? normalizeAnnouncementConfig(announcementInput)
+      : null;
+    const safeEligibleCount = Number.isFinite(Number(eligibleCount))
+      ? Math.max(0, Math.round(Number(eligibleCount)))
+      : 0;
+    const trackedDismissals = announcement?.showOnce === true && Boolean(announcement?.id);
+    const safeDismissedCount = trackedDismissals && Number.isFinite(Number(dismissedCount))
+      ? Math.max(0, Math.min(safeEligibleCount, Math.round(Number(dismissedCount))))
+      : null;
+    const visibleCount = trackedDismissals
+      ? Math.max(0, safeEligibleCount - safeDismissedCount)
+      : safeEligibleCount;
+
+    return {
+      trackedDismissals,
+      announcementId: trackedDismissals ? announcement.id : null,
+      dismissedCount: safeDismissedCount,
+      visibleCount,
+      dismissalRate: trackedDismissals && safeEligibleCount > 0
+        ? Number((safeDismissedCount / safeEligibleCount).toFixed(4))
+        : null
+    };
+  }
+
+  async function summarizeAnnouncementAudience(audienceInput = {}, announcementInput = null) {
     const audience = normalizeAnnouncementAudience(audienceInput);
+    const announcement = announcementInput && typeof announcementInput === 'object'
+      ? normalizeAnnouncementConfig({ ...announcementInput, audience })
+      : null;
     const usersSnapshot = await db.collection('users').get();
     if (!usersSnapshot || !usersSnapshot.size) {
-      return 0;
+      return {
+        eligibleCount: 0,
+        performance: buildAnnouncementAudiencePerformance(announcement, 0, 0)
+      };
     }
 
     const onlyInclude = new Set(audience.onlyIncludeUids || []);
@@ -1228,6 +1260,7 @@ function registerAdminRoutes(app, deps = {}) {
     const exclude = new Set(audience.excludeUids || []);
     const minAgeDays = Number(audience.minAccountAgeDays || 0);
     const nowMs = Date.now();
+    const shouldTrackDismissals = announcement?.showOnce === true && Boolean(announcement?.id);
 
     const initialCandidates = [];
     usersSnapshot.forEach((doc) => {
@@ -1258,25 +1291,54 @@ function registerAdminRoutes(app, deps = {}) {
       initialCandidates.push(uid);
     });
 
-    if (!initialCandidates.length) return 0;
-    if (!audience.requireTourComplete && !audience.requireSetupComplete) {
-      return initialCandidates.length;
+    if (!initialCandidates.length) {
+      return {
+        eligibleCount: 0,
+        performance: buildAnnouncementAudiencePerformance(announcement, 0, 0)
+      };
     }
 
-    const configByUid = await loadUserConfigMainByUid(initialCandidates);
+    const shouldLoadConfig = audience.requireTourComplete || audience.requireSetupComplete || shouldTrackDismissals;
+    const configByUid = shouldLoadConfig
+      ? await loadUserConfigMainByUid(initialCandidates)
+      : new Map();
     let eligibleCount = 0;
+    let dismissedCount = 0;
+
     initialCandidates.forEach((uid) => {
       if (include.has(uid)) {
         eligibleCount += 1;
+        if (shouldTrackDismissals) {
+          const userConfig = configByUid.get(uid) || {};
+          const dismissedIds = normalizeUidList(userConfig.announcementDismissedIds, 500);
+          if (dismissedIds.includes(announcement.id)) {
+            dismissedCount += 1;
+          }
+        }
         return;
       }
+
+      if (!shouldLoadConfig) {
+        eligibleCount += 1;
+        return;
+      }
+
       const userConfig = configByUid.get(uid) || {};
       if (audience.requireTourComplete && userConfig.tourComplete !== true) return;
       if (audience.requireSetupComplete && userConfig.setupComplete !== true) return;
       eligibleCount += 1;
+      if (shouldTrackDismissals) {
+        const dismissedIds = normalizeUidList(userConfig.announcementDismissedIds, 500);
+        if (dismissedIds.includes(announcement.id)) {
+          dismissedCount += 1;
+        }
+      }
     });
 
-    return eligibleCount;
+    return {
+      eligibleCount,
+      performance: buildAnnouncementAudiencePerformance(announcement, eligibleCount, dismissedCount)
+    };
   }
 
   app.get('/api/admin/announcement', authenticateUser, requireAdmin, async (req, res) => {
@@ -1323,12 +1385,24 @@ function registerAdminRoutes(app, deps = {}) {
   app.post('/api/admin/announcement/audience-count', authenticateUser, requireAdmin, async (req, res) => {
     try {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const announcementInput = body.announcement && typeof body.announcement === 'object'
+        ? body.announcement
+        : null;
       const audienceInput = body.audience && typeof body.audience === 'object'
         ? body.audience
-        : (body.announcement && typeof body.announcement === 'object' ? body.announcement.audience : {});
+        : (announcementInput && typeof announcementInput.audience === 'object' ? announcementInput.audience : {});
       const audience = await resolveAnnouncementAudience(audienceInput || {});
-      const count = await countAnnouncementAudienceUsers(audience);
-      return res.json({ errno: 0, result: { count } });
+      const announcement = announcementInput
+        ? normalizeAnnouncementConfig({ ...announcementInput, audience })
+        : null;
+      const summary = await summarizeAnnouncementAudience(audience, announcement);
+      return res.json({
+        errno: 0,
+        result: {
+          count: summary.eligibleCount,
+          performance: summary.performance
+        }
+      });
     } catch (error) {
       if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500) {
         return res.status(error.statusCode).json({ errno: error.statusCode, error: error.message });

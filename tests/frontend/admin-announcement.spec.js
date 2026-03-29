@@ -10,6 +10,43 @@ function jsonResponse(payload, status = 200) {
   };
 }
 
+function normalizeAnnouncementId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function buildAnnouncementAudienceCountPayload(announcementInput = {}) {
+  const announcement = announcementInput && typeof announcementInput === 'object' ? announcementInput : {};
+  const audience = announcement.audience && typeof announcement.audience === 'object' ? announcement.audience : {};
+  const onlyIncludeCount = Array.isArray(audience.onlyIncludeUids) ? audience.onlyIncludeUids.length : 0;
+  const count = onlyIncludeCount > 0
+    ? onlyIncludeCount
+    : (Number(audience.minAccountAgeDays || 0) >= 14 ? 3 : 5);
+  const announcementId = normalizeAnnouncementId(announcement.id);
+  const trackedDismissals = announcement.showOnce !== false && Boolean(announcementId);
+  const dismissedCount = trackedDismissals ? Math.min(2, count) : null;
+  const visibleCount = trackedDismissals ? Math.max(0, count - dismissedCount) : count;
+
+  return {
+    errno: 0,
+    result: {
+      count,
+      performance: {
+        trackedDismissals,
+        announcementId: trackedDismissals ? announcementId : null,
+        dismissedCount,
+        visibleCount,
+        dismissalRate: trackedDismissals && count > 0 ? dismissedCount / count : null
+      }
+    }
+  };
+}
+
 async function mockAdminAnnouncementEnvironment(page, options = {}) {
   const savedRequests = [];
   let currentAnnouncement = options.initialAnnouncement || {
@@ -112,6 +149,12 @@ async function mockAdminAnnouncementEnvironment(page, options = {}) {
       return;
     }
 
+    if (path === '/api/admin/announcement/audience-count' && route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() || {};
+      await route.fulfill(jsonResponse(buildAnnouncementAudienceCountPayload(body.announcement || body)));
+      return;
+    }
+
     await route.fulfill(jsonResponse({ errno: 0, result: {} }));
   });
 
@@ -174,8 +217,14 @@ test.describe('Admin Announcement Tab', () => {
     await expect(page.locator('#announcementIdInput')).toHaveValue('release-note-1');
     await expect(page.locator('#announcementTitleInput')).toHaveValue('Initial announcement');
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Account age >= 7 days');
+    await expect(page.locator('#announcementAudienceSummaryTitle')).toHaveText('Current audience summary · 3 users would still see this · 2 dismissed');
     await expect(page.locator('#announcementLifecycleTitle')).toHaveText('Live show-once announcement (release-note-1)');
     await expect(page.locator('#announcementSaveEffect')).toContainText('Keeping the same ID preserves prior dismissals');
+    await expect(page.locator('#announcementPerformanceBadge')).toHaveText('Show-once tracking');
+    await expect(page.locator('#announcementPerformanceEligibleValue')).toHaveText('5');
+    await expect(page.locator('#announcementPerformanceDismissedValue')).toHaveText('2');
+    await expect(page.locator('#announcementPerformanceVisibleValue')).toHaveText('3');
+    await expect(page.locator('#announcementPerformanceNote')).toContainText('40% of the current eligible audience');
     await expect(page.locator('#saveAnnouncementBtn')).toHaveText('Save Live');
 
     await page.locator('#announcementTitleInput').fill('Updated announcement');
@@ -189,7 +238,12 @@ test.describe('Admin Announcement Tab', () => {
     await expect(page.locator('#announcementPreview')).toHaveClass(/danger/);
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Account age >= 14 days');
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Only include allowlist: 1 user');
+  await expect(page.locator('#announcementAudienceSummaryTitle')).toHaveText('Current audience summary · 1 user would receive this');
     await expect(page.locator('#announcementLifecycleTitle')).toHaveText('Live repeatable announcement');
+  await expect(page.locator('#announcementPerformanceBadge')).toHaveText('Repeatable');
+  await expect(page.locator('#announcementPerformanceDismissedValue')).toHaveText('N/A');
+  await expect(page.locator('#announcementPerformanceVisibleValue')).toHaveText('1');
+  await expect(page.locator('#announcementPerformanceNote')).toContainText('do not persist dismissals');
     await expect(page.locator('#saveAnnouncementBtn')).toHaveText('Save Live');
 
     await page.locator('#saveAnnouncementBtn').click();

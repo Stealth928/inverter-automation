@@ -238,6 +238,7 @@ All endpoints in this section require an authenticated admin user.
 | `GET` | `/api/admin/check` | Authenticated admin-status check for the current user |
 | `GET` | `/api/admin/announcement` | Read shared announcement config |
 | `POST` | `/api/admin/announcement` | Save shared announcement config |
+| `POST` | `/api/admin/announcement/audience-count` | Preview eligible audience size plus show-once dismissal visibility |
 | `GET` | `/api/admin/platform-stats` | Platform KPIs and trends |
 | `GET` | `/api/admin/firestore-metrics` | Firestore usage, quota, billing, cache metrics |
 | `GET` | `/api/admin/scheduler-metrics` | Scheduler metrics and SLO views |
