@@ -157,9 +157,9 @@ test.describe('Admin Announcement Tab', () => {
       '\u2699\uFE0F Scheduler',
       '\uD83D\uDEF0\uFE0F DataWorks',
       '\uD83E\uDDED Behaviour',
+      '\uD83E\uDE7A API Health',
       '\uD83D\uDCE3 Announcement',
-      '\uD83D\uDD14 Notifications',
-      '\uD83E\uDE7A API Health'
+      '\uD83D\uDD14 Notifications'
     ]);
   });
 
@@ -174,6 +174,9 @@ test.describe('Admin Announcement Tab', () => {
     await expect(page.locator('#announcementIdInput')).toHaveValue('release-note-1');
     await expect(page.locator('#announcementTitleInput')).toHaveValue('Initial announcement');
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Account age >= 7 days');
+    await expect(page.locator('#announcementLifecycleTitle')).toHaveText('Live show-once announcement (release-note-1)');
+    await expect(page.locator('#announcementSaveEffect')).toContainText('Keeping the same ID preserves prior dismissals');
+    await expect(page.locator('#saveAnnouncementBtn')).toHaveText('Save Live');
 
     await page.locator('#announcementTitleInput').fill('Updated announcement');
     await page.locator('#announcementBodyInput').fill('Updated body for eligible users.');
@@ -186,6 +189,8 @@ test.describe('Admin Announcement Tab', () => {
     await expect(page.locator('#announcementPreview')).toHaveClass(/danger/);
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Account age >= 14 days');
     await expect(page.locator('#announcementAudienceSummary')).toContainText('Only include allowlist: 1 user');
+    await expect(page.locator('#announcementLifecycleTitle')).toHaveText('Live repeatable announcement');
+    await expect(page.locator('#saveAnnouncementBtn')).toHaveText('Save Live');
 
     await page.locator('#saveAnnouncementBtn').click();
 

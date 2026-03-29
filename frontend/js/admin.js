@@ -138,6 +138,7 @@
     };
     let notificationsEditorBound = false;
     let currentAdminNotificationsConfig = null;
+    let currentAdminNotificationsOverview = null;
 
     function createDefaultUsersFilters() {
         return {
@@ -2310,6 +2311,9 @@
             refreshBtn: document.getElementById('refreshAnnouncementBtn'),
             saveBtn: document.getElementById('saveAnnouncementBtn'),
             disableBtn: document.getElementById('disableAnnouncementBtn'),
+            lifecycleTitle: document.getElementById('announcementLifecycleTitle'),
+            lifecycleDetail: document.getElementById('announcementLifecycleDetail'),
+            saveEffect: document.getElementById('announcementSaveEffect'),
             idInput: document.getElementById('announcementIdInput'),
             severitySelect: document.getElementById('announcementSeveritySelect'),
             titleInput: document.getElementById('announcementTitleInput'),
@@ -2381,6 +2385,65 @@
         }
         warning.style.display = '';
         warning.textContent = message;
+    }
+
+    function updateAnnouncementActionLabels(announcement) {
+        const { refreshBtn, saveBtn, disableBtn } = getAnnouncementElements();
+        if (refreshBtn) {
+            refreshBtn.textContent = 'Reload Saved';
+            refreshBtn.title = 'Discard unsaved edits and reload the last saved announcement.';
+        }
+        if (saveBtn) {
+            const savingLive = announcement?.enabled === true;
+            saveBtn.textContent = savingLive ? 'Save Live' : 'Save Draft';
+            saveBtn.title = savingLive
+                ? 'Save this form into shared config so eligible users get the updated announcement on their next app load.'
+                : 'Save this form as a disabled draft without showing it to users yet.';
+        }
+        if (disableBtn) {
+            const alreadyDisabled = announcement?.enabled !== true;
+            disableBtn.textContent = alreadyDisabled ? 'Save Disabled' : 'Disable';
+            disableBtn.title = alreadyDisabled
+                ? 'Save the current form with delivery turned off.'
+                : 'Turn the live announcement off while keeping the saved content for later edits.';
+        }
+    }
+
+    function updateAnnouncementLifecycleSummary(announcement) {
+        const { lifecycleTitle, lifecycleDetail, saveEffect } = getAnnouncementElements();
+        if (!lifecycleTitle || !lifecycleDetail || !saveEffect) return;
+
+        const enabled = announcement?.enabled === true;
+        const showOnce = announcement?.showOnce !== false;
+        const hasCopy = Boolean((announcement?.title || '').trim() || (announcement?.body || '').trim());
+        const announcementId = normalizeAnnouncementId(announcement?.id || '');
+
+        let title = 'Saved disabled draft';
+        let detail = 'Users will not receive this while it stays disabled. Turn on "Enable announcement" and save to launch it.';
+        let saveMessage = 'Save writes the current form into shared config as a disabled draft. Disable does the same thing, but forces delivery off first.';
+
+        if (enabled && !hasCopy) {
+            title = 'Needs a title or body before launch';
+            detail = 'The announcement is marked enabled, but it cannot be saved live until it has visible copy.';
+            saveMessage = 'Save will be blocked until you add a title or body.';
+        } else if (enabled && showOnce && !announcementId) {
+            title = 'Needs an ID before launch';
+            detail = 'Show-once announcements use the ID as the dismissal key, so users cannot receive this safely until an ID is set.';
+            saveMessage = 'Save will be blocked until you add an announcement ID.';
+        } else if (enabled && showOnce) {
+            title = `Live show-once announcement (${announcementId})`;
+            detail = 'Eligible users see the latest saved version the next time their app loads this banner. Users who already dismissed this ID stay suppressed until you save with a new ID.';
+            saveMessage = 'Save updates the live announcement in shared config. Keeping the same ID preserves prior dismissals; changing the ID makes it show again for dismissed users.';
+        } else if (enabled) {
+            title = 'Live repeatable announcement';
+            detail = 'Eligible users see the latest saved version the next time their app loads this banner. Users can hide it in-session, but it can appear again on a later refresh because it is not tracked as dismissed.';
+            saveMessage = 'Save updates the live announcement immediately for the next user banner refresh.';
+        }
+
+        lifecycleTitle.textContent = title;
+        lifecycleDetail.textContent = detail;
+        saveEffect.textContent = saveMessage;
+        updateAnnouncementActionLabels(announcement);
     }
 
     function buildAudienceSummaryLines(announcement) {
@@ -2545,6 +2608,7 @@
         els.audienceSummary.innerHTML = buildAudienceSummaryLines(announcement)
             .map((line) => `<div>${escapeHtml(line)}</div>`)
             .join('');
+        updateAnnouncementLifecycleSummary(announcement);
     }
 
     function renderAdminAnnouncement(announcement) {
@@ -2735,6 +2799,15 @@
             warning: document.getElementById('notificationsAdminWarning'),
             refreshBtn: document.getElementById('refreshNotificationsAdminBtn'),
             saveBtn: document.getElementById('saveNotificationsConfigBtn'),
+            runtimeStatusPill: document.getElementById('notificationsRuntimeStatusPill'),
+            defaultChannelsSummary: document.getElementById('notificationsDefaultChannelsSummary'),
+            defaultChannelsDetail: document.getElementById('notificationsDefaultChannelsDetail'),
+            adminAlertsSummary: document.getElementById('notificationsAdminAlertsSummary'),
+            adminAlertsDetail: document.getElementById('notificationsAdminAlertsDetail'),
+            audienceDefaultsSummary: document.getElementById('notificationsAudienceDefaultsSummary'),
+            audienceDefaultsDetail: document.getElementById('notificationsAudienceDefaultsDetail'),
+            deliveryHealthSummary: document.getElementById('notificationsDeliveryHealthSummary'),
+            deliveryHealthDetail: document.getElementById('notificationsDeliveryHealthDetail'),
             configEnabledInput: document.getElementById('notificationsConfigEnabledInput'),
             configChannelInboxInput: document.getElementById('notificationsConfigChannelInboxInput'),
             configChannelPushInput: document.getElementById('notificationsConfigChannelPushInput'),
@@ -2766,6 +2839,10 @@
             broadcastDeepLinkInput: document.getElementById('notificationsBroadcastDeepLinkInput'),
             broadcastChannelInboxInput: document.getElementById('notificationsBroadcastChannelInboxInput'),
             broadcastChannelPushInput: document.getElementById('notificationsBroadcastChannelPushInput'),
+            broadcastPreview: document.getElementById('notificationsBroadcastPreview'),
+            broadcastPreviewTitle: document.getElementById('notificationsBroadcastPreviewTitle'),
+            broadcastPreviewBody: document.getElementById('notificationsBroadcastPreviewBody'),
+            broadcastPreviewMeta: document.getElementById('notificationsBroadcastPreviewMeta'),
             broadcastAudienceSummary: document.getElementById('notificationsBroadcastAudienceSummary'),
             sendBroadcastBtn: document.getElementById('sendNotificationsBroadcastBtn')
         };
@@ -2790,19 +2867,148 @@
         if (els.sendBroadcastBtn) els.sendBroadcastBtn.disabled = isBusy;
     }
 
+    function formatNotificationChannelSummary(channels) {
+        const safeChannels = Array.isArray(channels) ? channels : [];
+        const labels = safeChannels
+            .map((channel) => String(channel || '').trim().toLowerCase())
+            .filter((channel, index, arr) => ['inbox', 'push'].includes(channel) && arr.indexOf(channel) === index)
+            .map((channel) => (channel === 'push' ? 'Push' : 'Inbox'));
+        return labels.length ? labels.join(' + ') : 'Inbox';
+    }
+
+    function buildNotificationAudienceHeadline(audienceDefaults) {
+        const audience = audienceDefaults && typeof audienceDefaults === 'object' ? audienceDefaults : {};
+        const gates = [];
+        if (audience.requireTourComplete) gates.push('Tour');
+        if (audience.requireSetupComplete) gates.push('Setup');
+        if (audience.requireAutomationEnabled) gates.push('Automation');
+        if (Number(audience.minAccountAgeDays || 0) > 0) gates.push(`${Number(audience.minAccountAgeDays)}+ days`);
+        return gates.length ? gates.join(' + ') : 'Open audience';
+    }
+
+    function renderAdminNotificationsHero(config, overview = null) {
+        const els = getNotificationsConfigElements();
+        const safeConfig = config && typeof config === 'object' ? config : createDefaultNotificationsConfig();
+        const safeOverview = overview && typeof overview === 'object' ? overview : null;
+        const audience = safeConfig.audienceDefaults || {};
+        const enabledEvents = [
+            safeConfig.adminAlerts?.events?.signup?.enabled !== false,
+            safeConfig.adminAlerts?.events?.schedulerBreach?.enabled !== false,
+            safeConfig.adminAlerts?.events?.dataworksFailure?.enabled !== false,
+            safeConfig.adminAlerts?.events?.apiHealthBad?.enabled !== false
+        ].filter(Boolean).length;
+        const listCounts = [];
+        if (Array.isArray(audience.onlyIncludeUids) && audience.onlyIncludeUids.length) listCounts.push(`Allowlist ${audience.onlyIncludeUids.length}`);
+        if (Array.isArray(audience.includeUids) && audience.includeUids.length) listCounts.push(`Include ${audience.includeUids.length}`);
+        if (Array.isArray(audience.excludeUids) && audience.excludeUids.length) listCounts.push(`Exclude ${audience.excludeUids.length}`);
+
+        if (els.runtimeStatusPill) {
+            const runtimeEnabled = safeConfig.enabled === true;
+            els.runtimeStatusPill.dataset.state = runtimeEnabled ? 'ok' : 'muted';
+            els.runtimeStatusPill.textContent = runtimeEnabled ? 'Runtime enabled' : 'Runtime paused';
+        }
+        if (els.defaultChannelsSummary) {
+            els.defaultChannelsSummary.textContent = formatNotificationChannelSummary(safeConfig.defaultChannels);
+        }
+        if (els.defaultChannelsDetail) {
+            els.defaultChannelsDetail.textContent = safeConfig.enabled === true
+                ? 'Saved broadcasts inherit these channels unless you override them per send.'
+                : 'Shared delivery is paused until you re-enable the notifications runtime.';
+        }
+        if (els.adminAlertsSummary) {
+            els.adminAlertsSummary.textContent = safeConfig.adminAlerts?.enabled === true
+                ? `${enabledEvents} live event${enabledEvents === 1 ? '' : 's'}`
+                : 'Admin alerts paused';
+        }
+        if (els.adminAlertsDetail) {
+            els.adminAlertsDetail.textContent = safeConfig.adminAlerts?.enabled === true
+                ? `${formatNotificationChannelSummary(safeConfig.adminAlerts?.channels)} delivery for admin-only alerts`
+                : 'Operational alerts stay off until you re-enable them from this panel.';
+        }
+        if (els.audienceDefaultsSummary) {
+            els.audienceDefaultsSummary.textContent = buildNotificationAudienceHeadline(audience);
+        }
+        if (els.audienceDefaultsDetail) {
+            els.audienceDefaultsDetail.textContent = listCounts.length
+                ? listCounts.join(' · ')
+                : 'These filters apply to saved defaults and send-now broadcasts.';
+        }
+        if (els.deliveryHealthSummary) {
+            els.deliveryHealthSummary.textContent = safeOverview
+                ? (safeOverview.pushConfigured === true ? 'Push ready' : 'Push not configured')
+                : 'Waiting for delivery data...';
+        }
+        if (els.deliveryHealthDetail) {
+            if (!safeOverview) {
+                els.deliveryHealthDetail.textContent = 'Push readiness, active subscriptions, and recent campaign activity show up here.';
+            } else {
+                const activeSubsCount = Number(safeOverview.activeSubscriptionCount || 0);
+                const activeSubs = activeSubsCount.toLocaleString('en-AU');
+                const campaignCount = Array.isArray(safeOverview.campaigns) ? safeOverview.campaigns.length : 0;
+                els.deliveryHealthDetail.textContent = `${activeSubs} active subscription${activeSubsCount === 1 ? '' : 's'} · ${campaignCount} recent campaign${campaignCount === 1 ? '' : 's'}`;
+            }
+        }
+    }
+
     function renderAdminNotificationsAudienceSummary(audienceDefaults) {
         const els = getNotificationsConfigElements();
         const summaryLines = buildAudienceSummaryLines({ audience: audienceDefaults || {} });
         if (els.configAudienceSummary) {
             els.configAudienceSummary.innerHTML = summaryLines
-                .map((line) => `<div>${escapeHtml(line)}</div>`)
+                .map((line) => `<div class="notifications-summary-line">${escapeHtml(line)}</div>`)
                 .join('');
         }
         if (els.broadcastAudienceSummary) {
-            els.broadcastAudienceSummary.innerHTML = `<div><strong>Broadcast audience</strong></div>${summaryLines
-                .map((line) => `<div>${escapeHtml(line)}</div>`)
-                .join('')}`;
+            els.broadcastAudienceSummary.innerHTML = summaryLines
+                .map((line) => `<div class="notifications-summary-line">${escapeHtml(line)}</div>`)
+                .join('');
         }
+    }
+
+    function renderAdminNotificationsBroadcastPreview() {
+        const els = getNotificationsConfigElements();
+        if (!els.broadcastPreview || !els.broadcastPreviewTitle || !els.broadcastPreviewBody || !els.broadcastPreviewMeta) return;
+
+        const payload = collectAdminNotificationBroadcastForm();
+        const severity = normalizeAnnouncementSeverity(payload.severity);
+        els.broadcastPreview.className = `announcement-preview ${severity} active`;
+        els.broadcastPreviewTitle.textContent = payload.title || 'Broadcast preview';
+        els.broadcastPreviewBody.textContent = payload.body || 'Message sent to eligible users based on the audience defaults on the left.';
+
+        const chips = [
+            `<span class="announcement-chip">${escapeHtml(severity)}</span>`,
+            `<span class="announcement-chip">${escapeHtml(formatNotificationChannelSummary(payload.channels))}</span>`
+        ];
+        if (payload.deepLink) {
+            chips.push(`<span class="announcement-chip">Link: ${escapeHtml(payload.deepLink)}</span>`);
+        }
+        els.broadcastPreviewMeta.innerHTML = chips.join('');
+    }
+
+    function renderAdminNotificationsCampaignList(campaigns) {
+        const { campaignsList } = getNotificationsConfigElements();
+        if (!campaignsList) return;
+        if (!Array.isArray(campaigns) || !campaigns.length) {
+            campaignsList.innerHTML = '<div class="notifications-empty-state">No notification campaigns loaded yet.</div>';
+            return;
+        }
+        campaignsList.innerHTML = campaigns.slice(0, 8).map((campaign) => {
+            const title = escapeHtml(campaign.title || 'Untitled');
+            const when = campaign.createdAt ? formatDate(campaign.createdAt) : '-';
+            const targetedUsers = Number(campaign.targetedUsers || 0).toLocaleString('en-AU');
+            const inboxCreated = Number(campaign.inboxCreated || 0).toLocaleString('en-AU');
+            const pushAttempted = Number(campaign.pushAttempted || 0).toLocaleString('en-AU');
+            const pushSuccess = Number(campaign.pushSuccess || 0).toLocaleString('en-AU');
+            return `<div class="notifications-campaign-card">
+                <div class="notifications-campaign-title">${title}</div>
+                <div class="notifications-campaign-meta">${escapeHtml(when)}</div>
+                <div class="announcement-preview-meta notifications-campaign-chips">
+                    <span class="announcement-chip">Users ${escapeHtml(targetedUsers)}</span>
+                    <span class="announcement-chip">Inbox ${escapeHtml(inboxCreated)}</span>
+                    <span class="announcement-chip">Push ${escapeHtml(pushSuccess)}/${escapeHtml(pushAttempted)}</span>
+                </div>
+            </div>`;
+        }).join('');
     }
 
     function bindAdminNotificationsHandlers() {
@@ -2810,25 +3016,47 @@
         notificationsEditorBound = true;
 
         const els = getNotificationsConfigElements();
-        const summaryHandler = () => {
-            renderAdminNotificationsAudienceSummary(collectAdminNotificationsConfigForm().audienceDefaults);
+        const derivedUiHandler = () => {
+            const payload = collectAdminNotificationsConfigForm();
+            renderAdminNotificationsAudienceSummary(payload.audienceDefaults);
+            renderAdminNotificationsHero(payload, currentAdminNotificationsOverview);
+            renderAdminNotificationsBroadcastPreview();
         };
 
         [
+            els.configEnabledInput,
+            els.configChannelInboxInput,
+            els.configChannelPushInput,
+            els.adminAlertsEnabledInput,
+            els.adminAlertsChannelInboxInput,
+            els.adminAlertsChannelPushInput,
+            els.adminAlertsEventSignupInput,
+            els.adminAlertsEventSchedulerBreachInput,
+            els.adminAlertsEventDataworksFailureInput,
+            els.adminAlertsEventApiHealthBadInput,
+            els.adminAlertsCooldownSchedulerInput,
+            els.adminAlertsCooldownDataworksInput,
+            els.adminAlertsCooldownApiHealthInput,
             els.configRequireTourInput,
             els.configRequireSetupInput,
             els.configRequireAutomationInput,
             els.configMinAgeInput,
             els.configOnlyIncludeUidsInput,
             els.configIncludeUidsInput,
-            els.configExcludeUidsInput
+            els.configExcludeUidsInput,
+            els.broadcastTitleInput,
+            els.broadcastBodyInput,
+            els.broadcastSeveritySelect,
+            els.broadcastDeepLinkInput,
+            els.broadcastChannelInboxInput,
+            els.broadcastChannelPushInput
         ].forEach((el) => {
             if (!el || typeof el.addEventListener !== 'function') return;
-            el.addEventListener('input', summaryHandler);
-            el.addEventListener('change', summaryHandler);
+            el.addEventListener('input', derivedUiHandler);
+            el.addEventListener('change', derivedUiHandler);
         });
 
-        summaryHandler();
+        derivedUiHandler();
     }
 
     function normalizeAdminNotificationsConfig(config) {
@@ -2910,7 +3138,10 @@
     function renderAdminNotificationsConfig(config, overview = null) {
         const els = getNotificationsConfigElements();
         const normalized = normalizeAdminNotificationsConfig(config);
+        const hasOverview = overview && typeof overview === 'object';
+        const effectiveOverview = hasOverview ? overview : currentAdminNotificationsOverview;
         currentAdminNotificationsConfig = normalized;
+        if (hasOverview) currentAdminNotificationsOverview = overview;
 
         if (els.configEnabledInput) els.configEnabledInput.checked = normalized.enabled === true;
         if (els.configChannelInboxInput) els.configChannelInboxInput.checked = normalized.defaultChannels.includes('inbox');
@@ -2949,6 +3180,8 @@
         if (els.configIncludeUidsInput) els.configIncludeUidsInput.value = formatAnnouncementUidList(normalized.audienceDefaults.includeUids);
         if (els.configExcludeUidsInput) els.configExcludeUidsInput.value = formatAnnouncementUidList(normalized.audienceDefaults.excludeUids);
         renderAdminNotificationsAudienceSummary(normalized.audienceDefaults);
+        renderAdminNotificationsHero(normalized, effectiveOverview);
+        renderAdminNotificationsBroadcastPreview();
 
         if (els.updated) {
             if (normalized.updatedAt) {
@@ -2959,32 +3192,19 @@
             }
         }
 
-        const campaigns = Array.isArray(overview?.campaigns) ? overview.campaigns : [];
+        const campaigns = Array.isArray(effectiveOverview?.campaigns) ? effectiveOverview.campaigns : [];
         if (els.overviewPushConfigured) {
-            els.overviewPushConfigured.textContent = overview?.pushConfigured === true ? 'Yes' : 'No';
+            els.overviewPushConfigured.textContent = effectiveOverview ? (effectiveOverview.pushConfigured === true ? 'Yes' : 'No') : '-';
         }
         if (els.overviewActiveSubs) {
-            els.overviewActiveSubs.textContent = Number(overview?.activeSubscriptionCount || 0).toLocaleString('en-AU');
+            els.overviewActiveSubs.textContent = effectiveOverview
+                ? Number(effectiveOverview.activeSubscriptionCount || 0).toLocaleString('en-AU')
+                : '-';
         }
         if (els.overviewCampaignCount) {
-            els.overviewCampaignCount.textContent = String(campaigns.length);
+            els.overviewCampaignCount.textContent = effectiveOverview ? String(campaigns.length) : '-';
         }
-        if (els.campaignsList) {
-            if (!campaigns.length) {
-                els.campaignsList.textContent = 'No notification campaigns loaded yet.';
-            } else {
-                els.campaignsList.innerHTML = campaigns.slice(0, 8).map((campaign) => {
-                    const title = escapeHtml(campaign.title || 'Untitled');
-                    const when = campaign.createdAt ? formatDate(campaign.createdAt) : '-';
-                    const counts = [
-                        `users ${Number(campaign.targetedUsers || 0)}`,
-                        `inbox ${Number(campaign.inboxCreated || 0)}`,
-                        `push ${Number(campaign.pushSuccess || 0)}/${Number(campaign.pushAttempted || 0)}`
-                    ];
-                    return `<div style="padding:8px 0;border-bottom:1px solid var(--border-secondary);"><strong>${title}</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">${escapeHtml(when)} · ${escapeHtml(counts.join(' · '))}</div></div>`;
-                }).join('');
-            }
-        }
+        renderAdminNotificationsCampaignList(campaigns);
     }
 
     function collectAdminNotificationsConfigForm() {
@@ -4460,10 +4680,10 @@
     async function retrySchedulerDeadLetter(userId, deadLetterId, buttonEl) {
         if (!adminApiClient || !userId || !deadLetterId) return;
         const button = buttonEl instanceof HTMLButtonElement ? buttonEl : null;
-        const originalLabel = button ? button.textContent : 'Retry now';
+        const originalLabel = button ? button.textContent : 'Run cycle now';
         if (button) {
             button.disabled = true;
-            button.textContent = 'Retrying...';
+            button.textContent = 'Running...';
         }
 
         try {
@@ -4474,10 +4694,10 @@
             if (!resp.ok || payload?.errno !== 0) {
                 throw new Error(payload?.error || `Retry failed (${resp.status})`);
             }
-            showMessage('success', `Retried dead-letter cycle ${payload?.result?.cycleKey || deadLetterId}`);
+            showMessage('success', `Ran automation cycle now for ${payload?.result?.cycleKey || deadLetterId}`);
             await loadSchedulerMetrics();
         } catch (error) {
-            showMessage('error', `Failed to retry dead letter: ${error.message || error}`);
+            showMessage('error', `Failed to run automation cycle now: ${error.message || error}`);
         } finally {
             if (button) {
                 button.disabled = false;
@@ -4513,9 +4733,10 @@
         countEl.textContent = formatCompactNumber(result.total || 0);
         retryReadyEl.textContent = formatCompactNumber(result.retryReadyCount || 0);
         oldestEl.textContent = formatDurationMs(result.oldestAgeMs || 0);
-        topErrorsEl.textContent = topErrors.length
+        const topErrorSummary = topErrors.length
             ? `Top errors: ${topErrors.slice(0, 3).map((entry) => `${entry.error} (${entry.count})`).join(' · ')}`
             : 'No dead-letter error clusters in this window.';
+        topErrorsEl.innerHTML = `${escapeHtml(topErrorSummary)}<br><span class="scheduler-slo-section-note">Entries stay visible for review until TTL expiry or a successful manual run. Run cycle now starts a fresh automation evaluation; it does not replay the exact failed minute.</span>`;
 
         if (!items.length) {
             bodyEl.innerHTML = '';
@@ -4526,7 +4747,7 @@
         emptyEl.style.display = 'none';
         bodyEl.innerHTML = items.map((item) => {
             const createdAt = item.createdAt ? new Date(Number(item.createdAt)).toLocaleString('en-AU') : '-';
-            const retryState = item.retryReady ? 'Retry ready' : 'Cooling down';
+            const retryState = item.retryReady ? 'Older than 15m' : 'Fresh failure';
             return `
                 <tr>
                     <td>${escapeHtml(createdAt)}</td>
@@ -4535,7 +4756,7 @@
                     <td>${formatCompactNumber(item.attempts || 0)}</td>
                     <td>${escapeHtml(retryState)}</td>
                     <td>${escapeHtml(item.error || '-')}</td>
-                    <td><button class="btn btn-sm" data-dead-letter-retry="1" data-user-id="${escapeHtml(item.userId || '')}" data-dead-letter-id="${escapeHtml(item.id || '')}">Retry now</button></td>
+                    <td><button class="btn btn-sm" data-dead-letter-retry="1" data-user-id="${escapeHtml(item.userId || '')}" data-dead-letter-id="${escapeHtml(item.id || '')}" title="Starts a fresh automation cycle now. It does not replay the exact original failed cycle.">Run cycle now</button></td>
                 </tr>
             `;
         }).join('');

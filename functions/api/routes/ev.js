@@ -67,17 +67,164 @@ function registerEVRoutes(app, deps = {}) {
     return publicFields;
   }
 
+  function mergeTeslaVehicleCredentials({ vehicle = {}, baseCredentials = {}, nextCredentials = {} }) {
+    const merged = {
+      ...(baseCredentials || {}),
+      ...(nextCredentials || {})
+    };
+    return {
+      ...merged,
+      provider: merged.provider || vehicle?.provider || 'tesla',
+      region: merged.region || vehicle?.region || 'na',
+      storedAtIso: merged.storedAtIso || new Date().toISOString()
+    };
+  }
+
+  function extractSharedTeslaCredentialFields(credentials = {}, vehicle = {}) {
+    const merged = mergeTeslaVehicleCredentials({
+      vehicle,
+      baseCredentials: {},
+      nextCredentials: credentials
+    });
+    const shared = {
+      provider: merged.provider,
+      region: merged.region,
+      storedAtIso: merged.storedAtIso
+    };
+    if (merged.clientId) shared.clientId = merged.clientId;
+    if (merged.clientSecret) shared.clientSecret = merged.clientSecret;
+    if (merged.accessToken) shared.accessToken = merged.accessToken;
+    if (merged.refreshToken) shared.refreshToken = merged.refreshToken;
+    if (merged.tokenType) shared.tokenType = merged.tokenType;
+    if (merged.scope !== undefined) shared.scope = merged.scope;
+    if (Number.isFinite(Number(merged.expiresAtMs))) {
+      shared.expiresAtMs = Number(merged.expiresAtMs);
+    }
+    return shared;
+  }
+
+  function buildTeslaCredentialGroupMatcher(credentials = {}, vehicle = {}) {
+    const provider = String(credentials?.provider || vehicle?.provider || '').trim().toLowerCase();
+    if (provider !== 'tesla') return null;
+
+    const clientId = String(credentials?.clientId || '').trim();
+    const region = String(credentials?.region || vehicle?.region || 'na').trim().toLowerCase();
+    const refreshToken = String(credentials?.refreshToken || '').trim();
+    const accessToken = String(credentials?.accessToken || '').trim();
+
+    if (!clientId) return null;
+    if (!refreshToken && !accessToken) return null;
+
+    return {
+      clientId,
+      region,
+      refreshToken,
+      accessToken
+    };
+  }
+
+  function matchesTeslaCredentialGroup(candidateCredentials = {}, vehicle = {}, matcher = null) {
+    if (!matcher) return false;
+
+    const provider = String(candidateCredentials?.provider || vehicle?.provider || '').trim().toLowerCase();
+    if (provider !== 'tesla') return false;
+
+    const candidateClientId = String(candidateCredentials?.clientId || '').trim();
+    const candidateRegion = String(candidateCredentials?.region || vehicle?.region || 'na').trim().toLowerCase();
+    if (candidateClientId !== matcher.clientId || candidateRegion !== matcher.region) {
+      return false;
+    }
+
+    const candidateRefreshToken = String(candidateCredentials?.refreshToken || '').trim();
+    if (matcher.refreshToken) {
+      return candidateRefreshToken === matcher.refreshToken;
+    }
+
+    const candidateAccessToken = String(candidateCredentials?.accessToken || '').trim();
+    return Boolean(matcher.accessToken) && candidateAccessToken === matcher.accessToken;
+  }
+
+  async function syncTeslaCredentialsAcrossMatchingVehicles({
+    uid,
+    sourceVehicleId,
+    sourceVehicle,
+    sourceBaseCredentials,
+    sharedCredentialPatch
+  }) {
+    if (!vehiclesRepo || typeof vehiclesRepo.listVehicles !== 'function' || typeof vehiclesRepo.setVehicleCredentials !== 'function') {
+      return;
+    }
+
+    const matcher = buildTeslaCredentialGroupMatcher(sourceBaseCredentials, sourceVehicle);
+    if (!matcher) return;
+
+    let vehicles = [];
+    try {
+      vehicles = await vehiclesRepo.listVehicles(uid);
+    } catch (error) {
+      logger.warn?.('EVRoutes', `Failed to enumerate Tesla vehicles for credential sync (${uid}): ${error?.message || error}`);
+      return;
+    }
+
+    const normalizedSourceVehicleId = String(sourceVehicleId || '').trim();
+    await Promise.all((Array.isArray(vehicles) ? vehicles : []).map(async (candidateVehicle) => {
+      const candidateVehicleId = String(candidateVehicle?.vehicleId || '').trim();
+      if (!candidateVehicleId || candidateVehicleId === normalizedSourceVehicleId) {
+        return;
+      }
+
+      const provider = String(candidateVehicle?.provider || '').trim().toLowerCase();
+      if (provider !== 'tesla') {
+        return;
+      }
+
+      let candidateCredentials = candidateVehicle?.credentials || null;
+      if (!candidateCredentials && typeof vehiclesRepo.getVehicleCredentials === 'function') {
+        try {
+          candidateCredentials = await vehiclesRepo.getVehicleCredentials(uid, candidateVehicleId);
+        } catch (error) {
+          logger.warn?.('EVRoutes', `Failed to load Tesla credentials for ${uid}/${candidateVehicleId} during sync: ${error?.message || error}`);
+          return;
+        }
+      }
+
+      if (!matchesTeslaCredentialGroup(candidateCredentials, candidateVehicle, matcher)) {
+        return;
+      }
+
+      const merged = mergeTeslaVehicleCredentials({
+        vehicle: candidateVehicle,
+        baseCredentials: candidateCredentials || {},
+        nextCredentials: sharedCredentialPatch || {}
+      });
+
+      try {
+        await vehiclesRepo.setVehicleCredentials(uid, candidateVehicleId, merged);
+      } catch (error) {
+        logger.warn?.('EVRoutes', `Failed to sync Tesla credentials for ${uid}/${candidateVehicleId}: ${error?.message || error}`);
+      }
+    }));
+  }
+
   function buildPersistCredentialsFn({ uid, vehicleId, vehicle, credentials }) {
+    let currentCredentials = { ...(credentials || {}) };
     return async (nextCredentials = {}) => {
-      const merged = {
-        ...(credentials || {}),
-        ...(nextCredentials || {})
-      };
-      await vehiclesRepo.setVehicleCredentials(uid, vehicleId, {
-        ...merged,
-        provider: merged.provider || vehicle?.provider || 'tesla',
-        region: merged.region || vehicle?.region || 'na',
-        storedAtIso: new Date().toISOString()
+      const previousCredentials = { ...currentCredentials };
+      const merged = mergeTeslaVehicleCredentials({
+        vehicle,
+        baseCredentials: currentCredentials,
+        nextCredentials
+      });
+
+      await vehiclesRepo.setVehicleCredentials(uid, vehicleId, merged);
+      currentCredentials = { ...merged };
+
+      await syncTeslaCredentialsAcrossMatchingVehicles({
+        uid,
+        sourceVehicleId: vehicleId,
+        sourceVehicle: vehicle,
+        sourceBaseCredentials: previousCredentials,
+        sharedCredentialPatch: extractSharedTeslaCredentialFields(merged, vehicle)
       });
     };
   }
@@ -384,6 +531,26 @@ function registerEVRoutes(app, deps = {}) {
       cacheAgeMs: Number.isFinite(ageMs) ? ageMs : null,
       cacheFresh: Boolean(cachedState) && Number.isFinite(ageMs) && maxAgeMs > 0 && ageMs <= maxAgeMs
     };
+  }
+
+  function isTeslaCacheInvalidatedByCredentialUpdate(cachedState = {}, vehicle = {}) {
+    const provider = String(vehicle?.provider || '').trim().toLowerCase();
+    if (provider !== 'tesla') return false;
+
+    const cachedMs = parseMillis(cachedState?.savedAt) || parseMillis(cachedState?.asOfIso);
+    const credentialsUpdatedMs = parseMillis(vehicle?.credentialsUpdatedAt);
+    if (!Number.isFinite(cachedMs) || !Number.isFinite(credentialsUpdatedMs)) {
+      return false;
+    }
+
+    return cachedMs < credentialsUpdatedMs;
+  }
+
+  function isReusableVehicleCache(cachedState = {}, vehicle = {}, maxAgeMs = EV_STATUS_CACHE_MAX_AGE_MS) {
+    if (!isFreshVehicleStatus(cachedState, maxAgeMs)) {
+      return false;
+    }
+    return !isTeslaCacheInvalidatedByCredentialUpdate(cachedState, vehicle);
   }
 
   function resolveTeslaVehicleContext(vehicleId, vehicle = {}, credentials = {}) {
@@ -1012,7 +1179,7 @@ function registerEVRoutes(app, deps = {}) {
 
         const cached = await vehiclesRepo.getVehicleState(uid, vehicleId);
         const cacheAudit = buildVehicleStatusCacheAudit(cached, statusCacheMaxAgeMs, live);
-        if (!live && cached && isFreshVehicleStatus(cached, statusCacheMaxAgeMs)) {
+        if (!live && cached && isReusableVehicleCache(cached, vehicle, statusCacheMaxAgeMs)) {
           return res.json({
             errno: 0,
             result: cached,
@@ -1336,7 +1503,7 @@ function registerEVRoutes(app, deps = {}) {
           const cached = !live
             ? await getCachedTeslaCommandReadiness(uid, vehicleId).catch(() => null)
             : null;
-          if (!live && cached && isFreshVehicleStatus(cached, cacheMaxAgeMs)) {
+          if (!live && cached && isReusableVehicleCache(cached, vehicle, cacheMaxAgeMs)) {
             resultByVehicleId[vehicleId] = cached;
             continue;
           }
@@ -1497,7 +1664,7 @@ function registerEVRoutes(app, deps = {}) {
 
         const cached = await getCachedTeslaCommandReadiness(uid, vehicleId).catch(() => null);
         const cacheAudit = buildVehicleStatusCacheAudit(cached, cacheMaxAgeMs, live);
-        if (!live && cached && isFreshVehicleStatus(cached, cacheMaxAgeMs)) {
+        if (!live && cached && isReusableVehicleCache(cached, vehicle, cacheMaxAgeMs)) {
           return res.json({
             errno: 0,
             result: cached,
@@ -2494,7 +2661,10 @@ function registerEVRoutes(app, deps = {}) {
 
       // Store credentials against the vehicle
       const resolvedVin = normalizeTeslaVin(requestedVin || vehicle.vin || '');
-      await vehiclesRepo.setVehicleCredentials(uid, resolvedVehicleId, {
+      const existingCredentials = typeof vehiclesRepo.getVehicleCredentials === 'function'
+        ? await vehiclesRepo.getVehicleCredentials(uid, resolvedVehicleId).catch(() => vehicle?.credentials || null)
+        : (vehicle?.credentials || null);
+      const storedCredentials = {
         provider: 'tesla',
         region: region || vehicle.region || 'na',
         ...(resolvedVin ? { vin: resolvedVin } : {}),
@@ -2509,6 +2679,14 @@ function registerEVRoutes(app, deps = {}) {
         scope: tokens.scope || '',
         expiresAtMs: tokens.expiresAtMs,
         storedAtIso: new Date().toISOString()
+      };
+      await vehiclesRepo.setVehicleCredentials(uid, resolvedVehicleId, storedCredentials);
+      await syncTeslaCredentialsAcrossMatchingVehicles({
+        uid,
+        sourceVehicleId: resolvedVehicleId,
+        sourceVehicle: vehicle,
+        sourceBaseCredentials: existingCredentials,
+        sharedCredentialPatch: extractSharedTeslaCredentialFields(storedCredentials, vehicle)
       });
       if (resolvedVin && typeof vehiclesRepo.updateVehicle === 'function') {
         await vehiclesRepo.updateVehicle(uid, resolvedVehicleId, { vin: resolvedVin });

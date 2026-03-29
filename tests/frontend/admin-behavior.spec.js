@@ -250,6 +250,14 @@ async function mockAdminEnvironment(page, options = {}) {
       }
     }
   };
+  const deadLettersResult = options.deadLettersResult || {
+    days: 7,
+    total: 0,
+    retryReadyCount: 0,
+    oldestAgeMs: 0,
+    topErrors: [],
+    items: []
+  };
 
   await page.route('**/js/firebase-config.js', async (route) => {
     await route.fulfill({
@@ -305,6 +313,8 @@ async function mockAdminEnvironment(page, options = {}) {
       payload = { errno: 0, result: apiHealthResult };
     } else if (path === '/api/admin/scheduler-metrics') {
       payload = { errno: 0, result: schedulerResult };
+    } else if (path === '/api/admin/dead-letters') {
+      payload = { errno: 0, result: deadLettersResult };
     } else if (path === '/api/user/init-profile') {
       payload = { errno: 0, result: { initialized: true } };
     }
@@ -508,5 +518,49 @@ test.describe('Admin Behaviour Tab', () => {
     await page.locator('#scheduler14dSloCycleTailP99 .info-tip').hover();
     await expect(page.locator('#adminInfoTooltip')).toContainText(/window-max p99/i);
     await expect(page.locator('#scheduler14dSloCycleTailP99 .slo-meta')).toContainText(/Current sustained signal HEALTHY/i);
+  });
+
+  test('clarifies dead-letter review semantics and manual action wording', async ({ page }) => {
+    await mockAdminEnvironment(page, {
+      deadLettersResult: {
+        days: 7,
+        total: 2,
+        retryReadyCount: 1,
+        oldestAgeMs: 23 * 60 * 1000,
+        topErrors: [
+          { error: 'failed to fetch inverter data', count: 2 }
+        ],
+        items: [
+          {
+            id: 'dl-1',
+            userId: 'user-a',
+            cycleKey: 'user-a_123',
+            attempts: 3,
+            createdAt: Date.parse('2026-03-25T04:30:00.000Z'),
+            retryReady: false,
+            error: 'Failed to fetch inverter data'
+          },
+          {
+            id: 'dl-2',
+            userId: 'user-b',
+            cycleKey: 'user-b_124',
+            attempts: 3,
+            createdAt: Date.parse('2026-03-25T04:00:00.000Z'),
+            retryReady: true,
+            error: 'Failed to fetch inverter data'
+          }
+        ]
+      }
+    });
+
+    await page.goto('/admin.html');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: /Scheduler/i }).click();
+    await expect(page.locator('.scheduler-dead-letters-panel .scheduler-slo-section-note').first()).toContainText(/Manual action runs a fresh cycle now/i);
+    await expect(page.locator('#schedulerDeadLetterTopErrors')).toContainText(/does not replay the exact failed minute/i);
+    await expect(page.locator('#schedulerDeadLettersBody')).toContainText('Fresh failure');
+    await expect(page.locator('#schedulerDeadLettersBody')).toContainText('Older than 15m');
+    await expect(page.locator('button[data-dead-letter-retry="1"]').first()).toHaveText('Run cycle now');
   });
 });

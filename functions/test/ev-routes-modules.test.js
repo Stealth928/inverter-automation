@@ -314,6 +314,36 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
     expect(incrementApiCount).not.toHaveBeenCalled();
   });
 
+  test('bypasses a fresh Tesla cache snapshot when credentials were updated more recently', async () => {
+    const now = Date.now();
+    const cached = {
+      ...STUB_STATUS,
+      source: 'cache',
+      savedAt: new Date(now - 30000).toISOString(),
+      asOfIso: new Date(now - 30000).toISOString()
+    };
+    const adapter = makeAdapter();
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        getVehicle: jest.fn(async () => ({
+          vehicleId: 'v1',
+          provider: 'tesla',
+          region: 'na',
+          credentialsUpdatedAt: new Date(now - 10000).toISOString()
+        })),
+        getVehicleState: jest.fn(async () => cached),
+        saveVehicleState: jest.fn(async () => {})
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+    const res = await request(app).get('/api/ev/vehicles/v1/status').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.source).toBe('live');
+    expect(adapter.getVehicleStatus).toHaveBeenCalledTimes(1);
+  });
+
   test('uses Tesla cache default (10 minutes) when user-specific teslaStatus is not set', async () => {
     const adapter = makeAdapter();
     const cached = { ...STUB_STATUS, asOfIso: new Date(Date.now() - 180000).toISOString() }; // 3 minutes old
@@ -393,6 +423,90 @@ describe('GET /api/ev/vehicles/:vehicleId/status', () => {
       teslaBillableApiCalls: 0
     });
     expect(incrementApiCount).not.toHaveBeenCalled();
+  });
+
+  test('syncs refreshed Tesla credentials to sibling vehicles that shared the prior token set', async () => {
+    const setVehicleCredentials = jest.fn(async () => {});
+    const oldCredentials = {
+      provider: 'tesla',
+      region: 'na',
+      clientId: 'client-1',
+      accessToken: 'old-token',
+      refreshToken: 'old-refresh',
+      vin: '5YJ3E1EA7JF000001'
+    };
+    const siblingCredentials = {
+      provider: 'tesla',
+      region: 'na',
+      clientId: 'client-1',
+      accessToken: 'old-token',
+      refreshToken: 'old-refresh',
+      vin: '5YJ3E1EA7JF000002'
+    };
+    const unrelatedCredentials = {
+      provider: 'tesla',
+      region: 'na',
+      clientId: 'client-1',
+      accessToken: 'other-token',
+      refreshToken: 'other-refresh',
+      vin: '5YJ3E1EA7JF000003'
+    };
+    const adapter = makeAdapter({
+      getVehicleStatus: jest.fn(async (_vehicleId, context) => {
+        await context.persistCredentials({
+          accessToken: 'new-token',
+          refreshToken: 'new-refresh',
+          tokenType: 'Bearer',
+          scope: 'openid offline_access vehicle_device_data vehicle_cmds vehicle_charging_cmds',
+          expiresAtMs: Date.now() + 3600000,
+          clientId: 'client-1'
+        });
+        return STUB_STATUS;
+      })
+    });
+    const deps = makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        listVehicles: jest.fn(async () => ([
+          { vehicleId: 'v1', provider: 'tesla', region: 'na', credentials: oldCredentials },
+          { vehicleId: 'v2', provider: 'tesla', region: 'na', credentials: siblingCredentials },
+          { vehicleId: 'v3', provider: 'tesla', region: 'na', credentials: unrelatedCredentials }
+        ])),
+        getVehicle: jest.fn(async (_uid, vehicleId) => ({
+          vehicleId,
+          provider: 'tesla',
+          region: 'na',
+          vin: vehicleId === 'v1' ? '5YJ3E1EA7JF000001' : '5YJ3E1EA7JF000002'
+        })),
+        getVehicleCredentials: jest.fn(async (_uid, vehicleId) => (vehicleId === 'v1' ? oldCredentials : null)),
+        getVehicleState: jest.fn(async () => null),
+        saveVehicleState: jest.fn(async () => {}),
+        setVehicleCredentials
+      }),
+      adapterRegistry: makeRegistry(adapter)
+    });
+    const app = buildApp(deps);
+
+    const res = await request(app).get('/api/ev/vehicles/v1/status?live=1').set('Authorization', 'Bearer tok');
+
+    expect(res.statusCode).toBe(200);
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v1',
+      expect.objectContaining({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh'
+      })
+    );
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v2',
+      expect.objectContaining({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh',
+        vin: '5YJ3E1EA7JF000002'
+      })
+    );
+    expect(setVehicleCredentials).not.toHaveBeenCalledWith('u-test', 'v3', expect.anything());
   });
 
   test('increments generic EV counter once for billable Tesla upstream activity within one status request', async () => {
@@ -1677,6 +1791,93 @@ describe('POST /api/ev/oauth/callback', () => {
       '5YJ3E1EA7JF000001',
       expect.objectContaining({ vin: '5YJ3E1EA7JF000001' })
     );
+  });
+
+  test('syncs OAuth callback credentials to sibling Tesla vehicles that shared the prior token set', async () => {
+    const setVehicleCredentials = jest.fn(async () => {});
+    const oldCredentials = {
+      provider: 'tesla',
+      region: 'na',
+      clientId: 'client-1',
+      accessToken: 'old-token',
+      refreshToken: 'old-refresh',
+      vin: '5YJ3E1EA7JF000001'
+    };
+    const siblingCredentials = {
+      provider: 'tesla',
+      region: 'na',
+      clientId: 'client-1',
+      accessToken: 'old-token',
+      refreshToken: 'old-refresh',
+      vin: '5YJ3E1EA7JF000002'
+    };
+    const unrelatedCredentials = {
+      provider: 'tesla',
+      region: 'na',
+      clientId: 'client-1',
+      accessToken: 'other-token',
+      refreshToken: 'other-refresh',
+      vin: '5YJ3E1EA7JF000003'
+    };
+    const httpClient = makeTeslaTokenHttpClient({
+      data: {
+        access_token: 'acc-2',
+        refresh_token: 'ref-2',
+        token_type: 'Bearer',
+        scope: 'openid offline_access vehicle_device_data vehicle_cmds vehicle_charging_cmds',
+        expires_in: 3600
+      }
+    });
+    const app = buildApp(makeDeps({
+      vehiclesRepo: makeVehiclesRepo({
+        listVehicles: jest.fn(async () => ([
+          { vehicleId: 'v1', provider: 'tesla', region: 'na', credentials: oldCredentials },
+          { vehicleId: 'v2', provider: 'tesla', region: 'na', credentials: siblingCredentials },
+          { vehicleId: 'v3', provider: 'tesla', region: 'na', credentials: unrelatedCredentials }
+        ])),
+        getVehicle: jest.fn(async (_uid, vehicleId) => {
+          if (vehicleId === 'v1') {
+            return { vehicleId: 'v1', provider: 'tesla', region: 'na', vin: '5YJ3E1EA7JF000001' };
+          }
+          return null;
+        }),
+        getVehicleCredentials: jest.fn(async (_uid, vehicleId) => (vehicleId === 'v1' ? oldCredentials : null)),
+        setVehicleCredentials
+      }),
+      httpClient
+    }));
+
+    const res = await request(app)
+      .post('/api/ev/oauth/callback')
+      .set('Authorization', 'Bearer tok')
+      .send({
+        vehicleId: 'v1',
+        clientId: 'client-1',
+        clientSecret: 'secret-1',
+        redirectUri: 'https://example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier'
+      });
+
+    expect(res.statusCode).toBe(200);
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v1',
+      expect.objectContaining({
+        accessToken: 'acc-2',
+        refreshToken: 'ref-2'
+      })
+    );
+    expect(setVehicleCredentials).toHaveBeenCalledWith(
+      'u-test',
+      'v2',
+      expect.objectContaining({
+        accessToken: 'acc-2',
+        refreshToken: 'ref-2',
+        vin: '5YJ3E1EA7JF000002'
+      })
+    );
+    expect(setVehicleCredentials).not.toHaveBeenCalledWith('u-test', 'v3', expect.anything());
   });
 });
 

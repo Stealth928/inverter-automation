@@ -356,6 +356,141 @@ test.describe('Dashboard Page', () => {
     expect(sceneBackground).toContain('house-3d-iso.png');
   });
 
+  test('should position the inverter scene sky from weather daylight data', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SKY-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.addInitScript(() => {
+      const weatherData = {
+        current: {
+          weathercode: 1,
+          is_day: 1,
+          time: '2026-03-29T09:30'
+        },
+        daily: {
+          sunrise: ['2026-03-29T06:03'],
+          sunset: ['2026-03-29T18:01']
+        }
+      };
+      localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+      localStorage.setItem('cacheState', JSON.stringify({
+        weatherTime: Date.now(),
+        weatherDays: 6,
+        weatherDate: new Date().toISOString().substring(0, 10)
+      }));
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SKY-001',
+            time: '2026-03-29T09:30:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 3.9, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.4, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.2, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.5, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toHaveClass(/is-daylight/);
+    const skyState = await page.locator('#inverterCard .energy-scene').evaluate((el) => ({
+      phase: el.getAttribute('data-sky-phase'),
+      orbX: parseFloat(getComputedStyle(el).getPropertyValue('--scene-orb-x')),
+      orbY: parseFloat(getComputedStyle(el).getPropertyValue('--scene-orb-y')),
+      lightX: parseFloat(getComputedStyle(el).getPropertyValue('--scene-light-x')),
+      dayGlowOpacity: parseFloat(getComputedStyle(el).getPropertyValue('--scene-day-glow-opacity'))
+    }));
+
+    expect(skyState.phase).toBe('day');
+    expect(skyState.orbX).toBeGreaterThan(16);
+    expect(skyState.orbX).toBeLessThan(84);
+    expect(skyState.orbY).toBeLessThan(14);
+    expect(Math.abs(skyState.orbX - skyState.lightX)).toBeLessThan(0.1);
+    expect(skyState.dayGlowOpacity).toBeGreaterThan(0.06);
+  });
+
+  test('should dampen the inverter scene sky during storm conditions at night', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-STORM-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.addInitScript(() => {
+      const weatherData = {
+        current: {
+          weathercode: 95,
+          is_day: 0,
+          time: '2026-03-29T21:30'
+        },
+        daily: {
+          sunrise: ['2026-03-29T06:03'],
+          sunset: ['2026-03-29T18:01']
+        }
+      };
+      localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+      localStorage.setItem('cacheState', JSON.stringify({
+        weatherTime: Date.now(),
+        weatherDays: 6,
+        weatherDate: new Date().toISOString().substring(0, 10)
+      }));
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-STORM-001',
+            time: '2026-03-29T21:30:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 64, unit: '%' },
+              { variable: 'pvPower', value: 0, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.1, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.6, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0.5, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toHaveClass(/weather-storm/);
+    const skyState = await page.locator('#inverterCard .energy-scene').evaluate((el) => ({
+      phase: el.getAttribute('data-sky-phase'),
+      starsOpacity: parseFloat(getComputedStyle(el).getPropertyValue('--scene-stars-opacity')),
+      orbOpacity: parseFloat(getComputedStyle(el).getPropertyValue('--scene-orb-opacity')),
+      orbBlur: parseFloat(getComputedStyle(el).getPropertyValue('--scene-orb-blur')),
+      nightGlowOpacity: parseFloat(getComputedStyle(el).getPropertyValue('--scene-night-glow-opacity'))
+    }));
+
+    expect(skyState.phase).toBe('night');
+    expect(skyState.starsOpacity).toBe(0);
+    expect(skyState.orbOpacity).toBeLessThan(0.2);
+    expect(skyState.orbBlur).toBeGreaterThan(2);
+    expect(skyState.nightGlowOpacity).toBeLessThan(0.02);
+  });
+
   test('should keep the api metrics footer fixed in light theme on desktop and phone', async ({ page }) => {
     await mockDashboardConfig(page, {
       deviceProvider: 'foxess',
@@ -408,7 +543,6 @@ test.describe('Dashboard Page', () => {
     await page.goto('about:blank');
     await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.locator('.inverter-card-header__subtitle')).toHaveText('Live power flow across solar, home, grid, and battery.');
     await expect(page.locator('#inverterLastUpdate')).toContainText('Data age:');
     await expect(page.locator('#inverterFetchLabel')).toContainText('Last checked:');
     await expect(page.locator('#apiMetricsFooter')).toContainText('Inv: 3');
@@ -502,7 +636,6 @@ test.describe('Dashboard Page', () => {
     await page.goto('about:blank');
     await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.locator('.inverter-card-header__subtitle')).toHaveText('Live power flow across solar, home, grid, and battery.');
     await expect(page.locator('#inverterSourceBadge')).toContainText('Live');
     await expect(page.locator('#inverterLastUpdate')).toContainText('Data age:');
     await expect(page.locator('#inverterFetchLabel')).toContainText('Last checked:');

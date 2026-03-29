@@ -1778,6 +1778,18 @@
 
                 const html = `<div class="energy-topology">
                     <div class="energy-scene ${sceneWeatherClass} ${sceneDayClass}" data-weather-effect="${escapeHtml(sceneWeather.effect || 'clear')}" data-weather-label="${escapeHtml(sceneWeather.label || 'Clear')}">
+                        <div class="energy-scene__sky" aria-hidden="true">
+                            <div class="energy-scene__stars">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <span class="energy-scene__orb"></span>
+                        </div>
                         <div class="energy-scene__weather" aria-hidden="true">
                             <div class="energy-scene__weather-layer energy-scene__weather-layer--cloud"></div>
                             <div class="energy-scene__weather-layer energy-scene__weather-layer--mist"></div>
@@ -1852,6 +1864,7 @@
                 const rawHtml = '';
 
                 card.innerHTML = html + tempNoticeHtml;
+                applyInverterSceneWeatherEffect(getLatestWeatherSceneData());
             } else if (name === 'Battery SoC' && data.result) {
                 const r = data.result;
                 card.innerHTML = `<div class="stat-row">
@@ -2133,7 +2146,10 @@
             return {
                 effect,
                 label: Number.isFinite(code) ? weatherCodeToWord(code) : 'Clear',
-                isDay
+                isDay,
+                currentTime: current.time || null,
+                sunrise: weatherData?.daily?.sunrise?.[0] || null,
+                sunset: weatherData?.daily?.sunset?.[0] || null
             };
         }
 
@@ -2147,6 +2163,17 @@
             scene.classList.add(state.isDay ? 'is-daylight' : 'is-night');
             scene.setAttribute('data-weather-effect', state.effect);
             scene.setAttribute('data-weather-label', state.label || 'Clear');
+            if (window.SoCratesSceneSky && typeof window.SoCratesSceneSky.apply === 'function') {
+                window.SoCratesSceneSky.apply(scene, {
+                    isDay: state.isDay,
+                    weatherEffect: state.effect || 'clear',
+                    currentTime: state.currentTime,
+                    sunrise: state.sunrise,
+                    sunset: state.sunset,
+                    dayStartMinutes: 360,
+                    dayEndMinutes: 1200
+                });
+            }
             const chip = scene.querySelector('.energy-scene__weather-chip');
             if (chip) chip.textContent = state.label || 'Clear';
         }

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SoCrates — Solar Battery Automation | Live AEMO Prices</title>
-  <meta name="description" content="Rule-based solar battery automation for Australian homes with live AEMO prices, Amber Electric tariff support, weather-aware rules, and Tesla EV integration. Free for the first 500 members.">
+  <title>SoCrates — Solar Battery Automation | Live Pricing</title>
+  <meta name="description" content="Rule-based solar battery automation for homes with live pricing, weather-aware rules, and Tesla EV integration. Free for the first 500 members.">
   <meta name="robots" content="index, follow">
   <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <link rel="canonical" href="https://socratesautomation.com/">
@@ -15,8 +15,8 @@
   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
   <meta property="og:site_name" content="SoCrates">
   <meta property="og:locale" content="en_AU">
-  <meta property="og:title" content="SoCrates — Solar Battery Automation | Live AEMO Prices">
-  <meta property="og:description" content="Rule-based solar battery automation for Australian homes. Automate charging, exporting, and EV charging around live AEMO prices, Amber tariffs, weather, and demand.">
+  <meta property="og:title" content="SoCrates — Solar Battery Automation | Live Pricing">
+  <meta property="og:description" content="Rule-based solar battery automation for homes. Automate charging, exporting, and EV charging around live pricing, tariffs, weather, and demand.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://socratesautomation.com/">
   <meta property="og:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
@@ -24,8 +24,8 @@
   <meta property="og:image:height" content="1516">
   <meta property="og:image:alt" content="SoCrates dashboard showing live pricing, automation status, and battery state">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SoCrates — Solar Battery Automation | Live AEMO Prices">
-  <meta name="twitter:description" content="Rule-based solar battery automation for Australian homes. Automate charging, exporting, and EV charging around live AEMO prices, Amber tariffs, weather, and demand.">
+  <meta name="twitter:title" content="SoCrates — Solar Battery Automation | Live Pricing">
+  <meta name="twitter:description" content="Rule-based solar battery automation for homes. Automate charging, exporting, and EV charging around live pricing, tariffs, weather, and demand.">
   <meta name="twitter:url" content="https://socratesautomation.com/">
   <meta name="twitter:image" content="https://socratesautomation.com/images/screenshots/screen-1.png">
   <meta name="twitter:image:alt" content="SoCrates dashboard showing live pricing, automation status, and battery state">
@@ -38,7 +38,7 @@
         "@id": "https://socratesautomation.com/#website",
         "url": "https://socratesautomation.com/",
         "name": "SoCrates",
-        "description": "Rule-based solar battery automation for Australian homes with live AEMO prices, Amber Electric tariff support, and Tesla EV integration.",
+        "description": "Rule-based solar battery automation for homes with live pricing, weather-aware rules, and Tesla EV integration.",
         "inLanguage": "en-AU",
         "publisher": {
           "@id": "https://socratesautomation.com/#organization"
@@ -58,16 +58,15 @@
         "@type": "WebPage",
         "@id": "https://socratesautomation.com/#webpage",
         "url": "https://socratesautomation.com/",
-        "name": "SoCrates - Solar Battery Automation with Live AEMO Prices",
-        "description": "Rule-based solar battery automation for Australian homes. Shift charging and exporting around live AEMO prices, Amber tariffs, weather, demand, and EV charging needs.",
+        "name": "SoCrates - Solar Battery Automation with Live Pricing",
+        "description": "Rule-based solar battery automation for homes. Shift charging and exporting around live pricing, tariffs, weather, demand, and EV charging needs.",
         "keywords": [
           "solar battery automation",
-          "AEMO live prices",
-          "Amber Electric",
+          "live pricing",
+          "pricing-aware automation",
           "Tesla EV integration",
           "FoxESS",
-          "AlphaESS",
-          "Australia"
+          "AlphaESS"
         ],
         "isPartOf": {
           "@id": "https://socratesautomation.com/#website"
@@ -84,13 +83,13 @@
         "url": "https://socratesautomation.com/",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Web",
-        "description": "Rule-based solar battery automation platform for managing charge, export, inverter modes, live AEMO or Amber pricing, and Tesla EV charging control.",
+        "description": "Rule-based solar battery automation platform for managing charge, export, inverter modes, live pricing, and Tesla EV charging control.",
         "keywords": [
           "solar battery automation",
-          "AEMO live prices",
-          "Amber Electric",
+          "live pricing",
+          "pricing-aware automation",
           "Tesla EV integration",
-          "home battery automation Australia"
+          "home battery automation"
         ],
         "isAccessibleForFree": true,
         "offers": {
@@ -236,7 +235,7 @@
           <span class="brand-soon">Soon</span>
         </span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
-        <span class="brand-badge brand-badge--aemo">AEMO Live Prices</span>
+        <span class="brand-badge brand-badge--aemo">Live Pricing</span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
         <span class="brand-badge brand-badge--amber">Amber Electric</span>
         <span class="brand-sep">&nbsp;+&nbsp;</span>
@@ -260,55 +259,127 @@
           <div class="product-grid">
 
             <article class="product-card product-card--status">
-              <header class="product-card__head">
-                <h3>&#9889; Inverter Status</h3>
+              <header class="product-card__head product-card__head--status">
+                <div class="product-card__title-block">
+                  <h3>&#9889; Inverter Status</h3>
+                </div>
                 <div class="product-card__meta">
                   <span class="product-badge product-badge--live">LIVE</span>
                   <span class="product-card__age">3m ago</span>
                 </div>
               </header>
 
-              <div class="status-flow">
-                <div class="status-flow__tile">
-                  <span class="status-flow__icon">&#9728;</span>
-                  <strong id="heroSolarKw">0.40 kW</strong>
-                  <small>Solar Production</small>
-                </div>
-                <div class="status-flow__tile">
-                  <span class="status-flow__icon">&#127968;</span>
-                  <strong id="heroLoadKw">0.52 kW</strong>
-                  <small>House Load</small>
-                </div>
-                <div class="status-flow__tile">
-                  <span class="status-flow__icon">&#128268;</span>
-                  <strong id="heroGridKw">2.52 kW</strong>
-                  <small id="heroGridLabel">Grid Import</small>
-                </div>
-              </div>
-
-              <div class="status-battery">
-                <div class="status-battery__main">
-                  <span class="status-battery__icon" aria-hidden="true">&#128267;</span>
-                  <div class="status-battery__numbers">
-                    <div class="status-battery__power"><span id="heroChargeW">2.5</span> kW <small id="heroPowerState">&#8593; Charging</small></div>
-                    <div class="status-battery__soc" id="heroSoc">76%</div>
-                    <div class="status-battery__energy"><span id="heroBatteryKwh">23.9</span> kWh available</div>
+              <div class="hero-energy">
+                <div class="hero-energy__scene weather-rain is-night" id="heroEnergyScene" data-grid-flow="import" data-battery-mode="charge" data-weather-effect="rain" data-weather-label="Showers" style="--hero-battery-fill-pct:76%;">
+                  <div class="hero-energy__sky" aria-hidden="true">
+                    <div class="hero-energy__stars">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                    <span class="hero-energy__orb"></span>
                   </div>
-                </div>
-              </div>
+                  <div class="hero-energy__weather" aria-hidden="true">
+                    <div class="hero-energy__weather-layer hero-energy__weather-layer--cloud"></div>
+                    <div class="hero-energy__weather-layer hero-energy__weather-layer--mist"></div>
+                    <div class="hero-energy__weather-layer hero-energy__weather-layer--rain"></div>
+                    <div class="hero-energy__weather-layer hero-energy__weather-layer--flash"></div>
+                  </div>
+                  <svg class="hero-energy__wires" viewBox="0 0 1536 1024" preserveAspectRatio="none" aria-hidden="true">
+                    <g class="hero-energy__route hero-energy__route--solar" style="--flow-speed: 3600ms;">
+                      <line id="heroAnchorLineSolar" class="hero-energy__anchor-line" x1="80" y1="50" x2="590" y2="220"></line>
+                      <circle id="heroAnchorDotSolar" class="hero-energy__anchor-dot hero-energy__anchor-dot--solar" cx="590" cy="220" r="8"></circle>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--aura" d="M 80 50 C 360 380, 840 700, 1280 900"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--jacket" d="M 80 50 C 360 380, 840 700, 1280 900"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--sheen" d="M 80 50 C 360 380, 840 700, 1280 900"></path>
+                      <path id="heroFlowSolar" class="hero-energy__flow-path is-active" d="M 80 50 C 360 380, 840 700, 1280 900"></path>
+                    </g>
+                    <g class="hero-energy__route hero-energy__route--home" style="--flow-speed: 4200ms;">
+                      <line id="heroAnchorLineHome" class="hero-energy__anchor-line" x1="80" y1="960" x2="455" y2="645"></line>
+                      <circle id="heroAnchorDotHome" class="hero-energy__anchor-dot hero-energy__anchor-dot--home" cx="455" cy="645" r="8"></circle>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--aura" d="M 1280 900 C 940 960, 580 970, 80 960"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--jacket" d="M 1280 900 C 940 960, 580 970, 80 960"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--sheen" d="M 1280 900 C 940 960, 580 970, 80 960"></path>
+                      <path id="heroFlowHome" class="hero-energy__flow-path is-active" d="M 1280 900 C 940 960, 580 970, 80 960"></path>
+                    </g>
+                    <g class="hero-energy__route hero-energy__route--grid" style="--flow-speed: 3200ms;">
+                      <path class="hero-energy__flow-track hero-energy__flow-track--aura" d="M 1460 50 C 1490 380, 1420 680, 1280 900"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--jacket" d="M 1460 50 C 1490 380, 1420 680, 1280 900"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--sheen" d="M 1460 50 C 1490 380, 1420 680, 1280 900"></path>
+                      <path id="heroFlowGrid" class="hero-energy__flow-path is-active" d="M 1460 50 C 1490 380, 1420 680, 1280 900"></path>
+                    </g>
+                    <g class="hero-energy__route hero-energy__route--battery" style="--flow-speed: 3000ms;">
+                      <line id="heroAnchorLineHub" class="hero-energy__anchor-line" x1="1280" y1="900" x2="980" y2="720"></line>
+                      <circle id="heroAnchorDotHub" class="hero-energy__anchor-dot hero-energy__anchor-dot--hub" cx="980" cy="720" r="8"></circle>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--aura" d="M 1280 900 C 1180 840, 1090 780, 980 722"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--jacket" d="M 1280 900 C 1180 840, 1090 780, 980 722"></path>
+                      <path class="hero-energy__flow-track hero-energy__flow-track--sheen" d="M 1280 900 C 1180 840, 1090 780, 980 722"></path>
+                      <path id="heroFlowBattery" class="hero-energy__flow-path is-active" d="M 1280 900 C 1180 840, 1090 780, 980 722"></path>
+                    </g>
+                  </svg>
 
-              <div class="status-temp-row">
-                <div class="status-temp">
-                  <span>Battery Temp</span>
-                  <strong>29.1&deg;C</strong>
+                  <section class="hero-energy__node hero-energy__node--solar" id="heroSolarNode">
+                    <div class="hero-energy__node-top">
+                      <span class="hero-energy__title">Solar</span>
+                    </div>
+                    <strong id="heroSolarKw">0.40 kW</strong>
+                    <small>Solar Production</small>
+                  </section>
+
+                  <section class="hero-energy__node hero-energy__node--grid" id="heroGridNode">
+                    <div class="hero-energy__node-top">
+                      <span class="hero-energy__title">Grid</span>
+                      <span class="hero-energy__node-state" id="heroGridMode">Import</span>
+                    </div>
+                    <strong id="heroGridKw">2.62 kW</strong>
+                    <small id="heroGridLabel">Grid Import</small>
+                  </section>
+
+                  <section class="hero-energy__node hero-energy__node--home" id="heroHomeNode">
+                    <div class="hero-energy__node-top">
+                      <span class="hero-energy__title">Home</span>
+                    </div>
+                    <strong id="heroLoadKw">0.52 kW</strong>
+                    <small>House Load</small>
+                  </section>
+
+                  <section class="hero-energy__hub" id="heroHub">
+                    <div class="hero-energy__hub-top">
+                      <span class="hero-energy__hub-title">Inverter</span>
+                      <span class="hero-energy__hub-state" id="heroPowerState">Charging</span>
+                    </div>
+                    <div class="hero-energy__hub-main">
+                      <div class="hero-energy__hub-copy">
+                        <div class="hero-energy__hub-power"><span id="heroChargeW">2.5</span> kW</div>
+                        <div class="hero-energy__hub-soc" id="heroSoc">76%</div>
+                        <div class="hero-energy__hub-energy"><span id="heroBatteryKwh">23.9</span> kWh available</div>
+                      </div>
+                      <div class="hero-energy__hub-visual" aria-hidden="true">
+                        <span class="hero-energy__battery-icon">
+                          <span class="hero-energy__battery-icon-fill"></span>
+                        </span>
+                      </div>
+                    </div>
+                  </section>
                 </div>
-                <div class="status-temp">
-                  <span>Ambient Temp</span>
-                  <strong>35.5&deg;C</strong>
-                </div>
-                <div class="status-temp">
-                  <span>Inverter Temp</span>
-                  <strong>28.1&deg;C</strong>
+
+                <div class="hero-energy__temps">
+                  <div class="hero-energy__temp">
+                    <span>Battery Temp</span>
+                    <strong>29.1&deg;C</strong>
+                  </div>
+                  <div class="hero-energy__temp">
+                    <span>Ambient Temp</span>
+                    <strong>35.5&deg;C</strong>
+                  </div>
+                  <div class="hero-energy__temp">
+                    <span>Inverter Temp</span>
+                    <strong>28.1&deg;C</strong>
+                  </div>
                 </div>
               </div>
             </article>
@@ -372,10 +443,10 @@
                   <circle id="heroNowDot" cx="348" cy="136" r="7" fill="#58a6ff" stroke="#0d1117" stroke-width="3"/>
                   <rect id="heroChartHit" x="24" y="24" width="672" height="183" fill="transparent"/>
                   <g class="chart-x-axis" aria-hidden="true">
-                    <text x="24" y="228">21:25</text>
-                    <text x="246" y="228">21:55</text>
-                    <text x="470" y="228">22:30</text>
-                    <text x="696" y="228" text-anchor="end">00:00</text>
+                    <text x="24" y="228">12am</text>
+                    <text x="246" y="228">8am</text>
+                    <text x="470" y="228">4pm</text>
+                    <text x="696" y="228" text-anchor="end">2am</text>
                   </g>
                 </svg>
                 <div class="chart-tooltip" id="heroChartTooltip" hidden>
@@ -386,7 +457,7 @@
               </div>
 
               <div class="price-footer">
-                <span>Now <strong id="heroChartNowPrice">8.2&cent;</strong> (<span id="heroNowLabel">10am</span>)</span>
+                <span>Now <strong id="heroChartNowPrice">8.2&cent;</strong> (<span id="heroNowLabel">12am</span>)</span>
                 <span>Peak <strong id="heroChartPeak">12.4&cent; @ 6pm</strong></span>
               </div>
             </article>
@@ -413,7 +484,7 @@
 
               <div class="weather-now">
                 <strong>20.5&deg;C</strong>
-                <span>Sydney &middot; Showers &middot; Now (21:15)</span>
+                <span>Sydney &middot; Showers &middot; Now (21:30)</span>
                 <div class="weather-now__meta">
                   <span>Rain: 3.6 mm</span>
                   <span>Wind: 5.5 km/h SSE</span>
@@ -424,7 +495,7 @@
 
               <div class="weather-cards">
                 <div class="weather-card">
-                  <h4>Mon 9/3</h4>
+                  <h4>Mon 30/3</h4>
                   <p>Showers</p>
                   <small>High 22.8&deg; / Low 18.6&deg;</small>
                   <div class="weather-card__stats">
@@ -433,16 +504,16 @@
                   </div>
                 </div>
                 <div class="weather-card">
-                  <h4>Tue 10/3</h4>
-                  <p>Showers</p>
-                  <small>High 25.0&deg; / Low 19.5&deg;</small>
+                  <h4>Tue 31/3</h4>
+                  <p>&#9928; Thunderstorms</p>
+                  <small>High 21.4&deg; / Low 17.2&deg;</small>
                   <div class="weather-card__stats">
-                    <span>Rain 1.6 mm</span>
-                    <span>&#9728; 164 &nbsp; &#9729; 73%</span>
+                    <span>Rain 12.4 mm</span>
+                    <span>&#9728; 68 &nbsp; &#9729; 92%</span>
                   </div>
                 </div>
                 <div class="weather-card">
-                  <h4>Wed 11/3</h4>
+                  <h4>Wed 1/4</h4>
                   <p>Partly Cloudy</p>
                   <small>High 29.8&deg; / Low 18.9&deg;</small>
                   <div class="weather-card__stats">
@@ -537,7 +608,7 @@
           <div class="how-step__num">02</div>
           <div class="how-step__icon">&#128203;</div>
           <h3 class="how-step__title">Set your rules</h3>
-          <p class="how-step__body">Set charge, discharge, or export rules with simple conditions: AEMO live prices, Amber tariffs, battery level, time, and solar forecast. Start from a template or build your own.</p>
+          <p class="how-step__body">Set charge, discharge, or export rules with simple conditions: live pricing, tariffs, battery level, time, and solar forecast. Start from a template or build your own.</p>
         </div>
 
         <div class="how-step__arrow" aria-hidden="true">&#8594;</div>
@@ -737,7 +808,7 @@
         <div class="sc-track-wrap">
           <div class="sc-track" id="scTrack">
 
-            <div class="sc-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 11" data-caption="Automation Dashboard & Overview - live AEMO or Amber pricing, active rules, battery status, and savings in one place.">
+            <div class="sc-slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 11" data-caption="Automation Dashboard & Overview - live pricing, active rules, battery status, and savings in one place.">
               <img src="/images/screenshots/screen-1.png" alt="Automation dashboard overview with battery SoC, active rule, live pricing and savings" loading="lazy" width="900" height="562">
             </div>
 
@@ -798,7 +869,7 @@
         <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 10" data-sc="9"></button>
         <button class="sc-dot"           role="tab" aria-selected="false" aria-label="Screenshot 11" data-sc="10"></button>
       </div>
-      <p class="sc-caption" id="scCaption" aria-live="polite">Automation Dashboard &amp; Overview - live AEMO or Amber pricing, active rules, battery status, and savings in one place.</p>
+      <p class="sc-caption" id="scCaption" aria-live="polite">Automation Dashboard &amp; Overview - live pricing, active rules, battery status, and savings in one place.</p>
 
     </div>
   </section>
@@ -987,9 +1058,9 @@
             </div>
             <span class="tool-card__badge tool-card__badge--live">Live now</span>
           </div>
-          <h3 class="tool-card__title">AEMO Market Snapshot</h3>
-          <p class="tool-card__body">See recent AEMO price moves, volatility, and negative-price activity in your region.</p>
-          <p class="tool-card__micro">Same NEM context now available as a live pricing source inside SoCrates.</p>
+          <h3 class="tool-card__title">Market Snapshot</h3>
+          <p class="tool-card__body">See recent price moves, volatility, and negative-price activity in your region.</p>
+          <p class="tool-card__micro">Same live pricing context now available inside SoCrates.</p>
           <div class="tool-card__actions">
             <a href="/market-insights/" class="tool-card__cta" data-analytics-event="tool_open_click" data-analytics-location="tools_section" data-analytics-label="AEMO Market Insights Preview">Open preview</a>
           </div>
@@ -1251,6 +1322,7 @@
   <!-- ===================================================
        ALL JS — no external dependencies
   ==================================================== -->
+  <script src="/js/scene-sky.js"></script>
   <script>
   (function () {
     'use strict';
@@ -1491,6 +1563,205 @@
       if (state) state.textContent = matched ? 'Matched' : 'Skipped';
     }
 
+    function setHeroFlowState(id, active, reverse) {
+      var node = document.getElementById(id);
+      if (!node) return;
+      node.classList.toggle('is-active', !!active);
+      node.classList.toggle('is-idle', !active);
+      node.classList.toggle('is-reverse', !!reverse);
+    }
+
+    var heroSceneViewboxWidth = 1536;
+    var heroSceneViewboxHeight = 1024;
+
+    function setHeroLinePoints(id, startPoint, endPoint) {
+      var node = document.getElementById(id);
+      if (!node) return;
+      node.setAttribute('x1', startPoint.x.toFixed(2));
+      node.setAttribute('y1', startPoint.y.toFixed(2));
+      node.setAttribute('x2', endPoint.x.toFixed(2));
+      node.setAttribute('y2', endPoint.y.toFixed(2));
+    }
+
+    function setHeroDotTarget(id, x, y) {
+      var node = document.getElementById(id);
+      if (!node) return;
+      node.setAttribute('cx', x);
+      node.setAttribute('cy', y);
+    }
+
+    function toHeroScenePoint(sceneRect, clientX, clientY) {
+      return {
+        x: ((clientX - sceneRect.left) / Math.max(1, sceneRect.width)) * heroSceneViewboxWidth,
+        y: ((clientY - sceneRect.top) / Math.max(1, sceneRect.height)) * heroSceneViewboxHeight
+      };
+    }
+
+    function getHeroNodePoint(sceneRect, node, xFactor, yFactor) {
+      if (!node) return null;
+      var rect = node.getBoundingClientRect();
+      return toHeroScenePoint(
+        sceneRect,
+        rect.left + (rect.width * xFactor),
+        rect.top + (rect.height * yFactor)
+      );
+    }
+
+    function buildHeroCurvePath(startPoint, controlPointA, controlPointB, endPoint) {
+      return 'M ' + startPoint.x.toFixed(2) + ' ' + startPoint.y.toFixed(2) +
+        ' C ' + controlPointA.x.toFixed(2) + ' ' + controlPointA.y.toFixed(2) +
+        ', ' + controlPointB.x.toFixed(2) + ' ' + controlPointB.y.toFixed(2) +
+        ', ' + endPoint.x.toFixed(2) + ' ' + endPoint.y.toFixed(2);
+    }
+
+    function setHeroRoutePath(routeSelector, pathValue) {
+      document.querySelectorAll(routeSelector + ' .hero-energy__flow-track, ' + routeSelector + ' .hero-energy__flow-path').forEach(function (node) {
+        node.setAttribute('d', pathValue);
+      });
+    }
+
+    function syncHeroSceneGeometry() {
+      var scene = document.getElementById('heroEnergyScene');
+      if (!scene) return;
+
+      var sceneRect = scene.getBoundingClientRect();
+      if (!sceneRect.width || !sceneRect.height) return;
+
+      var solarNode = document.getElementById('heroSolarNode');
+      var gridNode = document.getElementById('heroGridNode');
+      var homeNode = document.getElementById('heroHomeNode');
+      var hubNode = document.getElementById('heroHub');
+      if (!solarNode || !gridNode || !homeNode || !hubNode) return;
+
+      var solarStart = getHeroNodePoint(sceneRect, solarNode, 0.70, 0.76);
+      var gridStart = getHeroNodePoint(sceneRect, gridNode, 0.28, 0.76);
+      var homeEnd = getHeroNodePoint(sceneRect, homeNode, 0.72, 0.24);
+      var hubPoint = getHeroNodePoint(sceneRect, hubNode, 0.24, 0.58);
+
+      var solarAnchor = { x: heroSceneViewboxWidth * 0.39, y: heroSceneViewboxHeight * 0.22 };
+      var homeAnchor = { x: heroSceneViewboxWidth * 0.31, y: heroSceneViewboxHeight * 0.63 };
+      var batteryAnchor = { x: heroSceneViewboxWidth * 0.67, y: heroSceneViewboxHeight * 0.70 };
+
+      var solarPath = buildHeroCurvePath(
+        solarStart,
+        { x: heroSceneViewboxWidth * 0.34, y: heroSceneViewboxHeight * 0.42 },
+        { x: heroSceneViewboxWidth * 0.60, y: heroSceneViewboxHeight * 0.72 },
+        hubPoint
+      );
+      var homePath = buildHeroCurvePath(
+        hubPoint,
+        { x: heroSceneViewboxWidth * 0.66, y: heroSceneViewboxHeight * 0.94 },
+        { x: heroSceneViewboxWidth * 0.36, y: heroSceneViewboxHeight * 0.95 },
+        homeEnd
+      );
+      var gridPath = buildHeroCurvePath(
+        gridStart,
+        { x: heroSceneViewboxWidth * 0.94, y: heroSceneViewboxHeight * 0.36 },
+        { x: heroSceneViewboxWidth * 0.90, y: heroSceneViewboxHeight * 0.64 },
+        hubPoint
+      );
+      var batteryPath = buildHeroCurvePath(
+        hubPoint,
+        { x: heroSceneViewboxWidth * 0.73, y: heroSceneViewboxHeight * 0.80 },
+        { x: heroSceneViewboxWidth * 0.71, y: heroSceneViewboxHeight * 0.74 },
+        batteryAnchor
+      );
+
+      setHeroRoutePath('.hero-energy__route--solar', solarPath);
+      setHeroRoutePath('.hero-energy__route--home', homePath);
+      setHeroRoutePath('.hero-energy__route--grid', gridPath);
+      setHeroRoutePath('.hero-energy__route--battery', batteryPath);
+
+      setHeroLinePoints('heroAnchorLineSolar', solarStart, solarAnchor);
+      setHeroDotTarget('heroAnchorDotSolar', solarAnchor.x.toFixed(2), solarAnchor.y.toFixed(2));
+      setHeroLinePoints('heroAnchorLineHome', homeEnd, homeAnchor);
+      setHeroDotTarget('heroAnchorDotHome', homeAnchor.x.toFixed(2), homeAnchor.y.toFixed(2));
+      setHeroLinePoints('heroAnchorLineHub', hubPoint, batteryAnchor);
+      setHeroDotTarget('heroAnchorDotHub', batteryAnchor.x.toFixed(2), batteryAnchor.y.toFixed(2));
+    }
+
+    function getHeroWeatherState(hour, solarValue, cloudValue) {
+      var isDay = hour >= 6 && hour < 18;
+      var solar = Number(solarValue) || 0;
+      var cloud = Number(cloudValue) || 0;
+      var effect = 'clear';
+      var label = 'Clear';
+
+      if (cloud >= 80 && solar < 0.6) {
+        effect = 'storm';
+        label = 'Storm';
+      } else if (cloud >= 72 && solar < 0.8) {
+        effect = 'rain';
+        label = 'Showers';
+      } else if (cloud >= 56) {
+        effect = 'drizzle';
+        label = 'Drizzle';
+      } else if (cloud >= 36) {
+        effect = 'cloudy';
+        label = 'Cloudy';
+      }
+
+      return {
+        effect: effect,
+        label: label,
+        isDay: isDay,
+        currentTimeMinutes: hour * 60,
+        sunrise: '06:08',
+        sunset: '18:04'
+      };
+    }
+
+    function syncHeroSceneState(gridMode, batteryMode, socValue, solarValue, loadValue, gridValue, batteryValue, weatherState) {
+      var scene = document.getElementById('heroEnergyScene');
+      if (!scene) return;
+
+      var normalizedGridMode = gridMode || 'idle';
+      var normalizedBatteryMode = batteryMode || 'idle';
+      var normalizedSoc = Math.max(0, Math.min(100, Number(socValue) || 0));
+      var weather = weatherState || { effect: 'clear', label: 'Clear', isDay: false };
+      var gridModeEl = document.getElementById('heroGridMode');
+      var powerStateEl = document.getElementById('heroPowerState');
+
+      scene.setAttribute('data-grid-flow', normalizedGridMode);
+      scene.setAttribute('data-battery-mode', normalizedBatteryMode);
+      scene.setAttribute('data-weather-effect', weather.effect || 'clear');
+      scene.setAttribute('data-weather-label', weather.label || 'Clear');
+      scene.style.setProperty('--hero-battery-fill-pct', normalizedSoc.toFixed(0) + '%');
+      scene.classList.remove('weather-clear', 'weather-cloudy', 'weather-drizzle', 'weather-rain', 'weather-storm');
+      scene.classList.add('weather-' + (weather.effect || 'clear'));
+      scene.classList.toggle('is-daylight', !!weather.isDay);
+      scene.classList.toggle('is-night', !weather.isDay);
+      if (window.SoCratesSceneSky && typeof window.SoCratesSceneSky.apply === 'function') {
+        window.SoCratesSceneSky.apply(scene, {
+          isDay: !!weather.isDay,
+          weatherEffect: weather.effect || 'clear',
+          currentTimeMinutes: weather.currentTimeMinutes,
+          sunrise: weather.sunrise,
+          sunset: weather.sunset,
+          dayStartMinutes: 360,
+          dayEndMinutes: 1080
+        });
+      }
+      syncHeroSceneGeometry();
+
+      setHeroFlowState('heroFlowSolar', Number(solarValue) > 0.04, false);
+      setHeroFlowState('heroFlowHome', Number(loadValue) > 0.04, false);
+      setHeroFlowState('heroFlowGrid', Math.abs(Number(gridValue) || 0) > 0.04, normalizedGridMode === 'export');
+      setHeroFlowState('heroFlowBattery', Number(batteryValue) > 0.04, normalizedBatteryMode === 'discharge');
+
+      if (gridModeEl) {
+        gridModeEl.textContent = normalizedGridMode === 'export'
+          ? 'Export'
+          : (normalizedGridMode === 'import' ? 'Import' : 'Balanced');
+      }
+      if (powerStateEl) {
+        powerStateEl.textContent = normalizedBatteryMode === 'charge'
+          ? 'Charging'
+          : (normalizedBatteryMode === 'discharge' ? 'Discharging' : 'Standby');
+      }
+      syncHeroSceneGeometry();
+    }
+
     function updateHero() {
       priceIdx = (priceIdx + 1) % prices.length;
 
@@ -1560,8 +1831,11 @@
       var batteryDischargeKw = batteryMode === 'discharge' ? chargeKw : 0;
       var netGridKw = currentLoad + batteryChargeKw - currentSolar - batteryDischargeKw;
       var gridLabel = 'Grid Neutral';
+      var gridMode = 'idle';
       if (netGridKw > 0.02) gridLabel = 'Grid Import';
       if (netGridKw < -0.02) gridLabel = 'Grid Export';
+      if (netGridKw > 0.02) gridMode = 'import';
+      if (netGridKw < -0.02) gridMode = 'export';
 
       soc = Math.max(minSocBound, Math.min(targetSoc, soc + socDelta));
       soc = Math.round(soc * 10) / 10;
@@ -1592,6 +1866,17 @@
       el = document.getElementById('heroChargeW'); if (el) el.textContent = chargeKw.toFixed(1);
       el = document.getElementById('heroCountdown'); if (el) el.textContent = countdown;
       el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + savings.toFixed(2);
+
+      syncHeroSceneState(
+        gridMode,
+        batteryMode,
+        socDisplay,
+        currentSolar,
+        currentLoad,
+        netGridKw,
+        chargeKw,
+        getHeroWeatherState(hour, currentSolar, nextDayCloud)
+      );
 
       if (chargeReady) {
         setHeroDecision('heroDecisionPrice', 'Time 00:00-06:00', inOvernightWindow);
@@ -1636,6 +1921,16 @@
         if (chartTooltipEl) chartTooltipEl.hidden = true;
         updateHeroChartMarker(priceIdx);
       });
+    }
+
+    var heroSceneEl = document.getElementById('heroEnergyScene');
+    if (heroSceneEl && 'ResizeObserver' in window) {
+      var heroSceneResizeObserver = new ResizeObserver(function () {
+        syncHeroSceneGeometry();
+      });
+      heroSceneResizeObserver.observe(heroSceneEl);
+    } else {
+      window.addEventListener('resize', syncHeroSceneGeometry);
     }
 
     updateHero();

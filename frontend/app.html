@@ -1039,15 +1039,9 @@
             min-width: 0;
             max-width: 420px;
         }
-        .inverter-card-header__subtitle {
-            margin: 0;
-            font-size: 12px;
-            line-height: 1.45;
-            color: var(--text-secondary);
-        }
         .inverter-card-header__meta {
             display: grid;
-            justify-items: end;
+            justify-items: center;
             gap: 8px;
             min-width: 0;
         }
@@ -1057,7 +1051,8 @@
             gap: 8px;
             min-height: 34px;
             flex-wrap: wrap;
-            justify-content: flex-end;
+            justify-content: center;
+            justify-self: center;
         }
         .inverter-card-header__status .card-badge {
             padding: 5px 10px;
@@ -1082,6 +1077,7 @@
         .inverter-card-header__fetch {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 6px;
             min-height: 32px;
             padding: 0 11px;
@@ -1091,14 +1087,17 @@
             font-size: 11px;
             color: var(--text-secondary);
             line-height: 1.1;
+            text-align: center;
             white-space: nowrap;
         }
         .inverter-card-header__fetch-row {
             display: flex;
-            justify-content: flex-end;
+            justify-content: center;
+            justify-self: center;
+            width: 100%;
             min-height: 32px;
             line-height: 1.1;
-            text-align: right;
+            text-align: center;
         }
         #inverterFetchLabel,
         .inverter-card-header__fetch {
@@ -1119,9 +1118,6 @@
         }
         [data-theme="light"] .card.priority[data-dashboard-card="inverter"] .card-header {
             background: linear-gradient(180deg, rgba(252, 254, 255, 0.98), rgba(241, 247, 252, 0.98));
-        }
-        [data-theme="light"] .inverter-card-header__subtitle {
-            color: #5d6b79;
         }
         [data-theme="light"] .inverter-card-header__status .card-badge {
             color: #0e6b96;
@@ -1145,32 +1141,28 @@
                 max-width: none;
                 gap: 2px;
             }
-            .inverter-card-header__subtitle {
-                font-size: 11px;
-                line-height: 1.35;
-            }
             .inverter-card-header__meta {
                 width: 100%;
                 display: flex;
                 flex-wrap: wrap;
                 align-items: center;
-                justify-content: space-between;
+                justify-content: center;
                 justify-items: initial;
                 gap: 6px 10px;
             }
             .inverter-card-header__status,
             .inverter-card-header__fetch-row {
-                justify-content: flex-start;
-                text-align: left;
+                justify-content: center;
+                text-align: center;
             }
             .inverter-card-header__status {
                 min-height: 0;
                 gap: 6px;
-                flex: 1 1 250px;
+                flex: 0 1 auto;
             }
             .inverter-card-header__fetch-row {
                 min-height: 0;
-                flex: 0 0 auto;
+                flex: 0 0 100%;
             }
         }
         @media (max-width: 520px) {
@@ -1187,24 +1179,19 @@
             .inverter-card-header__meta {
                 width: auto;
                 display: grid;
-                justify-items: end;
+                justify-items: center;
                 align-content: start;
                 gap: 4px;
-            }
-            .inverter-card-header__subtitle {
-                font-size: 10px;
-                line-height: 1.25;
-                max-width: 34ch;
             }
             .inverter-card-header__status {
                 flex: initial;
                 flex-wrap: nowrap;
-                justify-content: flex-end;
+                justify-content: center;
                 gap: 5px;
             }
             .inverter-card-header__fetch-row {
-                justify-content: flex-end;
-                text-align: right;
+                justify-content: center;
+                text-align: center;
             }
             .inverter-card-header__status .card-badge {
                 padding: 4px 8px;
@@ -3448,12 +3435,12 @@
             opacity: 1;
             background:
                 linear-gradient(180deg,
-                    rgba(4, 12, 30, 0.58) 0%,
+                    rgba(4, 12, 30, var(--scene-night-top-opacity, 0.58)) 0%,
                     rgba(4, 12, 26, 0.22) 26%,
                     rgba(0, 0, 0, 0) 50%,
-                    rgba(0, 0, 0, 0.10) 100%
+                    rgba(0, 0, 0, var(--scene-night-bottom-opacity, 0.10)) 100%
                 ),
-                radial-gradient(ellipse at 82% 3%, rgba(22, 54, 128, 0.32), transparent 28%),
+                radial-gradient(circle at var(--scene-light-x, 82%) 10%, rgba(168, 194, 242, var(--scene-night-glow-opacity, 0.08)) 0%, rgba(168, 194, 242, 0) 19%),
                 radial-gradient(ellipse at 18% 5%, rgba(12, 28, 72, 0.18), transparent 22%);
         }
         /* Stars in night sky */
@@ -3464,33 +3451,77 @@
             pointer-events: none;
             z-index: 3;
             background:
-                radial-gradient(circle at 11% 5%, rgba(255,255,255,0.88) 0 1px, transparent 1.6px),
-                radial-gradient(circle at 22% 9%, rgba(255,255,255,0.62) 0 1px, transparent 1.5px),
-                radial-gradient(circle at 37% 4%, rgba(255,255,255,0.70) 0 1px, transparent 1.6px),
-                radial-gradient(circle at 51% 7%, rgba(255,255,255,0.52) 0 1px, transparent 1.5px),
-                radial-gradient(circle at 64% 4%, rgba(255,255,255,0.76) 0 1.1px, transparent 1.7px),
-                radial-gradient(circle at 76% 8%, rgba(255,255,255,0.58) 0 1px, transparent 1.5px),
-                radial-gradient(circle at 89% 5%, rgba(255,255,255,0.82) 0 1px, transparent 1.6px),
-                radial-gradient(circle at 95% 12%, rgba(255,255,255,0.45) 0 1px, transparent 1.5px),
-                linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 16%, rgba(0,0,0,0.20) 100%),
+                linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 16%, rgba(0,0,0, var(--scene-night-bottom-opacity, 0.18)) 100%),
                 radial-gradient(circle at 50% 100%, rgba(3, 9, 17, 0.26), transparent 44%);
         }
         /* Daylight sky — clear blue with warm sun glow */
         #inverterCard .energy-scene.is-daylight::before {
             background:
                 linear-gradient(180deg,
-                    rgba(90, 172, 255, 0.48) 0%,
-                    rgba(140, 205, 255, 0.20) 24%,
+                    rgba(90, 172, 255, var(--scene-day-sky-opacity, 0.16)) 0%,
+                    rgba(140, 205, 255, calc(var(--scene-day-sky-opacity, 0.16) * 0.55)) 24%,
                     rgba(0, 0, 0, 0) 50%
                 ),
-                radial-gradient(ellipse at 76% 0%, rgba(255, 215, 90, 0.44), transparent 34%),
-                radial-gradient(ellipse at 28% 0%, rgba(135, 196, 255, 0.18), transparent 26%);
+                radial-gradient(circle at var(--scene-light-x, 50%) 10%, rgba(255, 215, 90, var(--scene-day-glow-opacity, 0.12)) 0%, rgba(255, 215, 90, 0) 22%),
+                radial-gradient(ellipse at 28% 0%, rgba(135, 196, 255, 0.12), transparent 26%);
         }
         /* No stars by day; subtle vignette at bottom */
         #inverterCard .energy-scene.is-daylight::after {
             background:
                 linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0) 40%, rgba(0,0,0,0.16) 100%),
                 radial-gradient(circle at 50% 100%, rgba(3, 9, 17, 0.20), transparent 44%);
+        }
+        #inverterCard .energy-scene__sky {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        #inverterCard .energy-scene__stars {
+            position: absolute;
+            inset: 0;
+            opacity: var(--scene-stars-opacity, 0);
+            transition: opacity 280ms ease;
+        }
+        #inverterCard .energy-scene__stars span {
+            position: absolute;
+            width: 3px;
+            height: 3px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.96);
+            box-shadow: 0 0 8px rgba(196, 221, 255, 0.42);
+        }
+        #inverterCard .energy-scene__stars span:nth-child(1) { left: 13%; top: 12%; width: 2px; height: 2px; opacity: 0.92; }
+        #inverterCard .energy-scene__stars span:nth-child(2) { left: 26%; top: 7%; opacity: 0.68; }
+        #inverterCard .energy-scene__stars span:nth-child(3) { left: 41%; top: 14%; width: 2px; height: 2px; opacity: 0.82; }
+        #inverterCard .energy-scene__stars span:nth-child(4) { left: 58%; top: 9%; opacity: 0.62; }
+        #inverterCard .energy-scene__stars span:nth-child(5) { left: 72%; top: 15%; width: 2px; height: 2px; opacity: 0.88; }
+        #inverterCard .energy-scene__stars span:nth-child(6) { left: 83%; top: 8%; opacity: 0.72; }
+        #inverterCard .energy-scene__stars span:nth-child(7) { left: 91%; top: 18%; width: 2px; height: 2px; opacity: 0.56; }
+        #inverterCard .energy-scene__orb {
+            position: absolute;
+            left: var(--scene-orb-x, 72%);
+            top: var(--scene-orb-y, 18%);
+            width: var(--scene-orb-size, 42px);
+            height: var(--scene-orb-size, 42px);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            opacity: var(--scene-orb-opacity, 0.96);
+            background: var(--scene-orb-core, radial-gradient(circle at 35% 35%, rgba(255, 249, 221, 1) 0%, rgba(255, 221, 116, 0.98) 40%, rgba(255, 179, 63, 0.92) 72%, rgba(255, 179, 63, 0.16) 100%));
+            box-shadow: var(--scene-orb-glow, 0 0 22px rgba(255, 220, 107, 0.42), 0 0 54px rgba(255, 181, 63, 0.24));
+            filter: blur(var(--scene-orb-blur, 0px));
+            z-index: 1;
+            transition: left 500ms linear, top 500ms linear, opacity 280ms ease, box-shadow 280ms ease, background 280ms ease, filter 280ms ease;
+        }
+        #inverterCard .energy-scene__orb::after {
+            content: '';
+            position: absolute;
+            inset: 14% 10% 10% 38%;
+            border-radius: 50%;
+            background: rgba(5, 11, 20, 0.46);
+            opacity: var(--scene-moon-mask-opacity, 0);
+            transition: opacity 280ms ease;
         }
         #inverterCard .energy-scene__ground,
         #inverterCard .energy-house,
@@ -4460,8 +4491,11 @@
         }
         [data-theme="light"] #inverterCard .energy-scene::before {
             background:
-                linear-gradient(180deg, rgba(196, 227, 255, 0.32) 0%, rgba(196, 227, 255, 0.10) 30%, rgba(0,0,0,0) 55%),
-                radial-gradient(ellipse at 78% 0%, rgba(255, 220, 100, 0.20), transparent 34%);
+                linear-gradient(180deg,
+                    rgba(196, 227, 255, calc(0.10 + (var(--scene-day-sky-opacity, 0.16) * 0.75))) 0%,
+                    rgba(196, 227, 255, calc(var(--scene-day-sky-opacity, 0.16) * 0.34)) 30%,
+                    rgba(0,0,0,0) 55%),
+                radial-gradient(circle at var(--scene-light-x, 78%) 10%, rgba(255, 220, 100, calc(var(--scene-day-glow-opacity, 0.12) * 0.72)) 0%, rgba(255, 220, 100, 0) 22%);
         }
         [data-theme="light"] #inverterCard .energy-scene::after {
             background:
@@ -4470,8 +4504,11 @@
         }
         [data-theme="light"] #inverterCard .energy-scene.is-daylight::before {
             background:
-                linear-gradient(180deg, rgba(126, 190, 255, 0.42) 0%, rgba(166, 216, 255, 0.14) 30%, rgba(0,0,0,0) 55%),
-                radial-gradient(ellipse at 78% 0%, rgba(255, 218, 100, 0.34), transparent 36%);
+                linear-gradient(180deg,
+                    rgba(126, 190, 255, calc(0.14 + (var(--scene-day-sky-opacity, 0.16) * 0.9))) 0%,
+                    rgba(166, 216, 255, calc(var(--scene-day-sky-opacity, 0.16) * 0.42)) 30%,
+                    rgba(0,0,0,0) 55%),
+                radial-gradient(circle at var(--scene-light-x, 78%) 10%, rgba(255, 218, 100, calc(var(--scene-day-glow-opacity, 0.12) * 0.94)) 0%, rgba(255, 218, 100, 0) 24%);
         }
         [data-theme="light"] #inverterCard .energy-node,
         [data-theme="light"] #inverterCard .energy-core {
@@ -4685,7 +4722,6 @@
                     <div class="card-header inverter-card-header">
                         <div class="inverter-card-header__title-block">
                             <div class="card-title"><span class="icon">⚡</span> Inverter Status</div>
-                            <p class="inverter-card-header__subtitle">Live power flow across solar, home, grid, and battery.</p>
                         </div>
                         <div class="inverter-card-header__meta">
                             <div class="inverter-card-header__status">
@@ -5388,6 +5424,7 @@
             </div>
         </div>
 
-    <script defer src="js/dashboard.js?v=6"></script>
+    <script defer src="js/scene-sky.js?v=1"></script>
+    <script defer src="js/dashboard.js?v=7"></script>
 </body>
 </html>

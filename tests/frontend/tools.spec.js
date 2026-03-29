@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect, devices } = require('@playwright/test');
 
 test.describe('Public Tools', () => {
   test('homepage tools section exposes four live tools', async ({ page }) => {
@@ -10,6 +10,145 @@ test.describe('Public Tools', () => {
     await expect(page.locator('#tools .tool-card__cta[href="/rule-template-recommender/"]')).toHaveCount(1);
     await expect(page.locator('#tools .tool-card__badge--live')).toHaveCount(4);
     await expect(page.locator('#tools .tool-card')).toHaveCount(4);
+  });
+
+  test('homepage inverter preview stays within the mobile status card and sets sky state', async ({ browser }) => {
+    const context = await browser.newContext({ ...devices['iPhone SE'] });
+    const page = await context.newPage();
+
+    await page.goto('/index.html');
+    await expect(page.locator('#heroEnergyScene')).toBeVisible();
+
+    const layout = await page.evaluate(() => {
+      const rect = (el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          top: Math.round(r.top),
+          bottom: Math.round(r.bottom),
+          width: Math.round(r.width),
+          height: Math.round(r.height)
+        };
+      };
+      const card = document.querySelector('.product-card--status');
+      const scene = document.querySelector('#heroEnergyScene');
+      const nodes = [
+        document.querySelector('#heroSolarNode'),
+        document.querySelector('#heroGridNode'),
+        document.querySelector('#heroHomeNode'),
+        document.querySelector('#heroHub')
+      ].map((node) => rect(node));
+
+      return {
+        viewportWidth: window.innerWidth,
+        card: rect(card),
+        scene: rect(scene),
+        nodes,
+        phase: scene.getAttribute('data-sky-phase'),
+        orbX: getComputedStyle(scene).getPropertyValue('--scene-orb-x').trim()
+      };
+    });
+
+    expect(layout.scene.width).toBeLessThanOrEqual(layout.card.width);
+    expect(layout.scene.right).toBeLessThanOrEqual(layout.card.right + 1);
+    expect(layout.scene.right).toBeLessThanOrEqual(layout.viewportWidth);
+    layout.nodes.forEach((nodeRect) => {
+      expect(nodeRect.left).toBeGreaterThanOrEqual(layout.scene.left - 1);
+      expect(nodeRect.right).toBeLessThanOrEqual(layout.scene.right + 1);
+      expect(nodeRect.top).toBeGreaterThanOrEqual(layout.scene.top - 1);
+      expect(nodeRect.bottom).toBeLessThanOrEqual(layout.scene.bottom + 1);
+    });
+    expect(['day', 'night']).toContain(layout.phase);
+    expect(layout.orbX).not.toBe('');
+
+    await context.close();
+  });
+
+  test('shared sky helper keeps the orb on a top track and peaks at mid-cycle', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const samples = await page.evaluate(() => {
+      const getState = window.SoCratesSceneSky.getState;
+      const baseWindow = { sunrise: '06:00', sunset: '18:00' };
+
+      return {
+        dawn: getState({ ...baseWindow, currentTime: '06:00' }),
+        noon: getState({ ...baseWindow, currentTime: '12:00' }),
+        dusk: getState({ ...baseWindow, currentTime: '17:30' }),
+        evening: getState({ ...baseWindow, currentTime: '18:30' }),
+        midnight: getState({ ...baseWindow, currentTime: '00:00' }),
+        predawn: getState({ ...baseWindow, currentTime: '05:30' })
+      };
+    });
+
+    expect(samples.dawn.phase).toBe('day');
+    expect(samples.noon.phase).toBe('day');
+    expect(samples.midnight.phase).toBe('night');
+
+    expect(samples.dawn.orbX).toBeGreaterThan(samples.noon.orbX);
+    expect(samples.noon.orbX).toBeGreaterThan(samples.dusk.orbX);
+    expect(samples.evening.orbX).toBeGreaterThan(samples.midnight.orbX);
+    expect(samples.midnight.orbX).toBeGreaterThan(samples.predawn.orbX);
+
+    expect(samples.dawn.orbY).toBeCloseTo(samples.noon.orbY, 3);
+    expect(samples.noon.orbY).toBeCloseTo(samples.dusk.orbY, 3);
+    expect(samples.evening.orbY).toBeCloseTo(samples.midnight.orbY, 3);
+    expect(samples.midnight.orbY).toBeCloseTo(samples.predawn.orbY, 3);
+    expect(samples.noon.orbY).toBeLessThan(14);
+    expect(samples.midnight.orbY).toBeLessThan(14);
+
+    expect(samples.noon.orbSize).toBeGreaterThan(samples.dawn.orbSize);
+    expect(samples.noon.orbSize).toBeGreaterThan(samples.dusk.orbSize);
+    expect(samples.midnight.orbSize).toBeGreaterThan(samples.evening.orbSize);
+    expect(samples.midnight.orbSize).toBeGreaterThan(samples.predawn.orbSize);
+
+    expect(samples.dawn.dayGlowOpacity).toBeLessThan(samples.noon.dayGlowOpacity);
+    expect(samples.dawn.starsOpacity).toBe(0);
+    expect(samples.midnight.starsOpacity).toBeGreaterThan(samples.evening.starsOpacity);
+  });
+
+  test('shared sky helper attenuates the sky under bad weather', async ({ page }) => {
+    await page.goto('/index.html');
+
+    const samples = await page.evaluate(() => {
+      const getState = window.SoCratesSceneSky.getState;
+      const dayBase = { sunrise: '06:00', sunset: '18:00', currentTime: '12:00' };
+      const nightBase = { sunrise: '06:00', sunset: '18:00', currentTime: '00:00' };
+
+      return {
+        clearDay: getState({ ...dayBase, weatherEffect: 'clear' }),
+        cloudyDay: getState({ ...dayBase, weatherEffect: 'cloudy' }),
+        drizzleDay: getState({ ...dayBase, weatherEffect: 'drizzle' }),
+        rainDay: getState({ ...dayBase, weatherEffect: 'rain' }),
+        snowDay: getState({ ...dayBase, weatherEffect: 'snow' }),
+        stormDay: getState({ ...dayBase, weatherEffect: 'storm' }),
+        clearNight: getState({ ...nightBase, weatherEffect: 'clear' }),
+        fogNight: getState({ ...nightBase, weatherEffect: 'fog' }),
+        stormNight: getState({ ...nightBase, weatherEffect: 'storm' })
+      };
+    });
+
+    expect(samples.cloudyDay.orbOpacity).toBeLessThan(samples.clearDay.orbOpacity);
+    expect(samples.drizzleDay.orbOpacity).toBeLessThan(samples.clearDay.orbOpacity);
+    expect(samples.rainDay.orbOpacity).toBeLessThan(samples.drizzleDay.orbOpacity);
+    expect(samples.snowDay.orbOpacity).toBeLessThan(samples.clearDay.orbOpacity);
+    expect(samples.stormDay.orbOpacity).toBeLessThan(samples.cloudyDay.orbOpacity);
+    expect(samples.cloudyDay.dayGlowOpacity).toBeLessThan(samples.clearDay.dayGlowOpacity);
+    expect(samples.drizzleDay.dayGlowOpacity).toBeLessThan(samples.cloudyDay.dayGlowOpacity);
+    expect(samples.rainDay.dayGlowOpacity).toBeLessThan(samples.drizzleDay.dayGlowOpacity);
+    expect(samples.snowDay.dayGlowOpacity).toBeLessThan(samples.clearDay.dayGlowOpacity);
+    expect(samples.stormDay.dayGlowOpacity).toBeLessThan(samples.cloudyDay.dayGlowOpacity);
+    expect(samples.cloudyDay.orbBlur).toBeGreaterThan(samples.clearDay.orbBlur);
+    expect(samples.drizzleDay.orbBlur).toBeGreaterThan(samples.cloudyDay.orbBlur);
+    expect(samples.rainDay.orbBlur).toBeGreaterThan(samples.drizzleDay.orbBlur);
+    expect(samples.snowDay.orbBlur).toBeGreaterThan(samples.clearDay.orbBlur);
+    expect(samples.stormDay.orbBlur).toBeGreaterThan(samples.cloudyDay.orbBlur);
+
+    expect(samples.fogNight.starsOpacity).toBeLessThan(samples.clearNight.starsOpacity);
+    expect(samples.stormNight.starsOpacity).toBeLessThan(samples.fogNight.starsOpacity);
+    expect(samples.fogNight.orbOpacity).toBeLessThan(samples.clearNight.orbOpacity);
+    expect(samples.stormNight.orbOpacity).toBeLessThan(samples.fogNight.orbOpacity);
   });
 
   test('battery ROI calculator recomputes results when the scenario changes', async ({ page }) => {

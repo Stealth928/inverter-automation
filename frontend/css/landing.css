@@ -1796,134 +1796,1233 @@ section { padding: 80px 0; }
   border: 1px solid rgba(56, 139, 253, 0.44);
 }
 
-.status-flow {
-  padding: 14px;
+.product-card__head--status {
+  align-items: flex-start;
+}
+
+.product-card__title-block {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 4px;
+  min-width: 0;
 }
 
-.status-flow__tile {
-  background: rgba(5, 11, 20, 0.72);
-  border: 1px solid rgba(52, 77, 111, 0.45);
-  border-radius: 12px;
-  min-height: 104px;
-  padding: 10px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-}
-
-.status-flow__icon {
-  font-size: 1.28rem;
-}
-
-.status-flow__tile strong {
-  font-size: 1.62rem;
-  line-height: 1.08;
-  color: #7ee787;
-  font-weight: 700;
-}
-
-.status-flow__tile small {
+.product-card__sub {
+  margin: 0;
   font-size: 0.76rem;
-  color: #8ba2bf;
+  line-height: 1.45;
+  color: rgba(150, 174, 205, 0.86);
 }
 
-.status-battery {
-  margin: 2px 14px 10px;
-  border: 1px solid rgba(67, 95, 131, 0.45);
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(8, 14, 24, 0.84), rgba(11, 19, 32, 0.72));
-  padding: 15px;
+.hero-energy {
+  --hero-energy-cyan: #72dbff;
+  --hero-energy-solar: #7ee787;
+  --hero-energy-home: #7af0b0;
+  --hero-energy-grid-import: #58a6ff;
+  --hero-energy-grid-export: #7ee787;
+  --hero-energy-battery-charge: #7ee787;
+  --hero-energy-battery-discharge: #f85149;
+  --hero-battery-fill-pct: 76%;
+  padding: 12px 12px 14px;
+}
+
+.hero-energy__scene {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: 340px;
+  aspect-ratio: 10 / 8.8;
+  overflow: hidden;
+  border-radius: 26px;
+  background-color: #252528;
+  background-image: url('/images/house-3d-iso.png');
+  background-size: 100% 100%;
+  background-position: center center;
+  background-repeat: no-repeat;
+  border: 1px solid rgba(88, 166, 255, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 36px rgba(0, 0, 0, 0.22);
+  container-type: inline-size;
+  container-name: hero-energy-scene;
+}
+
+.hero-energy__sky {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hero-energy__stars {
+  position: absolute;
+  inset: 0;
+  opacity: var(--scene-stars-opacity, 0);
+  transition: opacity 280ms ease;
+}
+
+.hero-energy__stars span {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 8px rgba(196, 221, 255, 0.42);
+}
+
+.hero-energy__stars span:nth-child(1) { left: 13%; top: 12%; width: 2px; height: 2px; opacity: 0.92; }
+.hero-energy__stars span:nth-child(2) { left: 26%; top: 7%; opacity: 0.68; }
+.hero-energy__stars span:nth-child(3) { left: 41%; top: 14%; width: 2px; height: 2px; opacity: 0.82; }
+.hero-energy__stars span:nth-child(4) { left: 58%; top: 9%; opacity: 0.62; }
+.hero-energy__stars span:nth-child(5) { left: 72%; top: 15%; width: 2px; height: 2px; opacity: 0.88; }
+.hero-energy__stars span:nth-child(6) { left: 83%; top: 8%; opacity: 0.72; }
+.hero-energy__stars span:nth-child(7) { left: 91%; top: 18%; width: 2px; height: 2px; opacity: 0.56; }
+
+.hero-energy__orb {
+  position: absolute;
+  left: var(--scene-orb-x, 72%);
+  top: var(--scene-orb-y, 18%);
+  width: var(--scene-orb-size, 42px);
+  height: var(--scene-orb-size, 42px);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  opacity: var(--scene-orb-opacity, 0.96);
+  background: var(--scene-orb-core, radial-gradient(circle at 35% 35%, rgba(255, 249, 221, 1) 0%, rgba(255, 221, 116, 0.98) 40%, rgba(255, 179, 63, 0.92) 72%, rgba(255, 179, 63, 0.16) 100%));
+  box-shadow: var(--scene-orb-glow, 0 0 22px rgba(255, 220, 107, 0.42), 0 0 54px rgba(255, 181, 63, 0.24));
+  filter: blur(var(--scene-orb-blur, 0px));
+  z-index: 1;
+  transition: left 500ms linear, top 500ms linear, opacity 280ms ease, box-shadow 280ms ease, background 280ms ease, filter 280ms ease;
+}
+
+.hero-energy__orb::after {
+  content: '';
+  position: absolute;
+  inset: 14% 10% 10% 38%;
+  border-radius: 50%;
+  background: rgba(5, 11, 20, 0.46);
+  opacity: var(--scene-moon-mask-opacity, 0);
+  transition: opacity 280ms ease;
+}
+
+.hero-energy__scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg,
+      rgba(4, 12, 30, var(--scene-night-top-opacity, 0.58)) 0%,
+      rgba(4, 12, 26, 0.22) 26%,
+      rgba(0, 0, 0, 0) 50%,
+      rgba(0, 0, 0, var(--scene-night-bottom-opacity, 0.10)) 100%),
+    radial-gradient(circle at var(--scene-light-x, 82%) 10%, rgba(168, 194, 242, var(--scene-night-glow-opacity, 0.08)) 0%, rgba(168, 194, 242, 0) 19%),
+    radial-gradient(ellipse at 18% 5%, rgba(12, 28, 72, 0.18), transparent 22%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-energy__scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 16%, rgba(0, 0, 0, var(--scene-night-bottom-opacity, 0.18)) 100%),
+    radial-gradient(circle at 50% 100%, rgba(3, 9, 17, 0.26), transparent 44%);
+}
+
+.hero-energy__scene.is-daylight::before {
+  background:
+    linear-gradient(180deg,
+      rgba(90, 172, 255, var(--scene-day-sky-opacity, 0.16)) 0%,
+      rgba(140, 205, 255, calc(var(--scene-day-sky-opacity, 0.16) * 0.55)) 24%,
+      rgba(0, 0, 0, 0) 50%),
+    radial-gradient(circle at var(--scene-light-x, 50%) 10%, rgba(255, 215, 90, var(--scene-day-glow-opacity, 0.12)) 0%, rgba(255, 215, 90, 0) 22%),
+    radial-gradient(ellipse at 28% 0%, rgba(135, 196, 255, 0.12), transparent 26%);
+}
+
+.hero-energy__scene.is-daylight::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.16) 100%),
+    radial-gradient(circle at 50% 100%, rgba(3, 9, 17, 0.20), transparent 44%);
+}
+
+.hero-energy__weather-chip {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9be8ff;
+  background: rgba(5, 15, 28, 0.52);
+  border: 1px solid rgba(114, 219, 255, 0.20);
+  backdrop-filter: blur(8px);
+}
+
+.hero-energy__weather {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hero-energy__weather-layer {
+  position: absolute;
+  inset: -12%;
+  opacity: 0;
+  transition: opacity 360ms ease;
+}
+
+.hero-energy__weather-layer--cloud {
+  background:
+    radial-gradient(circle at 20% 24%, rgba(188, 212, 242, 0.16), transparent 22%),
+    radial-gradient(circle at 68% 14%, rgba(188, 212, 242, 0.14), transparent 26%),
+    radial-gradient(circle at 82% 26%, rgba(188, 212, 242, 0.12), transparent 20%);
+  filter: blur(18px);
+  animation: hero-energy-cloud-drift 28s linear infinite;
+}
+
+.hero-energy__weather-layer--mist {
+  inset: auto -8% -4% -8%;
+  height: 42%;
+  background:
+    radial-gradient(circle at 24% 55%, rgba(200, 216, 236, 0.16), transparent 26%),
+    radial-gradient(circle at 72% 48%, rgba(200, 216, 236, 0.14), transparent 24%),
+    linear-gradient(180deg, rgba(180, 202, 227, 0), rgba(180, 202, 227, 0.12));
+  filter: blur(18px);
+}
+
+.hero-energy__weather-layer--rain {
+  --rain-base-duration: 1.45s;
+  --rain-far-duration: 2.5s;
+  --rain-near-duration: 1.02s;
+  --rain-base-blur: 0.35px;
+  --rain-far-opacity: 0.48;
+  --rain-near-opacity: 0.28;
+  background-image:
+    repeating-linear-gradient(102deg, rgba(157, 210, 255, 0) 0 18px, rgba(175, 223, 255, 0.12) 18px 19px, rgba(157, 210, 255, 0) 19px 44px),
+    repeating-linear-gradient(103deg, rgba(157, 210, 255, 0) 0 38px, rgba(202, 236, 255, 0.14) 38px 40px, rgba(157, 210, 255, 0) 40px 92px);
+  background-size: 210px 210px, 300px 300px;
+  filter: blur(var(--rain-base-blur));
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  animation: hero-energy-rainfall var(--rain-base-duration) linear infinite;
+}
+
+.hero-energy__weather-layer--rain::before,
+.hero-energy__weather-layer--rain::after {
+  content: "";
+  position: absolute;
+  inset: -6%;
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+.hero-energy__weather-layer--rain::before {
+  opacity: var(--rain-far-opacity);
+  background-image: repeating-linear-gradient(101deg, rgba(157, 210, 255, 0) 0 28px, rgba(190, 228, 255, 0.11) 28px 29px, rgba(157, 210, 255, 0) 29px 62px);
+  background-size: 260px 260px;
+  filter: blur(0.75px);
+  animation: hero-energy-rainfall-far var(--rain-far-duration) linear infinite;
+}
+
+.hero-energy__weather-layer--rain::after {
+  opacity: var(--rain-near-opacity);
+  background-image: repeating-linear-gradient(104deg, rgba(157, 210, 255, 0) 0 23px, rgba(214, 242, 255, 0.22) 23px 25px, rgba(157, 210, 255, 0) 25px 54px);
+  background-size: 170px 170px;
+  filter: blur(0.18px);
+  animation: hero-energy-rainfall-near var(--rain-near-duration) linear infinite;
+}
+
+.hero-energy__weather-layer--flash {
+  --lightning-duration: 6.8s;
+  background:
+    radial-gradient(circle at 54% 18%, rgba(225, 244, 255, 0.34), transparent 14%),
+    radial-gradient(circle at 60% 34%, rgba(174, 220, 255, 0.18), transparent 28%),
+    radial-gradient(circle at 78% 16%, rgba(214, 236, 255, 0.18), transparent 18%),
+    linear-gradient(180deg, rgba(196, 228, 255, 0.12), rgba(196, 228, 255, 0) 42%);
+  mix-blend-mode: screen;
+  will-change: opacity, filter;
+}
+
+.hero-energy__weather-layer--flash::before,
+.hero-energy__weather-layer--flash::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  will-change: opacity, transform, filter;
+}
+
+.hero-energy__weather-layer--flash::before {
+  top: 7%;
+  left: 55%;
+  width: 15%;
+  height: 48%;
+  background:
+    linear-gradient(166deg, transparent 0 32%, rgba(246, 252, 255, 0.98) 32% 38%, transparent 38% 100%),
+    linear-gradient(198deg, transparent 0 42%, rgba(193, 231, 255, 0.92) 42% 48%, transparent 48% 100%),
+    linear-gradient(162deg, transparent 0 62%, rgba(240, 250, 255, 0.88) 62% 67%, transparent 67% 100%);
+  filter: drop-shadow(0 0 8px rgba(214, 240, 255, 0.95)) drop-shadow(0 0 18px rgba(168, 214, 255, 0.55));
+  transform: skewX(-8deg);
+}
+
+.hero-energy__weather-layer--flash::after {
+  top: 20%;
+  left: 60%;
+  width: 11%;
+  height: 24%;
+  background:
+    linear-gradient(152deg, transparent 0 38%, rgba(239, 249, 255, 0.92) 38% 44%, transparent 44% 100%),
+    linear-gradient(212deg, transparent 0 50%, rgba(177, 223, 255, 0.82) 50% 56%, transparent 56% 100%);
+  filter: drop-shadow(0 0 6px rgba(214, 240, 255, 0.85));
+  transform: skewX(-18deg) rotate(-4deg);
+}
+
+@keyframes hero-energy-cloud-drift {
+  from { transform: translateX(-2%); }
+  to { transform: translateX(2%); }
+}
+
+@keyframes hero-energy-rainfall {
+  from { transform: translate3d(1%, -10%, 0); }
+  to { transform: translate3d(-3%, 12%, 0); }
+}
+
+@keyframes hero-energy-rainfall-far {
+  from { transform: translate3d(2%, -14%, 0) scale(1); }
+  to { transform: translate3d(-4%, 10%, 0) scale(1.02); }
+}
+
+@keyframes hero-energy-rainfall-near {
+  from { transform: translate3d(0, -12%, 0) scale(1); }
+  to { transform: translate3d(-6%, 16%, 0) scale(1.04); }
+}
+
+@keyframes hero-energy-storm-flash {
+  0%, 82%, 100% { opacity: 0; filter: brightness(1); }
+  83% { opacity: 0.06; filter: brightness(1.02); }
+  84% { opacity: 0.30; filter: brightness(1.18); }
+  84.6% { opacity: 0.10; filter: brightness(1.04); }
+  85.3% { opacity: 0.46; filter: brightness(1.32); }
+  86.1% { opacity: 0.14; filter: brightness(1.06); }
+  87.2% { opacity: 0.24; filter: brightness(1.14); }
+  88.8% { opacity: 0.04; filter: brightness(1.01); }
+}
+
+@keyframes hero-energy-lightning-bolt {
+  0%, 82%, 100% { opacity: 0; }
+  84% { opacity: 0.86; }
+  84.4% { opacity: 0.16; }
+  85.3% { opacity: 1; }
+  85.8% { opacity: 0.24; }
+  87.1% { opacity: 0.52; }
+  88% { opacity: 0; }
+}
+
+@keyframes hero-energy-lightning-branch {
+  0%, 82.4%, 100% { opacity: 0; }
+  84.1% { opacity: 0.26; }
+  85.35% { opacity: 0.72; }
+  85.9% { opacity: 0.14; }
+  87.15% { opacity: 0.34; }
+  88.1% { opacity: 0; }
+}
+
+.hero-energy__scene.weather-cloudy .hero-energy__weather-layer--cloud {
+  opacity: 0.28;
+}
+
+.hero-energy__scene.weather-drizzle .hero-energy__weather-layer--cloud {
+  opacity: 0.24;
+}
+
+.hero-energy__scene.weather-drizzle .hero-energy__weather-layer--mist {
+  opacity: 0.22;
+}
+
+.hero-energy__scene.weather-drizzle .hero-energy__weather-layer--rain {
+  opacity: 0.15;
+  --rain-base-duration: 2.8s;
+  --rain-far-duration: 3.9s;
+  --rain-near-duration: 2.15s;
+  --rain-base-blur: 0.5px;
+  --rain-far-opacity: 0.28;
+  --rain-near-opacity: 0.14;
+}
+
+.hero-energy__scene.weather-rain .hero-energy__weather-layer--cloud {
+  opacity: 0.22;
+}
+
+.hero-energy__scene.weather-rain .hero-energy__weather-layer--rain {
+  opacity: 0.34;
+  --rain-far-opacity: 0.54;
+  --rain-near-opacity: 0.32;
+}
+
+.hero-energy__scene.weather-storm .hero-energy__weather-layer--cloud {
+  opacity: 0.26;
+}
+
+.hero-energy__scene.weather-storm .hero-energy__weather-layer--rain {
+  opacity: 0.32;
+  --rain-base-duration: 1.12s;
+  --rain-far-duration: 1.85s;
+  --rain-near-duration: 0.82s;
+  --rain-base-blur: 0.45px;
+  --rain-far-opacity: 0.62;
+  --rain-near-opacity: 0.38;
+}
+
+.hero-energy__scene.weather-storm .hero-energy__weather-layer--flash {
+  animation: hero-energy-storm-flash var(--lightning-duration) linear infinite;
+}
+
+.hero-energy__scene.weather-storm .hero-energy__weather-layer--flash::before {
+  animation: hero-energy-lightning-bolt var(--lightning-duration) linear infinite;
+}
+
+.hero-energy__scene.weather-storm .hero-energy__weather-layer--flash::after {
+  animation: hero-energy-lightning-branch var(--lightning-duration) linear infinite;
+}
+
+.hero-energy__wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+  mix-blend-mode: normal;
+  --hero-conduit-aura-width: 22;
+  --hero-conduit-shell-width: 13;
+  --hero-conduit-lane-width: 7;
+  --hero-flow-width: 4.2;
+}
+
+.hero-energy__route {
+  --flow-color: var(--hero-energy-cyan);
+}
+
+.hero-energy__route--solar {
+  --flow-color: var(--hero-energy-solar);
+}
+
+.hero-energy__route--home {
+  --flow-color: var(--hero-energy-home);
+}
+
+.hero-energy__route--grid {
+  --flow-color: var(--hero-energy-grid-import);
+}
+
+.hero-energy__route--battery {
+  --flow-color: var(--hero-energy-battery-charge);
+}
+
+.hero-energy__scene[data-grid-flow="export"] .hero-energy__route--grid {
+  --flow-color: var(--hero-energy-grid-export);
+}
+
+.hero-energy__scene[data-grid-flow="idle"] .hero-energy__route--grid {
+  --flow-color: rgba(164, 187, 208, 0.75);
+}
+
+.hero-energy__scene[data-battery-mode="discharge"] .hero-energy__route--battery {
+  --flow-color: var(--hero-energy-battery-discharge);
+}
+
+.hero-energy__scene[data-battery-mode="idle"] .hero-energy__route--battery {
+  --flow-color: rgba(164, 187, 208, 0.75);
+}
+
+.hero-energy__flow-track,
+.hero-energy__flow-path {
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hero-energy__flow-track--aura {
+  stroke-width: var(--hero-conduit-aura-width);
+  stroke: color-mix(in srgb, var(--flow-color) 54%, transparent);
+  opacity: 0.16;
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--flow-color) 62%, transparent));
+  animation: hero-energy-flow-aura 4.25s ease-in-out infinite;
+}
+
+.hero-energy__flow-track--jacket {
+  stroke-width: var(--hero-conduit-shell-width);
+  stroke: color-mix(in srgb, rgba(6, 14, 26, 0.92) 76%, var(--flow-color) 24%);
+  opacity: 0.98;
+  filter: drop-shadow(0 6px 12px rgba(4, 10, 20, 0.34));
+}
+
+.hero-energy__flow-track--sheen {
+  stroke-width: var(--hero-conduit-lane-width);
+  stroke: color-mix(in srgb, rgba(144, 214, 255, 0.22) 12%, var(--flow-color) 88%);
+  opacity: 0.34;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--flow-color) 44%, transparent));
+}
+
+.hero-energy__flow-path {
+  stroke-width: var(--hero-flow-width);
+  stroke: color-mix(in srgb, white 18%, var(--flow-color) 82%);
+  opacity: var(--flow-opacity, 0.24);
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--flow-color) 80%, transparent))
+    drop-shadow(0 0 18px color-mix(in srgb, var(--flow-color) 62%, transparent));
+}
+
+.hero-energy__flow-path.is-active {
+  stroke-dasharray: 10 24 3 54;
+  opacity: 0.96;
+  animation: hero-energy-flow-dash var(--flow-speed, 3125ms) linear infinite;
+}
+
+.hero-energy__flow-path.is-active.is-reverse {
+  animation-direction: reverse;
+}
+
+.hero-energy__flow-path.is-idle,
+.hero-energy__flow-path:not(.is-active) {
+  opacity: 0;
+  pointer-events: none;
+  filter: none;
+}
+
+@keyframes hero-energy-flow-dash {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -420; }
+}
+
+@keyframes hero-energy-flow-aura {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.24; }
+}
+
+.hero-energy__anchor-line {
+  stroke: rgba(214, 239, 255, 0.34);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 7;
+  fill: none;
+  filter: drop-shadow(0 0 4px rgba(120, 210, 255, 0.18));
+}
+
+.hero-energy__anchor-dot {
+  fill: rgba(198, 235, 255, 0.72);
+  stroke: rgba(255, 255, 255, 0.94);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 10px rgba(126, 219, 255, 0.55));
+}
+
+.hero-energy__anchor-dot--solar {
+  fill: color-mix(in srgb, var(--hero-energy-solar) 60%, transparent);
+  stroke: var(--hero-energy-solar);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--hero-energy-solar) 90%, transparent));
+}
+
+.hero-energy__anchor-dot--home {
+  fill: color-mix(in srgb, var(--hero-energy-home) 60%, transparent);
+  stroke: var(--hero-energy-home);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--hero-energy-home) 90%, transparent));
+}
+
+.hero-energy__anchor-dot--hub {
+  fill: color-mix(in srgb, var(--hero-energy-cyan) 60%, transparent);
+  stroke: var(--hero-energy-cyan);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--hero-energy-cyan) 90%, transparent));
+}
+
+.hero-energy__node,
+.hero-energy__hub {
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 6;
+  color: #f7fbff;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.20);
+  animation: hero-energy-node-rise 520ms cubic-bezier(.18, .9, .24, 1) both;
+}
+
+.hero-energy__node--home {
+  animation-delay: 60ms;
+}
+
+.hero-energy__hub {
+  animation-delay: 90ms;
+}
+
+.hero-energy__node--grid {
+  animation-delay: 130ms;
+}
+
+@keyframes hero-energy-node-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-energy__node {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px 11px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(4, 15, 28, 0.56), rgba(4, 12, 22, 0.80));
+  border: 1px solid rgba(100, 205, 255, 0.18);
+}
+
+.hero-energy__node-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.hero-energy__hub-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px 8px;
+  flex-wrap: wrap;
+}
+
+.hero-energy__title,
+.hero-energy__hub-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #9be8ff;
+}
+
+.hero-energy__node-state,
+.hero-energy__hub-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hero-energy__node strong {
+  white-space: nowrap;
+  font-size: clamp(22px, 5.4cqw, 34px);
+  line-height: 0.92;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 12px rgba(126, 231, 135, 0.08);
+}
+
+.hero-energy__node small {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.90);
+}
+
+.hero-energy__node--solar {
+  left: 2%;
+  top: 3%;
+  width: 44%;
+  overflow: hidden;
+}
+
+.hero-energy__node--solar strong {
+  color: var(--hero-energy-solar);
+}
+
+.hero-energy__node--home {
+  left: 2%;
+  bottom: 5%;
+  width: 40%;
+}
+
+.hero-energy__node--home strong {
+  color: var(--hero-energy-home);
+}
+
+.hero-energy__hub {
+  right: 2%;
+  bottom: 5%;
+  left: auto;
+  top: auto;
+  width: 46%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(5, 15, 28, 0.64), rgba(4, 11, 21, 0.82));
+  border: 1px solid rgba(114, 219, 255, 0.24);
+}
+
+.hero-energy__scene[data-battery-mode="charge"] .hero-energy__hub-state {
+  background: rgba(126, 231, 135, 0.10);
+  border: 1px solid rgba(126, 231, 135, 0.24);
+  color: #8ff5aa;
+}
+
+.hero-energy__scene[data-battery-mode="discharge"] .hero-energy__hub-state {
+  background: rgba(248, 81, 73, 0.14);
+  border: 1px solid rgba(248, 81, 73, 0.30);
+  color: #ff938d;
+}
+
+.hero-energy__scene[data-battery-mode="idle"] .hero-energy__hub-state {
+  background: rgba(114, 219, 255, 0.10);
+  border: 1px solid rgba(114, 219, 255, 0.18);
+  color: #9be8ff;
+}
+
+.hero-energy__hub-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  justify-content: center;
+  column-gap: 14px;
+  margin-top: 8px;
+}
+
+.hero-energy__hub-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  justify-items: center;
   text-align: center;
 }
 
-.status-battery__main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+.hero-energy__hub-power {
+  font-size: 1.4rem;
+  line-height: 0.96;
+  font-weight: 700;
+  letter-spacing: -0.04em;
 }
 
-.status-battery__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  border: 1px solid rgba(83, 113, 148, 0.45);
-  background: linear-gradient(180deg, rgba(22, 34, 52, 0.9), rgba(13, 22, 34, 0.88));
-  box-shadow: inset 0 0 0 1px rgba(120, 172, 231, 0.08);
+.hero-energy__scene[data-battery-mode="charge"] .hero-energy__hub-power {
+  color: var(--hero-energy-battery-charge);
+}
+
+.hero-energy__scene[data-battery-mode="discharge"] .hero-energy__hub-power {
+  color: var(--hero-energy-battery-discharge);
+}
+
+.hero-energy__scene[data-battery-mode="idle"] .hero-energy__hub-power {
+  color: var(--hero-energy-cyan);
+}
+
+.hero-energy__hub-soc {
+  font-size: clamp(42px, 9.6cqw, 72px);
+  line-height: 0.86;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  color: var(--hero-energy-grid-import);
+  text-shadow: 0 0 18px rgba(88, 166, 255, 0.18);
+}
+
+.hero-energy__hub-energy {
+  font-size: 12px;
+  color: rgba(214, 224, 236, 0.78);
+}
+
+.hero-energy__hub-visual {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  width: auto;
   flex-shrink: 0;
 }
 
-.status-battery__numbers {
-  text-align: left;
+.hero-energy__battery-icon {
+  position: relative;
+  width: 46px;
+  height: 72px;
+  display: inline-block;
+  border-radius: 12px 12px 10px 10px;
+  background: linear-gradient(180deg, rgba(10, 18, 31, 0.24), rgba(10, 18, 31, 0.08));
+  border: 1px solid rgba(168, 186, 206, 0.34);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 24px rgba(166, 199, 255, 0.10);
 }
 
-.status-battery__power {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 1.38rem;
-  color: #ff6b6b;
-  font-weight: 700;
-  line-height: 1.1;
+.hero-energy__battery-icon::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 12px;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(168, 186, 206, 0.48);
 }
 
-.status-battery__power small {
-  font-size: 0.82rem;
-  color: #8ea8c6;
-  font-weight: 600;
+.hero-energy__battery-icon-fill {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  max-height: calc(100% - 8px);
+  height: var(--hero-battery-fill-pct);
+  border-radius: 8px;
+  transition: height 500ms ease, background 300ms ease;
 }
 
-.status-battery__soc {
-  font-size: 2.12rem;
-  font-weight: 800;
-  color: #58a6ff;
-  line-height: 1.08;
-  margin-top: 5px;
+.hero-energy__scene[data-battery-mode="charge"] .hero-energy__battery-icon-fill {
+  background: linear-gradient(180deg, #50b95d, #2a993d);
+  box-shadow: 0 0 14px rgba(80, 185, 93, 0.28);
 }
 
-.status-battery__energy {
-  margin-top: 4px;
-  font-size: 0.75rem;
-  color: #8ea8c6;
+.hero-energy__scene[data-battery-mode="discharge"] .hero-energy__battery-icon-fill {
+  background: linear-gradient(180deg, #ff8d88, var(--hero-energy-battery-discharge));
+  box-shadow: 0 0 14px rgba(248, 81, 73, 0.26);
 }
 
-.status-temp-row {
+.hero-energy__scene[data-battery-mode="idle"] .hero-energy__battery-icon-fill {
+  background: linear-gradient(180deg, #b6d9ff, #58a6ff);
+  box-shadow: 0 0 14px rgba(88, 166, 255, 0.2);
+}
+
+/* ── Battery charge / discharge animations ────────────────── */
+@keyframes hero-battery-charge-glow {
+  0%, 100% { box-shadow: 0 0 14px rgba(80, 185, 93, 0.28); }
+  50%       { box-shadow: 0 0 26px rgba(80, 185, 93, 0.68), 0 0 46px rgba(80, 185, 93, 0.20); }
+}
+
+@keyframes hero-battery-discharge-glow {
+  0%, 100% { box-shadow: 0 0 14px rgba(248, 81, 73, 0.26); }
+  50%       { box-shadow: 0 0 26px rgba(248, 81, 73, 0.62), 0 0 46px rgba(248, 81, 73, 0.18); }
+}
+
+@keyframes hero-battery-shimmer {
+  0%   { transform: translateY(110%); opacity: 0; }
+  18%  { opacity: 0.75; }
+  82%  { opacity: 0.52; }
+  100% { transform: translateY(-110%); opacity: 0; }
+}
+
+.hero-energy__battery-icon-fill {
+  overflow: hidden;
+}
+
+.hero-energy__scene[data-battery-mode="charge"] .hero-energy__battery-icon {
+  animation: hero-battery-charge-glow 2.4s ease-in-out infinite;
+}
+
+.hero-energy__scene[data-battery-mode="charge"] .hero-energy__battery-icon-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58) 0%, rgba(255, 255, 255, 0) 64%);
+  border-radius: inherit;
+  animation: hero-battery-shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.hero-energy__scene[data-battery-mode="discharge"] .hero-energy__battery-icon {
+  animation: hero-battery-discharge-glow 1.8s ease-in-out infinite;
+}
+
+.hero-energy__node--grid {
+  right: 2%;
+  top: 3%;
+  left: auto;
+  width: 37%;
+}
+
+.hero-energy__node--grid strong {
+  color: var(--hero-energy-grid-import);
+}
+
+.hero-energy__scene[data-grid-flow="export"] .hero-energy__node--grid strong {
+  color: var(--hero-energy-grid-export);
+}
+
+.hero-energy__scene[data-grid-flow="idle"] .hero-energy__node--grid strong {
+  color: #9be8ff;
+  text-shadow: none;
+}
+
+.hero-energy__scene[data-grid-flow="import"] .hero-energy__node--grid .hero-energy__node-state {
+  background: rgba(255, 184, 109, 0.12);
+  border: 1px solid rgba(255, 184, 109, 0.24);
+  color: #ffc98c;
+}
+
+.hero-energy__scene[data-grid-flow="export"] .hero-energy__node--grid .hero-energy__node-state {
+  background: rgba(126, 231, 135, 0.10);
+  border: 1px solid rgba(126, 231, 135, 0.24);
+  color: #8ff5aa;
+}
+
+.hero-energy__scene[data-grid-flow="idle"] .hero-energy__node--grid .hero-energy__node-state {
+  background: rgba(114, 219, 255, 0.10);
+  border: 1px solid rgba(114, 219, 255, 0.18);
+  color: #9be8ff;
+}
+
+.hero-energy__temps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  padding: 0 14px 14px;
+  margin-top: 12px;
 }
 
-.status-temp {
-  background: rgba(7, 12, 21, 0.72);
-  border: 1px solid rgba(52, 77, 111, 0.42);
-  border-radius: 10px;
+.hero-energy__temp {
   padding: 10px 8px;
   text-align: center;
+  border-radius: 12px;
+  background: rgba(7, 12, 21, 0.72);
+  border: 1px solid rgba(52, 77, 111, 0.42);
 }
 
-.status-temp span {
+.hero-energy__temp span {
   display: block;
   font-size: 0.66rem;
   color: #8ea8c6;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 
-.status-temp strong {
+.hero-energy__temp strong {
   display: block;
   margin-top: 4px;
-  font-size: 1.14rem;
+  font-size: 1.02rem;
   color: #7ee787;
+}
+
+@container hero-energy-scene (min-width: 740px) {
+  .hero-energy__scene {
+    background-size: auto 92%;
+    background-position: center 58%;
+  }
+}
+
+@container hero-energy-scene (min-width: 940px) {
+  .hero-energy__scene {
+    background-size: auto 88%;
+    background-position: center 60%;
+  }
+}
+
+@container hero-energy-scene (max-width: 760px) {
+  .hero-energy__scene {
+    aspect-ratio: 5 / 4;
+  }
+
+  .hero-energy__node,
+  .hero-energy__hub {
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+  }
+
+  .hero-energy__node-state,
+  .hero-energy__hub-state {
+    font-size: 9px;
+    padding: 3px 7px;
+  }
+
+  .hero-energy__node--home {
+    width: 39%;
+    bottom: 4%;
+  }
+
+  .hero-energy__hub {
+    width: 45%;
+    bottom: 4%;
+  }
+
+  .hero-energy__hub-main {
+    column-gap: 12px;
+  }
+
+  .hero-energy__battery-icon {
+    width: 40px;
+    height: 62px;
+  }
+}
+
+@container hero-energy-scene (max-width: 640px) {
+  .hero-energy__scene {
+    aspect-ratio: 21 / 19;
+    background-size: auto 100%;
+    background-position: center 58%;
+  }
+
+  .hero-energy__node--solar,
+  .hero-energy__node--grid {
+    top: 2.5%;
+  }
+
+  .hero-energy__node--solar {
+    width: 43%;
+  }
+
+  .hero-energy__node--grid {
+    width: 35%;
+  }
+
+  .hero-energy__node--home {
+    width: 37%;
+    bottom: 3.5%;
+  }
+
+  .hero-energy__hub {
+    width: 44%;
+    bottom: 3.5%;
+  }
+
+  .hero-energy__anchor-line,
+  .hero-energy__anchor-dot {
+    display: none;
+  }
+}
+
+@container hero-energy-scene (max-width: 500px) {
+  .hero-energy__scene {
+    aspect-ratio: 7 / 9;
+    background-size: 100% auto;
+    background-position: center 58%;
+  }
+
+  .hero-energy__orb {
+    transition-duration: 420ms;
+  }
+
+  /* Hide battery visual at small sizes to keep hub compact */
+  .hero-energy__hub-visual {
+    display: none;
+  }
+
+  .hero-energy__wires {
+    --hero-conduit-aura-width: 18;
+    --hero-conduit-shell-width: 11;
+    --hero-conduit-lane-width: 6;
+    --hero-flow-width: 3.75;
+  }
+
+  .hero-energy__node,
+  .hero-energy__hub {
+    padding: 8px 10px 9px;
+    border-radius: 12px;
+    box-shadow: 0 9px 18px rgba(0, 0, 0, 0.17);
+  }
+
+  .hero-energy__title,
+  .hero-energy__hub-title {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+
+  .hero-energy__node-state,
+  .hero-energy__hub-state {
+    font-size: 8px;
+    padding: 2px 6px;
+  }
+
+  .hero-energy__node strong {
+    font-size: clamp(18px, 6.8cqw, 28px);
+  }
+
+  .hero-energy__node small,
+  .hero-energy__hub-energy {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .hero-energy__hub-soc {
+    font-size: clamp(34px, 11.8cqw, 56px);
+  }
+
+  .hero-energy__node--solar {
+    left: 3%;
+    top: 3%;
+    width: 41%;
+  }
+
+  .hero-energy__node--grid {
+    right: 3%;
+    top: 3%;
+    width: 38%;
+  }
+
+  .hero-energy__node--home {
+    left: 3%;
+    bottom: 3%;
+    width: 34%;
+  }
+
+  .hero-energy__hub {
+    right: 3%;
+    bottom: 3%;
+    width: 47%;
+    padding: 10px 12px;
+  }
+
+  .hero-energy__hub-top {
+    justify-content: center;
+  }
+
+  .hero-energy__hub-main {
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .hero-energy__hub-copy {
+    gap: 3px;
+  }
+
+  .hero-energy__battery-icon {
+    width: 32px;
+    height: 48px;
+  }
+}
+
+@container hero-energy-scene (max-width: 430px) {
+  .hero-energy__scene {
+    aspect-ratio: 5 / 6;
+    background-size: 100% auto;
+  }
+
+  .hero-energy__wires {
+    --hero-conduit-aura-width: 16;
+    --hero-conduit-shell-width: 10;
+    --hero-conduit-lane-width: 5.4;
+    --hero-flow-width: 3.5;
+  }
+
+  .hero-energy__node--solar {
+    width: 41%;
+  }
+
+  .hero-energy__node--grid {
+    width: 39%;
+  }
+
+  .hero-energy__node--grid .hero-energy__node-top {
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .hero-energy__node--grid strong {
+    font-size: clamp(16px, 5.4cqw, 22px);
+  }
+
+  .hero-energy__node--home {
+    width: 34%;
+  }
+
+  .hero-energy__hub {
+    width: 50%;
+  }
+
+  .hero-energy__hub-top {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .hero-energy__hub-main {
+    gap: 6px;
+    margin-top: 5px;
+  }
+
+  .hero-energy__hub-soc {
+    font-size: clamp(30px, 11cqw, 46px);
+  }
+
+  .hero-energy__hub-power,
+  .hero-energy__hub-energy {
+    font-size: 10px;
+  }
+}
+
+@container hero-energy-scene (max-width: 380px) {
+  .hero-energy__scene {
+    aspect-ratio: 4 / 5;
+  }
+
+  .hero-energy__orb {
+    width: calc(var(--scene-orb-size, 32px) * 0.9);
+    height: calc(var(--scene-orb-size, 32px) * 0.9);
+  }
+
+  .hero-energy__node,
+  .hero-energy__hub {
+    padding: 7px 9px 8px;
+  }
+
+  .hero-energy__node-state,
+  .hero-energy__hub-state {
+    font-size: 7px;
+    padding: 2px 5px;
+  }
+
+  .hero-energy__node strong {
+    font-size: clamp(16px, 6.2cqw, 24px);
+  }
+
+  .hero-energy__hub-soc {
+    font-size: clamp(27px, 10.2cqw, 40px);
+  }
+
+  .hero-energy__node--solar {
+    width: 42%;
+  }
+
+  .hero-energy__node--grid {
+    width: 40%;
+  }
+
+  .hero-energy__node--grid .hero-energy__node-top {
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .hero-energy__node--grid strong {
+    font-size: clamp(15px, 5.1cqw, 20px);
+  }
+
+  .hero-energy__node--home {
+    width: 35%;
+  }
+
+  .hero-energy__hub {
+    width: 50%;
+  }
+
+  .hero-energy__battery-icon {
+    width: 26px;
+    height: 39px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-energy__weather-layer--cloud,
+  .hero-energy__weather-layer--rain,
+  .hero-energy__weather-layer--flash,
+  .hero-energy__flow-track--aura,
+  .hero-energy__flow-path,
+  .hero-energy__node,
+  .hero-energy__hub,
+  .hero-energy__battery-icon,
+  .hero-energy__battery-icon-fill::after {
+    animation: none !important;
+  }
 }
 
 .price-summary {
@@ -2674,11 +3773,6 @@ section { padding: 80px 0; }
     gap: 12px;
   }
 
-  .status-flow,
-  .status-temp-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .price-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2709,6 +3803,10 @@ section { padding: 80px 0; }
     font-size: 0.95rem;
   }
 
+  .product-card__sub {
+    font-size: 0.7rem;
+  }
+
   .product-badge {
     padding: 3px 8px;
     font-size: 0.58rem;
@@ -2718,68 +3816,83 @@ section { padding: 80px 0; }
     font-size: 0.62rem;
   }
 
-  .status-flow {
-    padding: 10px;
-    gap: 8px;
-  }
-
-  .status-flow__tile {
-    min-height: 82px;
-    padding: 8px 6px;
-  }
-
-  .status-flow__icon {
-    font-size: 1.02rem;
-  }
-
-  .status-flow__tile strong {
-    font-size: 1.16rem;
-  }
-
-  .status-flow__tile small {
-    font-size: 0.66rem;
-  }
-
-  .status-battery {
-    margin: 0 10px 8px;
+  .hero-energy {
     padding: 10px;
   }
 
-  .status-battery__main {
-    gap: 8px;
-    justify-content: flex-start;
+  .hero-energy__scene {
+    min-height: 318px;
   }
 
-  .status-battery__icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    font-size: 1.04rem;
+  .hero-energy__node {
+    padding: 10px 11px;
+    gap: 5px;
   }
 
-  .status-battery__power {
-    font-size: 1.12rem;
+  .hero-energy__chip {
+    font-size: 0.58rem;
+    padding: 4px 7px;
   }
 
-  .status-battery__soc {
-    font-size: 1.64rem;
+  .hero-energy__glyph {
+    width: 26px;
+    height: 26px;
+    font-size: 0.92rem;
   }
 
-  .status-battery__energy {
+  .hero-energy__node strong {
+    font-size: 1.18rem;
+  }
+
+  .hero-energy__node small {
     font-size: 0.68rem;
   }
 
-  .status-temp-row {
-    gap: 8px;
-    padding: 0 10px 10px;
+  .hero-energy__hub {
+    width: min(52%, 196px);
+    min-width: 0;
+    max-width: 196px;
+    padding: 10px 11px;
   }
 
-  .status-temp {
+  .hero-energy__hub-power {
+    font-size: clamp(1rem, 5.2cqw, 1.18rem);
+  }
+
+  .hero-energy__hub-soc {
+    font-size: clamp(1.6rem, 12cqw, 2.4rem);
+  }
+
+  .hero-energy__hub-energy {
+    font-size: 0.66rem;
+  }
+
+  .hero-energy__battery-icon {
+    width: 38px;
+    height: 60px;
+  }
+
+  .hero-energy__bank {
+    right: 10%;
+    gap: 6px;
+  }
+
+  .hero-energy__bank-module {
+    width: 21px;
+    height: 64px;
+  }
+
+  .hero-energy__temps {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .hero-energy__temp {
     padding: 8px 6px;
   }
 
-  .status-temp strong {
-    font-size: 0.96rem;
+  .hero-energy__temp strong {
+    font-size: 0.92rem;
   }
 
   .price-summary {
@@ -2916,8 +4029,6 @@ section { padding: 80px 0; }
     padding: 8px;
   }
 
-  .status-flow,
-  .status-temp-row,
   .price-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -3085,82 +4196,6 @@ section { padding: 80px 0; }
   .weather-card small,
   .weather-card__stats span {
     font-size: 0.58rem;
-  }
-
-  .status-flow {
-    padding: 8px;
-    gap: 6px;
-  }
-
-  .status-flow__tile {
-    min-height: 64px;
-    padding: 6px 4px;
-  }
-
-  .status-flow__icon {
-    font-size: 0.9rem;
-  }
-
-  .status-flow__tile strong {
-    font-size: 0.94rem;
-  }
-
-  .status-flow__tile small {
-    font-size: 0.57rem;
-  }
-
-  .status-battery {
-    margin: 0 8px 6px;
-    padding: 8px;
-  }
-
-  .status-battery__main {
-    gap: 6px;
-    justify-content: flex-start;
-  }
-
-  .status-battery__icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
-    font-size: 0.9rem;
-  }
-
-  .status-battery__power {
-    font-size: 0.94rem;
-    gap: 4px;
-  }
-
-  .status-battery__power small {
-    font-size: 0.63rem;
-  }
-
-  .status-battery__soc {
-    font-size: 1.34rem;
-    margin-top: 3px;
-  }
-
-  .status-battery__energy {
-    font-size: 0.6rem;
-    margin-top: 2px;
-  }
-
-  .status-temp-row {
-    gap: 6px;
-    padding: 0 8px 8px;
-  }
-
-  .status-temp {
-    padding: 6px 4px;
-  }
-
-  .status-temp span {
-    font-size: 0.56rem;
-  }
-
-  .status-temp strong {
-    font-size: 0.76rem;
-    margin-top: 2px;
   }
 
   .price-summary {
