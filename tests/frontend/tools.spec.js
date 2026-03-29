@@ -17,6 +17,8 @@ test.describe('Public Tools', () => {
     const page = await context.newPage();
 
     await page.goto('/index.html');
+    await expect(page.locator('.hero-preview')).toBeVisible();
+    await expect(page.locator('.hero-poster')).toHaveCount(0);
     await expect(page.locator('#heroEnergyScene')).toBeVisible();
 
     const layout = await page.evaluate(() => {

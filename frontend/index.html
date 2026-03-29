@@ -160,7 +160,6 @@
     ]
   }
   </script>
-  <link rel="preload" as="image" href="/images/screenshots/optimized/hero-poster-900.webp" imagesrcset="/images/screenshots/optimized/hero-poster-640.webp 640w, /images/screenshots/optimized/hero-poster-900.webp 900w" imagesizes="(max-width: 540px) calc(100vw - 32px), 92vw" media="(max-width: 900px)">
   <link rel="stylesheet" href="/css/landing.css">
 </head>
 <body>
@@ -242,20 +241,6 @@
         <span class="brand-sep">&nbsp;+&nbsp;</span>
         <span class="brand-badge brand-badge--tesla">Tesla EV Integration</span>
       </div>
-
-      <picture class="hero-poster">
-        <source
-          type="image/webp"
-          srcset="/images/screenshots/optimized/hero-poster-640.webp 640w, /images/screenshots/optimized/hero-poster-900.webp 900w"
-          sizes="(max-width: 540px) calc(100vw - 32px), 92vw">
-        <img
-          src="/images/screenshots/optimized/hero-poster-640.webp"
-          alt="SoCrates dashboard showing battery state, live pricing, active rules, and savings"
-          width="3838"
-          height="1438"
-          decoding="async"
-          fetchpriority="high">
-      </picture>
 
       <!-- Animated app preview window -->
       <div class="hero-preview hero-preview--interactive" aria-hidden="true">
@@ -1427,9 +1412,7 @@
     }
 
     var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var enableInteractiveHero = !prefersReducedMotion &&
-      (window.matchMedia ? window.matchMedia('(min-width: 901px)').matches : window.innerWidth > 900) &&
-      !!document.querySelector('.hero-preview--interactive');
+    var enableInteractiveHero = !!document.querySelector('.hero-preview--interactive');
 
     /* ── Hero live data ticker ───────────────────────── */
     var soc = 76;
@@ -2006,8 +1989,11 @@
       }
 
       updateHero();
-      setInterval(tickHeroCountdown, 1000);
-      setInterval(updateHero, 2800);
+
+      if (!prefersReducedMotion) {
+        setInterval(tickHeroCountdown, 1000);
+        setInterval(updateHero, 2800);
+      }
     }
 
     /* ── Hero toast ──────────────────────────────────── */
@@ -2037,7 +2023,7 @@
       showToast(m[0], m[1]);
     }
 
-    if (enableInteractiveHero) {
+    if (enableInteractiveHero && !prefersReducedMotion) {
       setTimeout(function () {
         emitHeroToast();
       }, 1800);

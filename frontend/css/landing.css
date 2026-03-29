@@ -1653,23 +1653,6 @@ section { padding: 80px 0; }
 /* ============================================================
    HERO PREVIEW (product-inspired)
    ============================================================ */
-.hero-poster {
-  display: none;
-  order: 2;
-  width: min(100%, 900px);
-  margin: 32px auto 0;
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid rgba(83, 116, 162, 0.44);
-  background: linear-gradient(180deg, #0d1523 0%, #08111e 100%);
-  box-shadow: 0 24px 72px rgba(2, 7, 15, 0.44);
-}
-
-.hero-poster img {
-  width: 100%;
-  height: auto;
-}
-
 .hero-preview {
   order: 2;
   margin: 56px auto 0;
@@ -3913,12 +3896,7 @@ section { padding: 80px 0; }
     -webkit-backdrop-filter: none;
   }
 
-  .hero-poster {
-    display: block;
-  }
-
   .hero-preview {
-    display: none;
     border-radius: 18px;
   }
 
@@ -4177,11 +4155,6 @@ section { padding: 80px 0; }
 }
 
 @media (max-width: 540px) {
-  .hero-poster {
-    margin-top: 26px;
-    border-radius: 14px;
-  }
-
   .hero-preview {
     margin-top: 26px;
     border-radius: 14px;
