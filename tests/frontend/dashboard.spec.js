@@ -491,6 +491,89 @@ test.describe('Dashboard Page', () => {
     expect(skyState.nightGlowOpacity).toBeLessThan(0.02);
   });
 
+  test('should darken the inverter scene and lift stars during clear nights in light theme', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-NIGHT-LIGHT-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.addInitScript(() => {
+      window.localStorage.setItem('uiTheme', 'light');
+      const weatherData = {
+        current: {
+          weathercode: 0,
+          is_day: 0,
+          time: '2026-03-29T21:30'
+        },
+        daily: {
+          sunrise: ['2026-03-29T06:03'],
+          sunset: ['2026-03-29T18:01']
+        }
+      };
+      localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+      localStorage.setItem('cacheState', JSON.stringify({
+        weatherTime: Date.now(),
+        weatherDays: 6,
+        weatherDate: new Date().toISOString().substring(0, 10)
+      }));
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-NIGHT-LIGHT-001',
+            time: '2026-03-29T21:30:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 61, unit: '%' },
+              { variable: 'pvPower', value: 0, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.2, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.4, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0.8, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).not.toHaveClass(/is-daylight/);
+    const nightState = await page.locator('#inverterCard .energy-scene').evaluate((el) => {
+      const stars = el.querySelector('.energy-scene__stars');
+      const parseRgb = (value) => {
+        const match = String(value || '').match(/rgba?\(([^)]+)\)/i);
+        if (!match) return null;
+        const rgb = match[1].split(',').slice(0, 3).map((part) => parseFloat(part.trim()));
+        return rgb.every((component) => Number.isFinite(component)) ? rgb : null;
+      };
+
+      const backgroundRgb = parseRgb(window.getComputedStyle(el).backgroundColor);
+      const backgroundLuminance = Array.isArray(backgroundRgb)
+        ? ((0.2126 * backgroundRgb[0]) + (0.7152 * backgroundRgb[1]) + (0.0722 * backgroundRgb[2])) / 255
+        : null;
+
+      return {
+        phase: el.getAttribute('data-sky-phase'),
+        starsOpacity: stars ? parseFloat(window.getComputedStyle(stars).opacity) : null,
+        backgroundBlendMode: window.getComputedStyle(el).backgroundBlendMode,
+        backgroundLuminance
+      };
+    });
+
+    expect(nightState.phase).toBe('night');
+    expect(nightState.starsOpacity).not.toBeNull();
+    expect(nightState.starsOpacity).toBeGreaterThan(0.75);
+    expect(nightState.backgroundBlendMode).toContain('multiply');
+    expect(nightState.backgroundLuminance).not.toBeNull();
+    expect(nightState.backgroundLuminance).toBeLessThan(0.6);
+  });
+
   test('should keep the api metrics footer fixed in light theme on desktop and phone', async ({ page }) => {
     await mockDashboardConfig(page, {
       deviceProvider: 'foxess',
@@ -572,6 +655,61 @@ test.describe('Dashboard Page', () => {
 
     expect(timeChipStyle.display).toContain('flex');
     expect(timeChipStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+    const lightThemeCableStyle = await page.evaluate(() => {
+      const parseStrokeColor = (value) => {
+        const colorValue = String(value || '').trim();
+        const rgbaMatch = colorValue.match(/rgba?\(([^)]+)\)/i);
+        if (rgbaMatch) {
+          const rgb = rgbaMatch[1].split(',').slice(0, 3).map((part) => parseFloat(part.trim()));
+          return rgb.every((component) => Number.isFinite(component)) ? rgb : null;
+        }
+
+        const srgbMatch = colorValue.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
+        if (srgbMatch) {
+          const rgb = srgbMatch.slice(1, 4).map((part) => parseFloat(part) * 255);
+          return rgb.every((component) => Number.isFinite(component)) ? rgb : null;
+        }
+
+        const hexMatch = colorValue.match(/^#([\da-f]{6})$/i);
+        if (hexMatch) {
+          return [0, 2, 4].map((offset) => parseInt(hexMatch[1].slice(offset, offset + 2), 16));
+        }
+
+        return null;
+      };
+
+      const readStroke = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+
+        const style = window.getComputedStyle(el);
+        const rgb = parseStrokeColor(style.stroke);
+        const luminance = Array.isArray(rgb) && rgb.length === 3 && rgb.every((value) => Number.isFinite(value))
+          ? ((0.2126 * rgb[0]) + (0.7152 * rgb[1]) + (0.0722 * rgb[2])) / 255
+          : null;
+
+        return {
+          stroke: style.stroke,
+          strokeWidth: parseFloat(style.strokeWidth),
+          opacity: parseFloat(style.opacity),
+          luminance
+        };
+      };
+
+      return {
+        jacket: readStroke('#inverterCard .energy-flow-track--jacket[style*="--flow-color:var(--energy-home)"]'),
+        flow: readStroke('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-home)"]')
+      };
+    });
+
+    expect(lightThemeCableStyle.jacket).not.toBeNull();
+    expect(lightThemeCableStyle.flow).not.toBeNull();
+    expect(lightThemeCableStyle.jacket.strokeWidth).toBeGreaterThan(lightThemeCableStyle.flow.strokeWidth);
+    expect(lightThemeCableStyle.jacket.luminance).not.toBeNull();
+    expect(lightThemeCableStyle.flow.luminance).not.toBeNull();
+    expect(lightThemeCableStyle.jacket.luminance).toBeLessThan(lightThemeCableStyle.flow.luminance);
+    expect(lightThemeCableStyle.flow.opacity).toBeGreaterThan(0.2);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect

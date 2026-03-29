@@ -1787,6 +1787,13 @@
                                 <span></span>
                                 <span></span>
                                 <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
                             </div>
                             <span class="energy-scene__orb"></span>
                         </div>
@@ -2163,6 +2170,8 @@
             scene.classList.add(state.isDay ? 'is-daylight' : 'is-night');
             scene.setAttribute('data-weather-effect', state.effect);
             scene.setAttribute('data-weather-label', state.label || 'Clear');
+            scene.style.backgroundBlendMode = '';
+            scene.style.backgroundColor = '';
             if (window.SoCratesSceneSky && typeof window.SoCratesSceneSky.apply === 'function') {
                 window.SoCratesSceneSky.apply(scene, {
                     isDay: state.isDay,
