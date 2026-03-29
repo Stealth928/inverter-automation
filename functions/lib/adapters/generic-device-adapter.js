@@ -82,7 +82,8 @@ class GenericReadonlyDeviceAdapter extends DeviceAdapter {
   async getStatus(_context = {}) {
     return {
       ...this._status,
-      observedAtIso: new Date().toISOString()
+      observedAtIso: new Date().toISOString(),
+      telemetryTimestampTrust: 'synthetic'
     };
   }
 

@@ -294,6 +294,693 @@ test.describe('Dashboard Page', () => {
     expect(hasInverterData).toBeTruthy();
   });
 
+  test('should render the live inverter house flow scene', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 26.4, unit: '°C' },
+              { variable: 'ambientTemperation', value: 22.8, unit: '°C' },
+              { variable: 'invTemperation', value: 34.9, unit: '°C' },
+              { variable: 'pv1power', value: 1.43, unit: 'kW' },
+              { variable: 'pv2power', value: 1.13, unit: 'kW' },
+              { variable: 'pv3power', value: 0.97, unit: 'kW' },
+              { variable: 'pv4power', value: 0.67, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+    await expect(page.locator('#solar-tile')).toContainText('4.20 kW');
+    await expect(page.locator('#inverterCard .energy-node--home')).toContainText('1.85 kW');
+    await expect(page.locator('#solar-tile .energy-node__state')).toHaveCount(0);
+    await expect(page.locator('#inverterCard .energy-node--home .energy-node__state')).toHaveCount(0);
+    await expect(page.locator('#inverterCard .energy-node--grid')).toContainText('1.62 kW');
+    await expect(page.locator('#inverterCard .energy-node--grid')).toContainText('Export');
+    await expect(page.locator('#inverterLastUpdate')).toContainText('Data age:');
+    await expect(page.locator('#inverterFetchLabel')).toContainText('Last checked:');
+    await expect(page.locator('#inverterCard .energy-core--hub')).toContainText('68%');
+    await expect(page.locator('#inverterCard .energy-core--hub')).not.toContainText('Battery level');
+    const homeFlow = page.locator('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-home)"]').first();
+    await expect(homeFlow).not.toHaveClass(/is-reverse/);
+    const exportGridFlow = page.locator('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-grid-export)"]').first();
+    await expect(exportGridFlow).toHaveClass(/is-reverse/);
+    await expect
+      .poll(async () => exportGridFlow.evaluate((el) => window.getComputedStyle(el).animationDirection))
+      .toBe('reverse');
+    const sceneBackground = await page.locator('#inverterCard .energy-scene').evaluate((el) => {
+      return window.getComputedStyle(el).backgroundImage;
+    });
+    expect(sceneBackground).toContain('house-3d-iso.png');
+  });
+
+  test('should keep the api metrics footer fixed in light theme on desktop and phone', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'LIGHT-THEME-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.addInitScript(() => {
+      window.localStorage.setItem('uiTheme', 'light');
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'LIGHT-THEME-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 56, unit: '%' },
+              { variable: 'pvPower', value: 0.22, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.22, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 25.7, unit: '°C' },
+              { variable: 'ambientTemperation', value: 30.2, unit: '°C' },
+              { variable: 'invTemperation', value: 22.8, unit: '°C' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/metrics/api-calls*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          '2026-03-29': {
+            foxess: 3,
+            amber: 1,
+            weather: 2,
+            ev: 0
+          }
+        }
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('.inverter-card-header__subtitle')).toHaveText('Live power flow across solar, home, grid, and battery.');
+    await expect(page.locator('#inverterLastUpdate')).toContainText('Data age:');
+    await expect(page.locator('#inverterFetchLabel')).toContainText('Last checked:');
+    await expect(page.locator('#apiMetricsFooter')).toContainText('Inv: 3');
+
+    const desktopFooterStyle = await page.locator('#apiMetricsFooter').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        position: style.position,
+        top: style.top,
+        right: style.right,
+        backgroundColor: style.backgroundColor
+      };
+    });
+
+    expect(desktopFooterStyle.position).toBe('fixed');
+    expect(desktopFooterStyle.top).toBe('60px');
+    expect(desktopFooterStyle.right).toBe('12px');
+    expect(desktopFooterStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+    const timeChipStyle = await page.locator('#inverterLastUpdate').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        display: style.display,
+        backgroundColor: style.backgroundColor
+      };
+    });
+
+    expect(timeChipStyle.display).toContain('flex');
+    expect(timeChipStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(async () => page.locator('#apiMetricsFooter').evaluate((el) => window.getComputedStyle(el).left))
+      .toBe('12px');
+
+    const mobileFooterStyle = await page.locator('#apiMetricsFooter').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        position: style.position,
+        left: style.left,
+        bottom: style.bottom,
+        justifyContent: style.justifyContent,
+        pointerEvents: style.pointerEvents
+      };
+    });
+
+    expect(mobileFooterStyle.position).toBe('fixed');
+    expect(mobileFooterStyle.left).toBe('12px');
+    expect(mobileFooterStyle.bottom).not.toBe('auto');
+    expect(mobileFooterStyle.justifyContent).toBe('flex-start');
+    expect(mobileFooterStyle.pointerEvents).toBe('none');
+
+    await expect(page.locator('#inverterCard .energy-node--grid')).toContainText('Balanced');
+    await expect
+      .poll(async () => page.locator('#inverterCard .energy-node--grid .energy-node__value').evaluate((el) => window.getComputedStyle(el).color))
+      .toBe('rgb(95, 106, 120)');
+  });
+
+  test('should condense the inverter header on phone without dropping telemetry', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'PHONE-HEADER-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'PHONE-HEADER-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 56, unit: '%' },
+              { variable: 'pvPower', value: 0.22, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.22, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 25.7, unit: '°C' },
+              { variable: 'ambientTemperation', value: 30.2, unit: '°C' },
+              { variable: 'invTemperation', value: 22.8, unit: '°C' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('.inverter-card-header__subtitle')).toHaveText('Live power flow across solar, home, grid, and battery.');
+    await expect(page.locator('#inverterSourceBadge')).toContainText('Live');
+    await expect(page.locator('#inverterLastUpdate')).toContainText('Data age:');
+    await expect(page.locator('#inverterFetchLabel')).toContainText('Last checked:');
+
+    const headerMetrics = await page.locator('[data-dashboard-card="inverter"] .inverter-card-header').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        height: el.getBoundingClientRect().height,
+        rowGap: style.rowGap,
+        paddingTop: style.paddingTop,
+        paddingBottom: style.paddingBottom
+      };
+    });
+
+    expect(headerMetrics.height).toBeLessThan(120);
+    expect(headerMetrics.rowGap).toBe('8px');
+    expect(headerMetrics.paddingTop).toBe('10px');
+    expect(headerMetrics.paddingBottom).toBe('8px');
+
+    const chipMetrics = await page.locator('#inverterLastUpdate').evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return {
+        minHeight: style.minHeight,
+        fontSize: style.fontSize
+      };
+    });
+
+    expect(chipMetrics.minHeight).toBe('28px');
+    expect(chipMetrics.fontSize).toBe('10px');
+  });
+
+  test('should classify drizzle separately from heavier rain in the inverter scene', async ({ page }) => {
+    const effects = await page.evaluate(() => ({
+      drizzle: getInverterSceneWeatherState({
+        current: { weathercode: 51, is_day: 1, cloudcover: 78 }
+      }).effect,
+      rain: getInverterSceneWeatherState({
+        current: { weathercode: 63, is_day: 1, cloudcover: 78 }
+      }).effect
+    }));
+
+    expect(effects.drizzle).toBe('drizzle');
+    expect(effects.rain).toBe('rain');
+  });
+
+  test('should place the weather map in the top-right without Open-Meteo copy', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess'
+    });
+
+    await page.addInitScript(() => {
+      window.L = {
+        map(id) {
+          const container = document.getElementById(id);
+          return {
+            _container: container,
+            setView() { return this; },
+            getContainer() { return this._container; },
+            remove() {},
+            invalidateSize() {},
+            removeLayer() {}
+          };
+        },
+        tileLayer() {
+          return {
+            on() { return this; },
+            addTo() { return this; }
+          };
+        },
+        circleMarker() {
+          return {
+            addTo() {
+              return {
+                setLatLng() { return this; }
+              };
+            }
+          };
+        }
+      };
+
+      const weatherData = {
+        place: {
+          query: 'Sydney, Australia',
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          temperature: 23,
+          time: '2026-03-29T14:30',
+          weathercode: 1,
+          windspeed: 18,
+          winddirection: 140,
+          cloudcover: 24,
+          shortwave_radiation: 612
+        },
+        daily: {
+          time: ['2026-03-29', '2026-03-30', '2026-03-31'],
+          weathercode: [1, 3, 61],
+          temperature_2m_max: [26, 24, 22],
+          temperature_2m_min: [18, 17, 16],
+          precipitation_sum: [0, 0.4, 8.3],
+          sunrise: ['2026-03-29T06:03', '2026-03-30T06:04', '2026-03-31T06:05'],
+          sunset: ['2026-03-29T18:01', '2026-03-30T18:00', '2026-03-31T17:59']
+        },
+        hourly: {
+          time: ['2026-03-29T14:30', '2026-03-30T12:00', '2026-03-31T12:00'],
+          shortwave_radiation: [612, 320, 110],
+          cloudcover: [24, 46, 81]
+        }
+      };
+
+      try {
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.setItem('cacheState', JSON.stringify({
+          weatherTime: Date.now(),
+          weatherDays: 6,
+          weatherDate: new Date().toISOString().substring(0, 10)
+        }));
+      } catch (error) {
+        // ignore localStorage write issues in tests
+      }
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('[data-dashboard-card="weather"] .card-header')).not.toContainText(/Open-Meteo/i);
+    await expect(page.locator('#weatherCard')).not.toContainText(/open-meteo/i);
+    await expect(page.locator('#weatherCard .weather-map')).toBeVisible();
+
+    const layout = await page.evaluate(() => {
+      const readRect = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const { left, right, top, bottom, width, height } = el.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+
+      return {
+        summary: readRect('#weatherCard .weather-card-summary'),
+        map: readRect('#weatherCard .weather-map'),
+        forecast: readRect('#weatherCard .weather-card-forecast')
+      };
+    });
+
+    expect(layout.summary).not.toBeNull();
+    expect(layout.map).not.toBeNull();
+    expect(layout.forecast).not.toBeNull();
+    expect(layout.map.left - layout.summary.right).toBeGreaterThanOrEqual(8);
+    expect(layout.map.top).toBeLessThan(layout.forecast.top);
+    expect(layout.forecast.top).toBeGreaterThanOrEqual(layout.map.bottom - 1);
+    expect(layout.map.width).toBeLessThan(layout.forecast.width);
+  });
+
+  test('should keep the house scene tiles separated in the three-column desktop layout', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-DESKTOP-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-DESKTOP-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 26.4, unit: 'Â°C' },
+              { variable: 'ambientTemperation', value: 22.8, unit: 'Â°C' },
+              { variable: 'invTemperation', value: 34.9, unit: 'Â°C' },
+              { variable: 'pv1power', value: 1.43, unit: 'kW' },
+              { variable: 'pv2power', value: 1.13, unit: 'kW' },
+              { variable: 'pv3power', value: 0.97, unit: 'kW' },
+              { variable: 'pv4power', value: 0.67, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+
+    const layout = await page.locator('#inverterCard .energy-scene').evaluate(() => {
+      const readRect = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const { left, right, top, bottom, width, height } = el.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+
+      return {
+        scene: readRect('#inverterCard .energy-scene'),
+        solar: readRect('#solar-tile'),
+        grid: readRect('#inverterCard .energy-node--grid'),
+        home: readRect('#inverterCard .energy-node--home'),
+        hub: readRect('#inverterCard .energy-core--hub')
+      };
+    });
+
+    const cards = [layout.scene, layout.solar, layout.grid, layout.home, layout.hub];
+    cards.forEach((card) => expect(card).not.toBeNull());
+    expect(layout.scene.width).toBeGreaterThan(520);
+    expect(layout.scene.width).toBeLessThan(760);
+
+    const overlaps = (a, b) => (
+      a.left < b.right &&
+      a.right > b.left &&
+      a.top < b.bottom &&
+      a.bottom > b.top
+    );
+
+    expect(overlaps(layout.solar, layout.grid)).toBeFalsy();
+    expect(overlaps(layout.solar, layout.home)).toBeFalsy();
+    expect(overlaps(layout.solar, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.grid, layout.home)).toBeFalsy();
+    expect(overlaps(layout.grid, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.home, layout.hub)).toBeFalsy();
+
+    expect(layout.grid.left - layout.solar.right).toBeGreaterThan(16);
+    expect(layout.hub.left - layout.home.right).toBeGreaterThan(16);
+    expect(layout.home.top - layout.solar.bottom).toBeGreaterThan(18);
+    expect(layout.hub.top - layout.grid.bottom).toBeGreaterThan(18);
+  });
+
+  test('should scale the house artwork down on very wide inverter scenes', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-WIDE-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-WIDE-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.setViewportSize({ width: 2560, height: 1200 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+
+    const artLayout = await page.locator('#inverterCard .energy-scene').evaluate((el) => {
+      const sceneRect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      const artAspect = 1072 / 1024;
+      const sizeParts = String(style.backgroundSize || '').trim().split(/\s+/);
+      const widthToken = sizeParts[0] || '';
+      const heightToken = sizeParts[1] || '';
+      const resolveSizeToken = (token, basis) => {
+        if (!token || token === 'auto') return null;
+        if (token.endsWith('%')) {
+          const value = parseFloat(token);
+          return Number.isFinite(value) ? basis * (value / 100) : null;
+        }
+        const value = parseFloat(token);
+        return Number.isFinite(value) ? value : null;
+      };
+
+      let backgroundWidthPx = resolveSizeToken(widthToken, sceneRect.width);
+      let backgroundHeightPx = resolveSizeToken(heightToken, sceneRect.height);
+
+      if (!Number.isFinite(backgroundWidthPx) && Number.isFinite(backgroundHeightPx)) {
+        backgroundWidthPx = backgroundHeightPx * artAspect;
+      }
+      if (!Number.isFinite(backgroundHeightPx) && Number.isFinite(backgroundWidthPx)) {
+        backgroundHeightPx = backgroundWidthPx / artAspect;
+      }
+
+      return {
+        sceneWidth: sceneRect.width,
+        sceneHeight: sceneRect.height,
+        backgroundSize: style.backgroundSize,
+        backgroundPosition: style.backgroundPosition,
+        backgroundWidthPx: Number.isFinite(backgroundWidthPx) ? backgroundWidthPx : null,
+        backgroundHeightPx: Number.isFinite(backgroundHeightPx) ? backgroundHeightPx : null
+      };
+    });
+
+    expect(artLayout.sceneWidth).toBeGreaterThan(740);
+    expect(artLayout.backgroundWidthPx).not.toBeNull();
+    expect(artLayout.backgroundHeightPx).not.toBeNull();
+    expect(artLayout.backgroundWidthPx).toBeLessThan(artLayout.sceneWidth * 0.9);
+    expect(artLayout.backgroundHeightPx).toBeLessThan(artLayout.sceneHeight * 0.95);
+  });
+
+  test('should keep the house scene tiles separated on phone-sized viewports while preserving the flows', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-NARROW-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-NARROW-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 26.4, unit: 'Â°C' },
+              { variable: 'ambientTemperation', value: 22.8, unit: 'Â°C' },
+              { variable: 'invTemperation', value: 34.9, unit: 'Â°C' },
+              { variable: 'pv1power', value: 1.43, unit: 'kW' },
+              { variable: 'pv2power', value: 1.13, unit: 'kW' },
+              { variable: 'pv3power', value: 0.97, unit: 'kW' },
+              { variable: 'pv4power', value: 0.67, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+
+    const layout = await page.locator('#inverterCard .energy-scene').evaluate(() => {
+      const artAspect = 1072 / 1024;
+      const readRect = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const { left, right, top, bottom, width, height } = el.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+      const scene = document.querySelector('#inverterCard .energy-scene');
+      const sceneStyle = scene ? window.getComputedStyle(scene) : null;
+      const backgroundSizeParts = String(sceneStyle?.backgroundSize || '').trim().split(/\s+/);
+      const widthToken = backgroundSizeParts[0] || '';
+      const heightToken = backgroundSizeParts[1] || '';
+      const resolveSizeToken = (token, basis) => {
+        if (!token || token === 'auto') return null;
+        if (token.endsWith('%')) {
+          const value = parseFloat(token);
+          return Number.isFinite(value) ? basis * (value / 100) : null;
+        }
+        const value = parseFloat(token);
+        return Number.isFinite(value) ? value : null;
+      };
+      const sceneRect = scene ? scene.getBoundingClientRect() : null;
+      let backgroundWidthPx = sceneRect ? resolveSizeToken(widthToken, sceneRect.width) : null;
+      let backgroundHeightPx = sceneRect ? resolveSizeToken(heightToken, sceneRect.height) : null;
+
+      if (!Number.isFinite(backgroundWidthPx) && Number.isFinite(backgroundHeightPx)) {
+        backgroundWidthPx = backgroundHeightPx * artAspect;
+      }
+      if (!Number.isFinite(backgroundHeightPx) && Number.isFinite(backgroundWidthPx)) {
+        backgroundHeightPx = backgroundWidthPx / artAspect;
+      }
+
+      return {
+        scene: readRect('#inverterCard .energy-scene'),
+        solar: readRect('#solar-tile'),
+        grid: readRect('#inverterCard .energy-node--grid'),
+        home: readRect('#inverterCard .energy-node--home'),
+        hub: readRect('#inverterCard .energy-core--hub'),
+        soc: readRect('#inverterCard .energy-core__soc'),
+        statePill: readRect('#inverterCard .energy-core__state'),
+        wiringDisplay: document.querySelector('#inverterCard .energy-scene__wiring')
+          ? window.getComputedStyle(document.querySelector('#inverterCard .energy-scene__wiring')).display
+          : null,
+        activeFlowCount: document.querySelectorAll('#inverterCard .energy-flow-path.is-active').length,
+        backgroundSize: sceneStyle ? sceneStyle.backgroundSize : null,
+        backgroundWidthPx: Number.isFinite(backgroundWidthPx) ? backgroundWidthPx : null,
+        backgroundHeightPx: Number.isFinite(backgroundHeightPx) ? backgroundHeightPx : null
+      };
+    });
+
+    const cards = [layout.scene, layout.solar, layout.grid, layout.home, layout.hub];
+    cards.forEach((card) => expect(card).not.toBeNull());
+    expect(layout.soc).not.toBeNull();
+    expect(layout.statePill).not.toBeNull();
+
+    const overlaps = (a, b) => (
+      a.left < b.right &&
+      a.right > b.left &&
+      a.top < b.bottom &&
+      a.bottom > b.top
+    );
+
+    expect(overlaps(layout.solar, layout.grid)).toBeFalsy();
+    expect(overlaps(layout.solar, layout.home)).toBeFalsy();
+    expect(overlaps(layout.solar, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.grid, layout.home)).toBeFalsy();
+    expect(overlaps(layout.grid, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.home, layout.hub)).toBeFalsy();
+    expect(overlaps(layout.soc, layout.statePill)).toBeFalsy();
+    expect(layout.wiringDisplay).not.toBe('none');
+    expect(layout.activeFlowCount).toBeGreaterThanOrEqual(4);
+    expect(layout.backgroundWidthPx).not.toBeNull();
+    expect(layout.backgroundHeightPx).not.toBeNull();
+    expect(layout.backgroundWidthPx / layout.backgroundHeightPx).toBeCloseTo(1072 / 1024, 2);
+    expect(layout.backgroundWidthPx).toBeLessThanOrEqual(layout.scene.width * 1.01);
+    expect(layout.backgroundHeightPx).toBeLessThan(layout.scene.height);
+  });
+
+  test('should show frozen telemetry duration instead of latest sample age in automation failsafe UI', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FROZEN-UI-001'
+    });
+
+    const frozenStatus = {
+      enabled: true,
+      inBlackout: false,
+      lastCheck: Date.now(),
+      telemetryFailsafePaused: true,
+      telemetryFailsafePauseReason: 'frozen_telemetry',
+      telemetryAgeMs: 35000,
+      telemetryTimestampTrust: 'synthetic',
+      telemetryFingerprintSinceMs: Date.now() - (61 * 60 * 1000),
+      userTimezone: 'Australia/Sydney',
+      rules: {}
+    };
+
+    await page.route('**/api/automation/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: frozenStatus
+      }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: frozenStatus
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?telemetryFrozenUi=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#backendAutomationStatus')).toContainText('unchanged for 1h');
+    await expect(page.locator('#backendAutomationStatus')).not.toContainText('unchanged for 35s');
+    await expect(page.locator('#backendAutomationStatus')).toContainText('timestamp was inferred');
+  });
+
   test('should have automation toggle control', async ({ page }) => {
     // Look for toggle switch or button
     const toggle = await page.locator('input[type="checkbox"], button:has-text("Enable"), button:has-text("Disable"), .toggle').count();
@@ -408,6 +1095,80 @@ test.describe('Dashboard Page', () => {
 
     await weatherToggle.uncheck();
     await expect(page.locator('#priorityRow')).toBeHidden();
+  });
+
+  test('should cap the inverter scene width when it is the only visible priority card', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SCENE-SOLO-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SCENE-SOLO-001',
+            time: '2026-03-28T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' },
+              { variable: 'batTemperature', value: 26.4, unit: 'Â°C' },
+              { variable: 'ambientTemperation', value: 22.8, unit: 'Â°C' },
+              { variable: 'invTemperation', value: 34.9, unit: 'Â°C' },
+              { variable: 'pv1power', value: 1.43, unit: 'kW' },
+              { variable: 'pv2power', value: 1.13, unit: 'kW' },
+              { variable: 'pv3power', value: 0.97, unit: 'kW' },
+              { variable: 'pv4power', value: 0.67, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#inverterCard .energy-scene')).toBeVisible();
+
+    await page.locator('[data-dashboard-toggle="prices"]').uncheck();
+    await page.locator('[data-dashboard-toggle="weather"]').uncheck();
+
+    const visiblePriorityCards = page.locator('#priorityRow [data-dashboard-card]:not(.is-hidden-preference)');
+    await expect(visiblePriorityCards).toHaveCount(1);
+
+    const layout = await page.evaluate(() => {
+      const readRect = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const { left, right, top, bottom, width, height } = el.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+
+      return {
+        priorityRow: readRect('#priorityRow'),
+        inverterCard: readRect('#inverterCard'),
+        scene: readRect('#inverterCard .energy-scene')
+      };
+    });
+
+    expect(layout.priorityRow).not.toBeNull();
+    expect(layout.inverterCard).not.toBeNull();
+    expect(layout.scene).not.toBeNull();
+    expect(layout.inverterCard.width).toBeLessThanOrEqual(922);
+    expect(layout.priorityRow.width).toBeGreaterThan(layout.inverterCard.width + 100);
+    expect(Math.abs(
+      (layout.priorityRow.left + (layout.priorityRow.width / 2)) -
+      (layout.inverterCard.left + (layout.inverterCard.width / 2))
+    )).toBeLessThanOrEqual(8);
+    expect(layout.scene.width).toBeLessThan(layout.priorityRow.width);
   });
 
   test('should keep EV, quick controls, and scheduler in a responsive shared row', async ({ page }) => {
@@ -539,6 +1300,118 @@ test.describe('Dashboard Page', () => {
 
     await expect(page.locator('#evSelectedSummary')).toContainText('Model 3 RWD');
     await expect(page.locator('#evSelectedSummary')).toContainText('74%');
+  });
+
+  test('should avoid duplicate quick control and automation summary fetches during dashboard startup', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'STARTUP-DEDUPE-001'
+    });
+
+    let quickControlStatusCalls = 0;
+    let automationSummaryCalls = 0;
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      quickControlStatusCalls += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          active: false,
+          provider: 'foxess'
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      automationSummaryCalls += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          inBlackout: false,
+          lastCheck: Date.now(),
+          rules: {}
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/metrics/api-calls*', async (route) => {
+      const today = new Date().toISOString().slice(0, 10);
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          [today]: {
+            foxess: 0,
+            amber: 0,
+            weather: 0,
+            ev: 0
+          }
+        }
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    quickControlStatusCalls = 0;
+    automationSummaryCalls = 0;
+    await page.goto('/app.html?startup-dedupe=1', { waitUntil: 'domcontentloaded' });
+
+    await expect.poll(() => quickControlStatusCalls).toBe(1);
+    await expect.poll(() => automationSummaryCalls).toBe(1);
+
+    await page.waitForTimeout(250);
+
+    expect(quickControlStatusCalls).toBe(1);
+    expect(automationSummaryCalls).toBe(1);
+  });
+
+  test('should preserve EV DOM nodes during unchanged silent status refreshes', async ({ page }) => {
+    let statusCallCount = 0;
+
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-model-y', displayName: 'Model Y LR' }],
+      statusByVehicleId: {
+        'veh-model-y': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache',
+            result: {
+              socPct: 58,
+              chargingState: 'stopped',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 322,
+              chargeLimitPct: 83,
+              asOfIso: '2026-03-13T00:00:00.000Z'
+            }
+          }
+        }
+      },
+      onStatusRequest: () => {
+        statusCallCount += 1;
+      }
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?ev-silent-refresh=1', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab')).toHaveCount(1);
+    await expect(page.locator('#evSelectedSummary .ev-summary-footer')).toBeVisible();
+    await expect.poll(() => statusCallCount).toBe(1);
+
+    await page.evaluate(() => {
+      const tab = document.querySelector('#evVehicleTabs .ev-vehicle-tab');
+      const footer = document.querySelector('#evSelectedSummary .ev-summary-footer');
+      if (tab) tab.setAttribute('data-render-probe', 'tab');
+      if (footer) footer.setAttribute('data-render-probe', 'footer');
+    });
+
+    await page.evaluate(() => window.refreshSelectedEVStatusOnVisibility());
+    await expect.poll(() => statusCallCount).toBe(2);
+    await page.waitForTimeout(100);
+
+    await expect(page.locator('#evVehicleTabs .ev-vehicle-tab[data-render-probe="tab"]')).toHaveCount(1);
+    await expect(page.locator('#evSelectedSummary .ev-summary-footer[data-render-probe="footer"]')).toHaveCount(1);
   });
 
   test('should show Tesla setup required when vehicle credentials are missing', async ({ page }) => {
@@ -833,6 +1706,53 @@ test.describe('Dashboard Page', () => {
 
     await expect(page.locator('#evOverviewMessage')).toContainText(/wake request accepted/i);
     expect(wakeRequests).toContainEqual({});
+  });
+
+  test('should offer manual wake when Tesla marks cached status offline via top-level reason code only', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-cache-offline', displayName: 'Model Y', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-cache-offline': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache_vehicle_offline',
+            reasonCode: 'vehicle_offline',
+            result: {
+              socPct: 75,
+              chargingState: 'charging',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 306,
+              chargeLimitPct: 100,
+              timeToFullChargeHours: 3.4,
+              asOfIso: '2026-03-29T05:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-cache-offline': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Wake Required/i);
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/CACHE_VEHICLE_OFFLINE/i);
+    await expect(page.locator('#evWakeVehicleBtn')).toBeVisible();
+    await expect(page.locator('#evSessionControlGroup')).toHaveClass(/is-hidden/);
   });
 
   test('should recommend waking when cached Tesla status says not plugged in because the plug state may be stale', async ({ page }) => {
@@ -1546,7 +2466,7 @@ test.describe('Dashboard Page', () => {
       const level = el.querySelector('.level');
       const computed = level ? window.getComputedStyle(level) : null;
       return {
-        className: el.className,
+        classList: Array.from(el.classList || []),
         fillCurrent: parseFloat(el.style.getPropertyValue('--battery-fill-current')),
         fillTarget: parseFloat(el.style.getPropertyValue('--battery-fill-target')),
         fillDurationMs: parseFloat(el.style.getPropertyValue('--battery-fill-duration')),
@@ -1556,8 +2476,8 @@ test.describe('Dashboard Page', () => {
       };
     });
 
-    expect(animationState.className).toContain('charging');
-    expect(animationState.className).toContain('is-animating');
+    expect(animationState.classList).toContain('charging');
+    expect(animationState.classList).toContain('is-animating');
     expect(animationState.fillCurrent).toBeCloseTo(0.42, 5);
     expect(animationState.fillTarget).toBe(1);
     expect(animationState.fillDurationMs).toBeGreaterThan(0);
@@ -1597,6 +2517,13 @@ test.describe('Dashboard Page', () => {
     await page.goto('about:blank');
     await page.goto('/app.html?batteryAnimationDischarge=1', { waitUntil: 'domcontentloaded' });
 
+    const batteryState = page.locator('#inverterCard .energy-core__state').first();
+    await expect(batteryState).toHaveText('Discharging');
+    await expect(batteryState).toHaveClass(/is-discharging/);
+    await expect
+      .poll(async () => batteryState.evaluate((el) => window.getComputedStyle(el).color))
+      .toBe('rgb(255, 147, 141)');
+
     const batteryIcon = page.locator('.tile-icon.battery').first();
     await expect(batteryIcon).toHaveAttribute('data-battery-animation', 'discharging');
 
@@ -1604,7 +2531,7 @@ test.describe('Dashboard Page', () => {
       const level = el.querySelector('.level');
       const computed = level ? window.getComputedStyle(level) : null;
       return {
-        className: el.className,
+        classList: Array.from(el.classList || []),
         fillCurrent: parseFloat(el.style.getPropertyValue('--battery-fill-current')),
         fillTarget: parseFloat(el.style.getPropertyValue('--battery-fill-target')),
         fillDurationMs: parseFloat(el.style.getPropertyValue('--battery-fill-duration')),
@@ -1614,8 +2541,8 @@ test.describe('Dashboard Page', () => {
       };
     });
 
-    expect(animationState.className).toContain('discharging');
-    expect(animationState.className).toContain('is-animating');
+    expect(animationState.classList).toContain('discharging');
+    expect(animationState.classList).toContain('is-animating');
     expect(animationState.fillCurrent).toBeCloseTo(0.49, 5);
     expect(animationState.fillTarget).toBe(0);
     expect(animationState.fillDurationMs).toBeGreaterThan(0);

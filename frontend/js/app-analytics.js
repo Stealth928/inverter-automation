@@ -9,6 +9,20 @@ const ANALYTICS_MAX_RETRIES = 50;
 
 let analyticsInitialized = false;
 let analyticsRetryCount = 0;
+let analyticsSkipped = false;
+
+function isLocalOrEmulatorHost() {
+  if (typeof window === 'undefined' || !window.location) {
+    return false;
+  }
+
+  const host = String(window.location.hostname || '').toLowerCase();
+  return host === 'localhost'
+    || host === '127.0.0.1'
+    || host === '::1'
+    || host.startsWith('192.168.')
+    || host.endsWith('.local');
+}
 
 function getFirebaseAppRef() {
   if (typeof firebase === 'undefined') {
@@ -47,6 +61,13 @@ function scheduleAnalyticsRetry(reason) {
 // Wait for Firebase SDK and default app to be ready.
 function initializeAnalytics() {
   if (analyticsInitialized) {
+    return;
+  }
+
+  if (!analyticsSkipped && isLocalOrEmulatorHost()) {
+    analyticsSkipped = true;
+    analyticsInitialized = true;
+    console.info('[Analytics] Skipping initialization on local/emulator host');
     return;
   }
 

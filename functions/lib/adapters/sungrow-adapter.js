@@ -334,7 +334,10 @@ class SungrowDeviceAdapter extends DeviceAdapter {
 
     const pointMap = parseRealtimeData(result.result);
     const observedAtIso = context.observedAtIso || new Date().toISOString();
-    return normalizeRealtimePoints(pointMap, observedAtIso, deviceSN);
+    return {
+      ...normalizeRealtimePoints(pointMap, observedAtIso, deviceSN),
+      telemetryTimestampTrust: context.observedAtIso ? 'source' : 'synthetic'
+    };
   }
 
   async getCapabilities(_context = {}) {

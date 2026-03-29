@@ -1,6 +1,12 @@
 'use strict';
 
-const { parseTimestampMs } = require('./automation-telemetry-health-service');
+const {
+  TELEMETRY_TIMESTAMP_TRUST_DERIVED,
+  TELEMETRY_TIMESTAMP_TRUST_SOURCE,
+  TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC,
+  normalizeTelemetryTimestampTrust,
+  parseTimestampMs
+} = require('./automation-telemetry-health-service');
 
 function getLogger(logger = console) {
   return {
@@ -21,8 +27,17 @@ function pushNumericTelemetry(datas, variable, rawValue) {
   datas.push({ variable, value });
 }
 
+function resolveStatusTelemetryTimestampTrust(status = {}) {
+  const explicitTrust = normalizeTelemetryTimestampTrust(
+    status.telemetryTimestampTrust ?? status.observedAtTrust,
+    null
+  );
+  return explicitTrust || TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC;
+}
+
 function toAutomationTelemetryFrame(status = {}) {
   const datas = [];
+  const timestampTrust = resolveStatusTelemetryTimestampTrust(status);
 
   pushNumericTelemetry(datas, 'SoC', status.socPct);
   pushNumericTelemetry(datas, 'batTemperature', status.batteryTempC);
@@ -43,6 +58,7 @@ function toAutomationTelemetryFrame(status = {}) {
 
   return {
     errno: 0,
+    telemetryTimestampTrust: timestampTrust,
     result: [{
       // Keep provider status observation time in frame for freshness checks.
       time: status.observedAtIso || new Date().toISOString(),
@@ -62,6 +78,13 @@ function ensureAutomationTelemetryTimestamp(payload, nowMs = Date.now()) {
     payload.result[0] && typeof payload.result[0] === 'object'
     ? payload.result[0]
     : null;
+  let timestampTrust = normalizeTelemetryTimestampTrust(
+    payload.telemetryTimestampTrust ??
+      payload.__telemetryTimestampTrust ??
+      payload.observedAtTrust ??
+      firstFrame?.telemetryTimestampTrust,
+    null
+  );
 
   const candidates = [
     payload.observedAtIso,
@@ -87,6 +110,13 @@ function ensureAutomationTelemetryTimestamp(payload, nowMs = Date.now()) {
     observedAtMs = Number.isFinite(cacheAgeMs) && cacheAgeMs >= 0
       ? Math.max(0, nowMs - cacheAgeMs)
       : nowMs;
+    timestampTrust = timestampTrust || (
+      Number.isFinite(cacheAgeMs) && cacheAgeMs >= 0
+        ? TELEMETRY_TIMESTAMP_TRUST_DERIVED
+        : TELEMETRY_TIMESTAMP_TRUST_SYNTHETIC
+    );
+  } else {
+    timestampTrust = timestampTrust || TELEMETRY_TIMESTAMP_TRUST_SOURCE;
   }
 
   const observedAtIso = new Date(observedAtMs).toISOString();
@@ -95,6 +125,9 @@ function ensureAutomationTelemetryTimestamp(payload, nowMs = Date.now()) {
   }
   if (firstFrame && !firstFrame.time && !firstFrame.timestamp) {
     firstFrame.time = observedAtIso;
+  }
+  if (!payload.telemetryTimestampTrust && timestampTrust) {
+    payload.telemetryTimestampTrust = timestampTrust;
   }
 
   return payload;

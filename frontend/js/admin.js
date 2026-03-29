@@ -128,6 +128,14 @@
     let usersFilterInputDebounce = null;
     let currentAdminAnnouncement = null;
     let announcementEditorBound = false;
+    let announcementAudienceCountRequestSequence = 0;
+    let announcementAudienceCountDebounce = null;
+    let announcementAudienceCountState = {
+        signature: '',
+        status: 'idle',
+        count: null,
+        error: ''
+    };
     let notificationsEditorBound = false;
     let currentAdminNotificationsConfig = null;
 
@@ -2319,6 +2327,7 @@
             previewTitle: document.getElementById('announcementPreviewTitle'),
             previewBody: document.getElementById('announcementPreviewBody'),
             previewMeta: document.getElementById('announcementPreviewMeta'),
+            audienceSummaryTitle: document.getElementById('announcementAudienceSummaryTitle'),
             audienceSummary: document.getElementById('announcementAudienceSummary')
         };
     }
@@ -2329,7 +2338,9 @@
 
         const els = getAnnouncementElements();
         const previewHandler = () => {
-            renderAnnouncementPreview(collectAdminAnnouncementForm());
+            const announcement = collectAdminAnnouncementForm();
+            renderAnnouncementPreview(announcement);
+            queueAnnouncementAudienceCountRefresh(announcement);
         };
 
         [
@@ -2381,17 +2392,135 @@
         if (Number(audience.minAccountAgeDays || 0) > 0) filters.push(`Account age >= ${Number(audience.minAccountAgeDays)} days`);
         if (!filters.length) filters.push('No automatic maturity filters');
 
-        const onlyIncludeSummary = Array.isArray(audience.onlyIncludeUids) && audience.onlyIncludeUids.length
-            ? `Only include allowlist: ${audience.onlyIncludeUids.length} user${audience.onlyIncludeUids.length === 1 ? '' : 's'}`
+        const onlyIncludeUids = Array.isArray(audience.onlyIncludeUids) ? audience.onlyIncludeUids : [];
+        const includeUids = Array.isArray(audience.includeUids) ? audience.includeUids : [];
+        const excludeUids = Array.isArray(audience.excludeUids) ? audience.excludeUids : [];
+
+        const onlyIncludeSummary = onlyIncludeUids.length
+            ? `Only include allowlist: ${onlyIncludeUids.length} user${onlyIncludeUids.length === 1 ? '' : 's'}`
             : 'Only include allowlist: none';
-        const includeSummary = Array.isArray(audience.includeUids) && audience.includeUids.length
-            ? `Always include override: ${audience.includeUids.length} user${audience.includeUids.length === 1 ? '' : 's'}`
+        const includeSummary = includeUids.length
+            ? `Always include override: ${includeUids.length} user${includeUids.length === 1 ? '' : 's'}`
             : 'Always include override: none';
-        const excludeSummary = Array.isArray(audience.excludeUids) && audience.excludeUids.length
-            ? `Always exclude override: ${audience.excludeUids.length} user${audience.excludeUids.length === 1 ? '' : 's'}`
+        const excludeSummary = excludeUids.length
+            ? `Always exclude override: ${excludeUids.length} user${excludeUids.length === 1 ? '' : 's'}`
             : 'Always exclude override: none';
 
         return [filters.join(' · '), onlyIncludeSummary, includeSummary, excludeSummary];
+    }
+
+    function buildAnnouncementAudienceSignature(announcement) {
+        const audience = announcement && announcement.audience ? announcement.audience : {};
+        return JSON.stringify({
+            requireTourComplete: audience.requireTourComplete !== false,
+            requireSetupComplete: audience.requireSetupComplete !== false,
+            requireAutomationEnabled: audience.requireAutomationEnabled === true,
+            minAccountAgeDays: Number(audience.minAccountAgeDays || 0) > 0
+                ? Math.round(Number(audience.minAccountAgeDays))
+                : null,
+            onlyIncludeUids: Array.isArray(audience.onlyIncludeUids) ? audience.onlyIncludeUids : [],
+            includeUids: Array.isArray(audience.includeUids) ? audience.includeUids : [],
+            excludeUids: Array.isArray(audience.excludeUids) ? audience.excludeUids : []
+        });
+    }
+
+    function updateAnnouncementAudienceSummaryTitle(announcement) {
+        const { audienceSummaryTitle } = getAnnouncementElements();
+        if (!audienceSummaryTitle) return;
+        audienceSummaryTitle.textContent = buildAnnouncementAudienceTitle(announcement);
+    }
+
+    async function refreshAnnouncementAudienceCount(announcement) {
+        if (!adminApiClient) return;
+        const signature = buildAnnouncementAudienceSignature(announcement);
+        const requestSequence = ++announcementAudienceCountRequestSequence;
+
+        announcementAudienceCountState = {
+            signature,
+            status: 'loading',
+            count: null,
+            error: ''
+        };
+        updateAnnouncementAudienceSummaryTitle(announcement);
+
+        try {
+            const resp = await adminApiClient.fetch('/api/admin/announcement/audience-count', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audience: announcement?.audience || {} })
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.errno !== 0) {
+                throw new Error(data.error || `Audience count failed (${resp.status})`);
+            }
+
+            if (requestSequence !== announcementAudienceCountRequestSequence) return;
+            const rawCount = Number(data.result?.count);
+            announcementAudienceCountState = {
+                signature,
+                status: 'ready',
+                count: Number.isFinite(rawCount) ? Math.max(0, Math.round(rawCount)) : 0,
+                error: ''
+            };
+        } catch (error) {
+            if (requestSequence !== announcementAudienceCountRequestSequence) return;
+            announcementAudienceCountState = {
+                signature,
+                status: 'error',
+                count: null,
+                error: error?.message || String(error)
+            };
+        } finally {
+            if (requestSequence !== announcementAudienceCountRequestSequence) return;
+            updateAnnouncementAudienceSummaryTitle(collectAdminAnnouncementForm());
+        }
+    }
+
+    function queueAnnouncementAudienceCountRefresh(announcement, options = {}) {
+        const signature = buildAnnouncementAudienceSignature(announcement);
+        const shouldForce = options.force === true;
+        const debounceMs = Number.isFinite(options.debounceMs) ? Math.max(0, Math.round(options.debounceMs)) : 350;
+
+        if (
+            !shouldForce
+            && announcementAudienceCountState.signature === signature
+            && (announcementAudienceCountState.status === 'loading' || announcementAudienceCountState.status === 'ready')
+        ) {
+            updateAnnouncementAudienceSummaryTitle(announcement);
+            return;
+        }
+
+        if (announcementAudienceCountDebounce) {
+            window.clearTimeout(announcementAudienceCountDebounce);
+            announcementAudienceCountDebounce = null;
+        }
+
+        if (debounceMs <= 0) {
+            refreshAnnouncementAudienceCount(announcement);
+            return;
+        }
+
+        announcementAudienceCountDebounce = window.setTimeout(() => {
+            announcementAudienceCountDebounce = null;
+            refreshAnnouncementAudienceCount(announcement);
+        }, debounceMs);
+    }
+
+    function buildAnnouncementAudienceTitle(announcement) {
+        const signature = buildAnnouncementAudienceSignature(announcement);
+        if (announcementAudienceCountState.signature === signature) {
+            if (announcementAudienceCountState.status === 'ready' && Number.isFinite(announcementAudienceCountState.count)) {
+                const count = announcementAudienceCountState.count;
+                return `Current audience summary · ${count} user${count === 1 ? '' : 's'} would receive this`;
+            }
+            if (announcementAudienceCountState.status === 'loading') {
+                return 'Current audience summary · calculating recipients...';
+            }
+            if (announcementAudienceCountState.status === 'error') {
+                return 'Current audience summary · recipient count unavailable';
+            }
+        }
+        return 'Current audience summary · calculating recipients...';
     }
 
     function renderAnnouncementPreview(announcement) {
@@ -2412,6 +2541,7 @@
             chips.push(`<span class="announcement-chip">ID: ${escapeHtml(announcement.id)}</span>`);
         }
         els.previewMeta.innerHTML = chips.join('');
+        updateAnnouncementAudienceSummaryTitle(announcement);
         els.audienceSummary.innerHTML = buildAudienceSummaryLines(announcement)
             .map((line) => `<div>${escapeHtml(line)}</div>`)
             .join('');
@@ -2454,6 +2584,7 @@
 
         setAnnouncementEditorWarning('');
         renderAnnouncementPreview(next);
+        queueAnnouncementAudienceCountRefresh(next, { force: true, debounceMs: 0 });
     }
 
     function collectAdminAnnouncementForm() {

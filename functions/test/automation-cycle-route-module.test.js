@@ -614,7 +614,9 @@ describe('automation cycle route module', () => {
     });
     const deps = buildDeps({
       evaluateRule: jest.fn(async () => ({ triggered: true })),
-      getCachedInverterData: jest.fn(async () => buildFreshTelemetryPayload()),
+      getCachedInverterData: jest.fn(async () => buildFreshTelemetryPayload({
+        topLevel: { telemetryTimestampTrust: 'synthetic' }
+      })),
       getQuickControlState: jest.fn(async () => null),
       getUserAutomationState: jest.fn(async () => ({
         enabled: true,
@@ -654,6 +656,8 @@ describe('automation cycle route module', () => {
         telemetry: expect.objectContaining({
           status: 'paused',
           pauseReason: 'frozen_telemetry',
+          fingerprintAgeMs: expect.any(Number),
+          timestampTrust: 'synthetic',
           frozen: true,
           frozenMaxAgeMs: 60 * 60 * 1000
         })
@@ -672,6 +676,68 @@ describe('automation cycle route module', () => {
         telemetryFailsafePaused: true,
         telemetryFailsafePauseReason: 'frozen_telemetry',
         telemetryHealthStatus: 'paused'
+      })
+    );
+  });
+
+  test('continues cycle when telemetry is steady but source timestamp is trusted', async () => {
+    const fingerprint = JSON.stringify({
+      socPct: 55,
+      pvPowerW: 1200,
+      loadPowerW: 900,
+      gridPowerW: 200,
+      feedInPowerW: 0
+    });
+    const deps = buildDeps({
+      evaluateRule: jest.fn(async () => ({ triggered: false, conditions: [] })),
+      getCachedInverterData: jest.fn(async () => buildFreshTelemetryPayload()),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({
+        enabled: true,
+        telemetryFingerprint: fingerprint,
+        telemetryFingerprintSinceMs: Date.now() - (61 * 60 * 1000)
+      })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-STEADY-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          action: { workMode: 'ForceCharge', durationMinutes: 30, minSocOnGrid: 0 }
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-steady' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app).post('/api/automation/cycle').send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 0,
+      result: expect.objectContaining({
+        triggered: false,
+        telemetry: expect.objectContaining({
+          status: 'healthy',
+          pauseReason: null,
+          timestampTrust: 'source'
+        })
+      })
+    }));
+    expect(deps.evaluateRule).toHaveBeenCalled();
+    expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
+      'u-cycle-steady',
+      expect.objectContaining({
+        telemetryFailsafePaused: false,
+        telemetryFailsafePauseReason: null,
+        telemetryHealthStatus: 'healthy',
+        telemetryTimestampTrust: 'source'
       })
     );
   });

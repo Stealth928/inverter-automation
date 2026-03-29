@@ -2974,6 +2974,17 @@
                             </div>
                         </div>
                         <div class="announcement-panel-body">
+                            <div class="an-divider">Summary</div>
+
+                            <div class="announcement-summary-list">
+                                <div class="announcement-summary-row">
+                                    <span class="announcement-summary-icon">👥</span>
+                                    <div class="announcement-summary-content">
+                                        <strong id="announcementAudienceSummaryTitle">Current audience summary</strong>
+                                        <div class="announcement-audience-list" id="announcementAudienceSummary">No filters loaded yet.</div>
+                                    </div>
+                                </div>
+                            </div>
 
                             <div class="announcement-toggle-grid">
                                 <label class="announcement-toggle">
@@ -3021,32 +3032,6 @@
                                     <label for="announcementExcludeUidsInput">Always exclude these users</label>
                                     <textarea id="announcementExcludeUidsInput" class="announcement-textarea" style="min-height:88px;" placeholder="One email or UID per line, or comma-separated"></textarea>
                                     <div class="announcement-helper">Exclude is evaluated first and overrides every other targeting rule.</div>
-                                </div>
-                            </div>
-
-                            <div class="an-divider">Summary</div>
-
-                            <div class="announcement-summary-list">
-                                <div class="announcement-summary-row">
-                                    <span class="announcement-summary-icon">⚡</span>
-                                    <div class="announcement-summary-content">
-                                        <strong>Targeting approach</strong>
-                                        <div class="announcement-meta">Uses only low-cost runtime fields: tour completion, setup completion, account age, automation enabled, plus manual only-include, include, and exclude overrides.</div>
-                                    </div>
-                                </div>
-                                <div class="announcement-summary-row">
-                                    <span class="announcement-summary-icon">🛡️</span>
-                                    <div class="announcement-summary-content">
-                                        <strong>What this avoids</strong>
-                                        <div class="announcement-meta">No GA4 per-user targeting, no scoring model, no extra background job, and no subcollection scans on every app load.</div>
-                                    </div>
-                                </div>
-                                <div class="announcement-summary-row">
-                                    <span class="announcement-summary-icon">👥</span>
-                                    <div class="announcement-summary-content">
-                                        <strong>Current audience summary</strong>
-                                        <div class="announcement-audience-list" id="announcementAudienceSummary">No filters loaded yet.</div>
-                                    </div>
                                 </div>
                             </div>
 

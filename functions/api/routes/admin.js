@@ -1171,6 +1171,114 @@ function registerAdminRoutes(app, deps = {}) {
     };
   }
 
+  const ADMIN_ANNOUNCEMENT_AUDIENCE_COUNT_MAX_CONCURRENCY = parseBoundedPositiveInt(
+    process.env.ADMIN_ANNOUNCEMENT_AUDIENCE_COUNT_MAX_CONCURRENCY,
+    12,
+    100
+  );
+
+  const userConfigMainDocRef = (uid) => db.collection('users').doc(uid).collection('config').doc('main');
+
+  async function loadUserConfigMainByUid(uids = []) {
+    const safeUids = Array.isArray(uids) ? uids.filter(Boolean) : [];
+    const configByUid = new Map();
+    if (!safeUids.length) return configByUid;
+
+    if (typeof db.getAll === 'function') {
+      const chunkSize = 300;
+      for (let index = 0; index < safeUids.length; index += chunkSize) {
+        const chunk = safeUids.slice(index, index + chunkSize);
+        const refs = chunk.map((uid) => userConfigMainDocRef(uid));
+        const snapshots = await db.getAll(...refs);
+        snapshots.forEach((snapshot, snapshotIndex) => {
+          const uid = chunk[snapshotIndex];
+          configByUid.set(uid, snapshot && snapshot.exists ? (snapshot.data() || {}) : {});
+        });
+      }
+      return configByUid;
+    }
+
+    const snapshots = await mapWithConcurrency(
+      safeUids,
+      ADMIN_ANNOUNCEMENT_AUDIENCE_COUNT_MAX_CONCURRENCY,
+      async (uid) => {
+        try {
+          return await userConfigMainDocRef(uid).get();
+        } catch (_error) {
+          return null;
+        }
+      }
+    );
+    snapshots.forEach((snapshot, index) => {
+      const uid = safeUids[index];
+      configByUid.set(uid, snapshot && snapshot.exists ? (snapshot.data() || {}) : {});
+    });
+    return configByUid;
+  }
+
+  async function countAnnouncementAudienceUsers(audienceInput = {}) {
+    const audience = normalizeAnnouncementAudience(audienceInput);
+    const usersSnapshot = await db.collection('users').get();
+    if (!usersSnapshot || !usersSnapshot.size) {
+      return 0;
+    }
+
+    const onlyInclude = new Set(audience.onlyIncludeUids || []);
+    const include = new Set(audience.includeUids || []);
+    const exclude = new Set(audience.excludeUids || []);
+    const minAgeDays = Number(audience.minAccountAgeDays || 0);
+    const nowMs = Date.now();
+
+    const initialCandidates = [];
+    usersSnapshot.forEach((doc) => {
+      const uid = doc.id;
+      const profile = (doc.data && doc.data()) || {};
+      if (!uid) return;
+      if (exclude.has(uid)) return;
+      if (onlyInclude.size && !onlyInclude.has(uid)) return;
+
+      if (include.has(uid)) {
+        initialCandidates.push(uid);
+        return;
+      }
+
+      if (audience.requireAutomationEnabled && profile.automationEnabled !== true) {
+        return;
+      }
+
+      if (minAgeDays > 0) {
+        const createdAtMs = toMs(profile.createdAt);
+        if (!Number.isFinite(createdAtMs)) return;
+        const ageMs = nowMs - createdAtMs;
+        if (ageMs < (minAgeDays * 24 * 60 * 60 * 1000)) {
+          return;
+        }
+      }
+
+      initialCandidates.push(uid);
+    });
+
+    if (!initialCandidates.length) return 0;
+    if (!audience.requireTourComplete && !audience.requireSetupComplete) {
+      return initialCandidates.length;
+    }
+
+    const configByUid = await loadUserConfigMainByUid(initialCandidates);
+    let eligibleCount = 0;
+    initialCandidates.forEach((uid) => {
+      if (include.has(uid)) {
+        eligibleCount += 1;
+        return;
+      }
+      const userConfig = configByUid.get(uid) || {};
+      if (audience.requireTourComplete && userConfig.tourComplete !== true) return;
+      if (audience.requireSetupComplete && userConfig.setupComplete !== true) return;
+      eligibleCount += 1;
+    });
+
+    return eligibleCount;
+  }
+
   app.get('/api/admin/announcement', authenticateUser, requireAdmin, async (req, res) => {
     try {
       const { announcement } = await readAnnouncementConfigDoc();
@@ -1209,6 +1317,24 @@ function registerAdminRoutes(app, deps = {}) {
       }
       console.error('[Admin] Failed to save announcement config:', error?.message || error);
       return res.status(500).json({ errno: 500, error: error?.message || 'Failed to save announcement config' });
+    }
+  });
+
+  app.post('/api/admin/announcement/audience-count', authenticateUser, requireAdmin, async (req, res) => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const audienceInput = body.audience && typeof body.audience === 'object'
+        ? body.audience
+        : (body.announcement && typeof body.announcement === 'object' ? body.announcement.audience : {});
+      const audience = await resolveAnnouncementAudience(audienceInput || {});
+      const count = await countAnnouncementAudienceUsers(audience);
+      return res.json({ errno: 0, result: { count } });
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500) {
+        return res.status(error.statusCode).json({ errno: error.statusCode, error: error.message });
+      }
+      console.error('[Admin] Failed to calculate announcement audience count:', error?.message || error);
+      return res.status(500).json({ errno: 500, error: error?.message || 'Failed to calculate announcement audience count' });
     }
   });
 

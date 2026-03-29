@@ -1983,7 +1983,7 @@ textarea.input {
     
     .api-metrics-footer {
         top: auto;
-        bottom: calc(64px + env(safe-area-inset-bottom));
+        bottom: calc(16px + env(safe-area-inset-bottom));
         right: auto;
         left: 12px;
         justify-content: flex-start;

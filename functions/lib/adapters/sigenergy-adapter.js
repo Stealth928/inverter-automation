@@ -214,7 +214,10 @@ class SigenEnergyDeviceAdapter extends DeviceAdapter {
       throw this.normalizeProviderError(result);
     }
 
-    return normalizeEnergyFlow(result.result, context.observedAtIso, deviceSN || stationId);
+    return {
+      ...normalizeEnergyFlow(result.result, context.observedAtIso, deviceSN || stationId),
+      telemetryTimestampTrust: context.observedAtIso ? 'source' : 'synthetic'
+    };
   }
 
   async getCapabilities(_context = {}) {

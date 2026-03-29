@@ -1551,57 +1551,6 @@
                 if (batteryIsDischarging) batteryIconClasses.push('discharging');
                 if (batteryFillDurationMs > 0 && Math.abs(batteryFillTarget - batteryFillCurrent) > 0.0001) batteryIconClasses.push('is-animating');
                 const batteryIconStyle = `--battery-fill-current:${batteryFillCurrent.toFixed(4)};--battery-fill-target:${batteryFillTarget.toFixed(4)};--battery-fill-duration:${batteryFillDurationMs}ms;`;
-
-                const html = `<div class="stat-row">
-                    <div class="${solarTileClass}" id="solar-tile"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('solar', 'app-overview-icon--tile')}</div><div class="value">${solarDisplay}</div><div class="label">Solar Production${curtailmentLabel}</div></div>
-                    <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('home', 'app-overview-icon--tile')}</div><div class="value">${loadDisplay}</div><div class="label">House Load</div></div>
-                    <div class="stat-item"><div class="tile-icon tile-icon--glyph">${overviewIconChipHtml('grid', 'app-overview-icon--tile')}</div><div class="value ${gridClass}">${gridDisplay}</div><div class="label">Grid Import/Export</div></div>
-                    <div class="stat-item battery-tile"><div class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}">
-                                <!-- Inline SVG battery: fill level reflects SoC -->
-                                ${(() => {
-                                    const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
-                                    // Conditional coloring: green >=50%, amber 25-44%, red <25%
-                                    const fillColor = socPct >= 50 ? 'var(--color-success-dark)' : (socPct >= 25 ? 'var(--color-warning)' : 'var(--color-danger)');
-                                    return `
-                                    <svg viewBox="0 0 24 40" aria-hidden="true">
-                                        <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
-                                        <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
-                                        <rect x="3" y="4" width="18" height="28" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
-                                        <rect x="9" y="1" width="6" height="2" rx="1" ry="1" fill="var(--battery-shell-color)"></rect>
-                                    </svg>`;
-                                })()}
-                            </div>
-                            <div class="value ${batteryClass}" style="font-size:20px;font-weight:600">${batteryDisplay}</div>
-                        <div style="font-size:28px;font-weight:700;color:var(--accent-blue);margin-top:4px">${socNum !== null ? socNum.toFixed(0) + '%' : '-'}</div>
-                        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${currentEnergyKWh !== null ? (currentEnergyKWh.toFixed(2) + ' kWh') : ''}</div>
-                        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${batteryTimeText || ''}</div>
-                    </div>
-                </div>
-
-                <!-- Inline temps row for real-time display -->
-                <div class="stat-row" style="margin-top:8px">
-                        <div class="stat-item" style="min-width:140px">
-                            ${makeThermSVG(batTempVal)}
-                            <div class="value ${batTempCls}" style="font-size:18px">${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</div>
-                            <div class="label">Battery Temp</div>
-                        </div>
-                    <div class="stat-item" style="min-width:140px">
-                        ${makeThermSVG(ambTempVal)}
-                        <div class="value ${ambTempCls}" style="font-size:18px">${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</div>
-                        <div class="label">Ambient Temp</div>
-                    </div>
-                    <div class="stat-item" style="min-width:140px">
-                        ${makeThermSVG(invTempVal)}
-                        <div class="value ${invTempCls}" style="font-size:18px">${invTempVal !== null && invTempVal !== undefined ? fmtTemp(invTempVal) : '-'}</div>
-                        <div class="label">Inverter Temp</div>
-                    </div>
-                </div>`;
-                const tempNoticeHtml = alphaTempsLikelyUnavailable
-                    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);text-align:center;">AlphaESS is currently not reporting temperature sensors.</div>`
-                    : '';
-                // Debug raw view removed for stable inverter status
-                const rawHtml = '';
-
                 // Display per-PV-string outputs if present (pv1Power..pv4Power)
                 const pvStrings = [];
                 for (let i = 1; i <= 4; i++) {
@@ -1618,48 +1567,291 @@
                 const hasAcSolarBreakdown = acSolarPower !== null && acSolarPower !== undefined;
                 const hasSolarBreakdown = pvStrings.length > 0 || hasAcSolarBreakdown;
 
-                if (hasSolarBreakdown) {
-                    let pvHtml = '<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);font-weight:600">';
-                    pvHtml += hasAcSolarBreakdown ? '🔸 Solar Inputs' : '🔸 PV String Outputs';
-                    const breakdownTotal = solarPowerTotal !== null && solarPowerTotal !== undefined
-                        ? solarPowerTotal
-                        : (pvPowerTotal !== null && pvPowerTotal !== undefined ? pvPowerTotal : finalSolar);
-                    if (breakdownTotal !== null && breakdownTotal !== undefined) {
-                        pvHtml += ` <span style="color:var(--color-success);font-weight:700">(Total: ${fmtKW(breakdownTotal)})</span>`;
-                    }
-                    pvHtml += '</div>';
-                    pvHtml += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">';
-                    pvStrings.forEach(s => {
-                        const voltStr = s.volt !== null && s.volt !== undefined ? `${Number(s.volt).toFixed(1)}V` : '-';
-                        const currStr = s.current !== null && s.current !== undefined ? `${Number(s.current).toFixed(1)}A` : '-';
-                        const pvColor = (Number(s.power) === 0) ? 'var(--text-secondary)' : 'var(--color-success)';
-                        pvHtml += `<div class="stat-item" style="min-width:90px;padding:10px;text-align:center">
-                            <div class="value" style="font-size:18px;font-weight:700;color:${pvColor}">${fmtKW(s.power)}</div>
-                            <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">PV${s.idx}</div>
-                            <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">${voltStr} · ${currStr}</div>
-                        </div>`;
-                    });
-
-                    if (hasAcSolarBreakdown) {
-                        if (!pvStrings.length && pvPowerTotal !== null && pvPowerTotal !== undefined) {
-                            pvHtml += `<div class="stat-item" style="min-width:110px;padding:10px;text-align:center">
-                                <div class="value" style="font-size:18px;font-weight:700;color:var(--color-success)">${fmtKW(pvPowerTotal)}</div>
-                                <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">DC Solar</div>
-                                <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">Fox PV input</div>
-                            </div>`;
-                        }
-                        pvHtml += `<div class="stat-item" style="min-width:110px;padding:10px;text-align:center">
-                            <div class="value" style="font-size:18px;font-weight:700;color:var(--accent)">${fmtKW(acSolarPower)}</div>
-                            <div class="label" style="font-size:12px;color:var(--accent-blue);margin-top:4px;font-weight:600">AC Solar</div>
-                            <div style="font-size:10px;color:var(--text-secondary);margin-top:4px">Mapped external source</div>
-                        </div>`;
-                    }
-
-                    pvHtml += '</div>';
-                    card.innerHTML = html + tempNoticeHtml + pvHtml;
-                } else {
-                    card.innerHTML = html + tempNoticeHtml;
+                function toSceneAbsKw(v, item) {
+                    const normalized = normalizedKWFromValue(v, item);
+                    return Number.isFinite(normalized) ? Math.abs(normalized) : null;
                 }
+
+                function flowOpacityForKw(kW) {
+                    if (!Number.isFinite(kW) || kW < 0.05) return '0';
+                    return Math.min(0.95, 0.45 + (Math.min(8, Math.abs(kW)) / 8) * 0.45).toFixed(2);
+                }
+
+                const INVERTER_FLOW_SLOWDOWN = 1.25;
+                const INVERTER_FLOW_LOW_POWER_WINDOW_KW = 2.2;
+                const INVERTER_FLOW_LOW_POWER_BONUS_MS = 1400;
+
+                function scaleInverterFlowDuration(ms) {
+                    return Math.round(ms * INVERTER_FLOW_SLOWDOWN);
+                }
+
+                function scaleInverterFlowOffset(seconds) {
+                    const scaledSeconds = Math.round(seconds * INVERTER_FLOW_SLOWDOWN * 1000) / 1000;
+                    return `${scaledSeconds.toFixed(3).replace(/\.?0+$/, '')}s`;
+                }
+
+                function flowSpeedForKw(kW) {
+                    if (!Number.isFinite(kW) || kW < 0.05) return `${scaleInverterFlowDuration(3000)}ms`;
+                    const clamped = Math.max(0.1, Math.min(8, Math.abs(kW)));
+                    const lowPowerRatio = Math.max(0, 1 - ((clamped - 0.1) / INVERTER_FLOW_LOW_POWER_WINDOW_KW));
+                    const lowPowerBonus = Math.round(lowPowerRatio * INVERTER_FLOW_LOW_POWER_BONUS_MS);
+                    const speed = scaleInverterFlowDuration(
+                        Math.round(3800 - ((clamped - 0.1) / (8 - 0.1)) * 3000)
+                    ) + lowPowerBonus;
+                    return `${speed}ms`;
+                }
+
+                function reverseCurvePath(pathD) {
+                    const match = typeof pathD === 'string'
+                        ? pathD.match(/^M\s*([-\d.]+)\s+([-\d.]+)\s+C\s*([-\d.]+)\s+([-\d.]+),\s*([-\d.]+)\s+([-\d.]+),\s*([-\d.]+)\s+([-\d.]+)$/i)
+                        : null;
+                    if (!match) return pathD;
+                    const [, startX, startY, cp1X, cp1Y, cp2X, cp2Y, endX, endY] = match;
+                    return `M ${endX} ${endY} C ${cp2X} ${cp2Y}, ${cp1X} ${cp1Y}, ${startX} ${startY}`;
+                }
+
+                function flowTrackMarkup(pathD, flowColor) {
+                    return [
+                        `<path class="energy-flow-track energy-flow-track--aura" d="${pathD}" style="--flow-color:${flowColor};"></path>`,
+                        `<path class="energy-flow-track energy-flow-track--jacket" d="${pathD}" style="--flow-color:${flowColor};"></path>`,
+                        `<path class="energy-flow-track energy-flow-track--sheen" d="${pathD}" style="--flow-color:${flowColor};"></path>`
+                    ].join('');
+                }
+
+                function flowPacketDurationForKw(kW) {
+                    const baseMs = parseFloat(flowSpeedForKw(kW));
+                    const safeBaseMs = Number.isFinite(baseMs) ? baseMs : scaleInverterFlowDuration(3000);
+                    return `${Math.max(scaleInverterFlowDuration(1400), Math.round(safeBaseMs * 1.08))}ms`;
+                }
+
+                function flowPathMarkup(pathD, flowColor, magnitudeKw, reverse = false) {
+                    const isActive = Number.isFinite(magnitudeKw) && Math.abs(magnitudeKw) >= 0.05;
+                    const classes = ['energy-flow-path', isActive ? 'is-active' : 'is-idle'];
+                    if (reverse) classes.push('is-reverse');
+                    return `<path class="${classes.join(' ')}" d="${pathD}" style="--flow-color:${flowColor};--flow-opacity:${flowOpacityForKw(magnitudeKw)};--flow-speed:${flowSpeedForKw(magnitudeKw)};"></path>`;
+                }
+
+                function flowPacketMarkup(pathD, flowColor, magnitudeKw, reverse = false) {
+                    const isActive = Number.isFinite(magnitudeKw) && Math.abs(magnitudeKw) >= 0.05;
+                    if (!isActive) return '';
+                    const motionPath = reverse ? reverseCurvePath(pathD) : pathD;
+                    const packetDuration = flowPacketDurationForKw(magnitudeKw);
+                    const packetOpacity = flowOpacityForKw(magnitudeKw);
+                    // Keep packet spacing proportional when the flow speed is slowed down.
+                    const packetOffsets = [-0.15, -0.9, -1.65].map(scaleInverterFlowOffset);
+                    const packetSizes = [
+                        { haloRx: 10.5, haloRy: 5.4, coreRx: 4.6, coreRy: 2.25 },
+                        { haloRx: 11.5, haloRy: 5.8, coreRx: 5.2, coreRy: 2.45 },
+                        { haloRx: 9.5, haloRy: 4.9, coreRx: 4.1, coreRy: 2.05 }
+                    ];
+                    return packetOffsets.map((begin, index) => {
+                        const size = packetSizes[index] || packetSizes[0];
+                        return `
+                            <g class="energy-flow-packet energy-flow-packet--${index + 1}" style="--flow-color:${flowColor};--flow-opacity:${packetOpacity};">
+                                <ellipse class="energy-flow-packet__halo" rx="${size.haloRx}" ry="${size.haloRy}"></ellipse>
+                                <ellipse class="energy-flow-packet__core" rx="${size.coreRx}" ry="${size.coreRy}"></ellipse>
+                                <animateMotion dur="${packetDuration}" begin="${begin}" repeatCount="indefinite" path="${motionPath}" rotate="auto"></animateMotion>
+                                <animate attributeName="opacity" values="0;0.96;0.96;0" keyTimes="0;0.12;0.82;1" dur="${packetDuration}" begin="${begin}" repeatCount="indefinite"></animate>
+                            </g>`;
+                    }).join('');
+                }
+
+                function flowRouteMarkup(pathD, flowColor, magnitudeKw, reverse = false) {
+                    return `${flowTrackMarkup(pathD, flowColor)}${flowPathMarkup(pathD, flowColor, magnitudeKw, reverse)}${flowPacketMarkup(pathD, flowColor, magnitudeKw, reverse)}`;
+                }
+
+                const solarSceneItem = findItemByKeys(['solarPowerTotal', 'solarpowertotal', 'pvPower', 'pvpower', 'generationpower', 'generation', 'outputpower', 'meterPower2']);
+                const loadSceneItem = findItemByKeys(loadKeys);
+                const solarKW = toSceneAbsKw(finalSolar, solarSceneItem);
+                const loadKW = toSceneAbsKw(houseLoad, loadSceneItem);
+                const batteryAbsKW = Number.isFinite(batteryPowerKW) ? Math.abs(batteryPowerKW) : 0;
+                const importMagnitudeKW = gridIsImport && gKW !== null ? Math.abs(gKW) : 0;
+                const exportMagnitudeKW = gridIsExport && fKW !== null ? Math.abs(fKW) : 0;
+                const gridFlowMode = Math.max(importMagnitudeKW, exportMagnitudeKW) >= 0.05
+                    ? (importMagnitudeKW >= exportMagnitudeKW ? 'import' : 'export')
+                    : 'idle';
+                const idleCableColor = 'rgba(164, 187, 208, 0.75)';
+                const gridFlowColor = gridFlowMode === 'export'
+                    ? 'var(--energy-grid-export)'
+                    : (gridFlowMode === 'import' ? 'var(--energy-grid-import)' : idleCableColor);
+                const batteryFlowColor = batteryIsDischarging
+                    ? 'var(--energy-battery-discharge)'
+                    : (batteryIsCharging ? 'var(--energy-battery-charge)' : idleCableColor);
+                const gridPanelClass = gridFlowMode === 'import' ? 'is-import' : (gridFlowMode === 'export' ? 'is-export' : 'is-idle');
+                const gridPrimaryValue = gridFlowMode === 'import'
+                    ? `${importMagnitudeKW.toFixed(2)} kW`
+                    : (gridFlowMode === 'export' ? `${exportMagnitudeKW.toFixed(2)} kW` : '0.00 kW');
+                const gridPillText = gridFlowMode === 'import' ? 'Import' : (gridFlowMode === 'export' ? 'Export' : 'Balanced');
+                const gridMetaText = importMagnitudeKW >= 0.05 && exportMagnitudeKW >= 0.05
+                    ? `Import ${importMagnitudeKW.toFixed(2)} kW / Export ${exportMagnitudeKW.toFixed(2)} kW`
+                    : (gridFlowMode === 'import'
+                        ? 'House drawing from grid'
+                        : (gridFlowMode === 'export' ? 'Solar surplus leaving site' : 'No significant grid exchange'));
+                const activePvCount = pvStrings.filter((entry) => {
+                    const powerKw = normalizedKWFromValue(entry.power, null);
+                    return Number.isFinite(powerKw) && Math.abs(powerKw) >= 0.02;
+                }).length;
+                const solarStateText = curtailmentActive ? 'Curtailed' : '';
+                const solarSubText = hasSolarBreakdown ? `${activePvCount || pvStrings.length || 1} input${(activePvCount || pvStrings.length || 1) === 1 ? '' : 's'}` : '';
+                const batteryStateText = batteryIsCharging ? 'Charging' : (batteryIsDischarging ? 'Discharging' : 'Standby');
+                const batteryStateClass = batteryIsCharging ? 'is-charging' : (batteryIsDischarging ? 'is-discharging' : 'is-standby');
+                const batteryLevelText = socNum !== null ? `${socNum.toFixed(0)}%` : '-';
+                const batteryEnergyText = currentEnergyKWh !== null ? `${currentEnergyKWh.toFixed(2)} kWh stored` : 'Battery energy unavailable';
+                const batteryEtaText = batteryTimeText || '';
+                const batteryIconSvg = (() => {
+                    const socPct = (socNum !== null && !isNaN(Number(socNum))) ? Math.max(0, Math.min(100, Number(socNum))) : 0;
+                    const fillColor = socPct >= 50 ? 'var(--color-success-dark)' : (socPct >= 25 ? 'var(--color-warning)' : 'var(--color-danger)');
+                    return `
+                        <svg class="${batteryIconClasses.join(' ')}" style="${batteryIconStyle}" data-battery-animation="${batteryAnimationState}" viewBox="0 0 24 40" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="var(--battery-shell-bg)"></rect>
+                            <rect x="3" y="4" width="18" height="28" rx="3" ry="3" fill="none" stroke="var(--battery-shell-color)" stroke-width="1.5"></rect>
+                            <rect x="3" y="4" width="18" height="28" rx="2" ry="2" class="level" fill="${fillColor}"></rect>
+                            <rect x="9" y="1" width="6" height="2" rx="1" ry="1" fill="var(--battery-shell-color)"></rect>
+                        </svg>`;
+                })();
+                const sceneWeather = getInverterSceneWeatherState(getLatestWeatherSceneData());
+                const sceneWeatherClass = sceneWeather && sceneWeather.effect ? `weather-${sceneWeather.effect}` : 'weather-clear';
+                const sceneDayClass = sceneWeather && sceneWeather.isDay ? 'is-daylight' : 'is-night';
+
+                // Compact inline PV strings for solar tile
+                let pvInlineSolar = '';
+                if (pvStrings.length > 0) {
+                    pvInlineSolar = '<div class="energy-node__pv-grid">' +
+                        pvStrings.map(s => {
+                            const kwNum = normalizedKWFromValue(s.power, null);
+                            const active = Number.isFinite(kwNum) && Math.abs(kwNum) >= 0.02;
+                            const voltStr = (s.volt !== null && s.volt !== undefined) ? `${Number(s.volt).toFixed(0)}V` : '';
+                            return `<div class="pv-item${active ? ' pv-item--active' : ''}">`
+                                + `<span class="pv-item__idx">PV${s.idx}</span>`
+                                + `<span class="pv-item__val">${fmtKW(s.power)}</span>`
+                                + (voltStr ? `<span class="pv-item__volt">${escapeHtml(voltStr)}</span>` : '')
+                                + '</div>';
+                        }).join('') +
+                    '</div>';
+                } else if (hasAcSolarBreakdown) {
+                    pvInlineSolar = '<div class="energy-node__pv-grid">'
+                        + `<div class="pv-item pv-item--active"><span class="pv-item__idx">AC</span><span class="pv-item__val">${fmtKW(acSolarPower)}</span></div>`
+                        + '</div>';
+                }
+
+                const inverterSceneWidth = Math.max(0, Math.round(card?.getBoundingClientRect?.().width || card?.clientWidth || window.innerWidth || 0));
+                const sceneAnchorTargets = (() => {
+                    if (inverterSceneWidth <= 380) {
+                        return {
+                            solar: { x: 396, y: 384 },
+                            home: { x: 374, y: 762 },
+                            hub: { x: 924, y: 826 }
+                        };
+                    }
+                    if (inverterSceneWidth <= 430) {
+                        return {
+                            solar: { x: 418, y: 362 },
+                            home: { x: 390, y: 748 },
+                            hub: { x: 934, y: 816 }
+                        };
+                    }
+                    if (inverterSceneWidth <= 500) {
+                        return {
+                            solar: { x: 446, y: 338 },
+                            home: { x: 404, y: 732 },
+                            hub: { x: 942, y: 804 }
+                        };
+                    }
+                    if (inverterSceneWidth <= 640) {
+                        return {
+                            solar: { x: 478, y: 314 },
+                            home: { x: 420, y: 708 },
+                            hub: { x: 950, y: 790 }
+                        };
+                    }
+                    return {
+                        solar: { x: 590, y: 220 },
+                        home: { x: 455, y: 645 },
+                        hub: { x: 980, y: 720 }
+                    };
+                })();
+
+                const solarToHubPath = 'M 80 50 C 360 380, 840 700, 1280 900';
+                const hubToHomePath = 'M 1280 900 C 940 960, 580 970, 80 960';
+                const gridToHubPath = 'M 1460 50 C 1490 380, 1420 680, 1280 900';
+                const hubToBatteryPath = 'M 1280 900 C 1180 840, 1090 780, 980 722';
+
+                const html = `<div class="energy-topology">
+                    <div class="energy-scene ${sceneWeatherClass} ${sceneDayClass}" data-weather-effect="${escapeHtml(sceneWeather.effect || 'clear')}" data-weather-label="${escapeHtml(sceneWeather.label || 'Clear')}">
+                        <div class="energy-scene__weather" aria-hidden="true">
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--cloud"></div>
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--mist"></div>
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--rain"></div>
+                            <div class="energy-scene__weather-layer energy-scene__weather-layer--flash"></div>
+                        </div>
+                        <svg class="energy-scene__wiring" viewBox="0 0 1536 1024" preserveAspectRatio="none" aria-hidden="true">
+                            <!-- Anchor: solar node (TL) → solar panels on roof -->
+                            <line class="energy-anchor-line" x1="80" y1="50" x2="${sceneAnchorTargets.solar.x}" y2="${sceneAnchorTargets.solar.y}"/>
+                            <circle class="energy-anchor-dot energy-anchor-dot--solar" cx="${sceneAnchorTargets.solar.x}" cy="${sceneAnchorTargets.solar.y}" r="8"/>
+                            <!-- Anchor: home node (BL) → glass-door living area -->
+                            <line class="energy-anchor-line" x1="80" y1="960" x2="${sceneAnchorTargets.home.x}" y2="${sceneAnchorTargets.home.y}"/>
+                            <circle class="energy-anchor-dot energy-anchor-dot--home" cx="${sceneAnchorTargets.home.x}" cy="${sceneAnchorTargets.home.y}" r="8"/>
+                            <!-- Anchor: hub node (BR) → wall-mounted battery unit -->
+                            <line class="energy-anchor-line" x1="1280" y1="900" x2="${sceneAnchorTargets.hub.x}" y2="${sceneAnchorTargets.hub.y}"/>
+                            <circle class="energy-anchor-dot energy-anchor-dot--hub" cx="${sceneAnchorTargets.hub.x}" cy="${sceneAnchorTargets.hub.y}" r="8"/>
+                            <!-- Cable routes -->
+                            ${flowRouteMarkup(solarToHubPath, 'var(--energy-solar)', solarKW, false)}
+                            ${flowRouteMarkup(hubToHomePath, 'var(--energy-home)', loadKW, false)}
+                            ${flowRouteMarkup(gridToHubPath, gridFlowColor, Math.max(importMagnitudeKW, exportMagnitudeKW), gridFlowMode === 'export')}
+                            ${flowRouteMarkup(hubToBatteryPath, batteryFlowColor, batteryAbsKW, batteryIsDischarging)}
+                        </svg>
+                        <section class="energy-node energy-node--solar ${curtailmentActive ? 'is-curtailed' : ''}" id="solar-tile">
+                            <div class="energy-node__top">
+                                <span class="energy-node__title">Solar</span>
+                                ${solarStateText ? `<span class="energy-node__state">${escapeHtml(solarStateText)}</span>` : ''}
+                            </div>
+                            <div class="energy-node__value value price-low">${solarDisplay}</div>
+                            ${pvInlineSolar}
+                        </section>
+                        <section class="energy-node energy-node--home">
+                            <div class="energy-node__top">
+                                <span class="energy-node__title">Home</span>
+                            </div>
+                            <div class="energy-node__value value price-low">${loadDisplay}</div>
+                        </section>
+                        <section class="energy-core energy-core--hub">
+                            <div class="energy-core__top">
+                                <span class="energy-core__title">Inverter</span>
+                                <span class="energy-core__state ${batteryStateClass}">${escapeHtml(batteryStateText)}</span>
+                            </div>
+                            <div class="energy-core__main">
+                                <div class="energy-core__copy">
+                                    <div class="energy-core__soc value">${escapeHtml(batteryLevelText)}</div>
+                                    <div class="energy-core__storage">${escapeHtml(batteryEnergyText)}</div>
+                                    <div class="energy-core__status"><span class="${batteryClass}">${batteryDisplay}</span></div>
+                                </div>
+                                <div class="energy-core__visual">
+                                    ${batteryIconSvg}
+                                </div>
+                            </div>
+                            ${batteryEtaText ? `<div class="energy-core__eta">${escapeHtml(batteryEtaText)}</div>` : ''}
+                            <div class="energy-core__temps">
+                                <span class="energy-core__temp ${batTempCls}">Bat ${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</span>
+                                <span class="energy-core__temp ${ambTempCls}">Amb ${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</span>
+                                <span class="energy-core__temp ${invTempCls}">Inv ${invTempVal !== null && invTempVal !== undefined ? fmtTemp(invTempVal) : '-'}</span>
+                            </div>
+                        </section>
+                        <section class="energy-node energy-node--grid ${gridPanelClass}">
+                            <div class="energy-node__top">
+                                <span class="energy-node__title">Grid</span>
+                                <span class="energy-node__state">${escapeHtml(gridPillText)}</span>
+                            </div>
+                            <div class="energy-node__value value ${gridClass}">${escapeHtml(gridPrimaryValue)}</div>
+                        </section>
+                    </div>
+                </div>`;
+                const tempNoticeHtml = alphaTempsLikelyUnavailable
+                    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-secondary);text-align:center;">AlphaESS is currently not reporting temperature sensors.</div>`
+                    : '';
+                // Debug raw view removed for stable inverter status
+                const rawHtml = '';
+
+                card.innerHTML = html + tempNoticeHtml;
             } else if (name === 'Battery SoC' && data.result) {
                 const r = data.result;
                 card.innerHTML = `<div class="stat-row">
@@ -1884,6 +2076,81 @@
             return 'Unknown';
         }
 
+        const INVERTER_SCENE_WEATHER_CLASSES = ['weather-clear', 'weather-cloudy', 'weather-fog', 'weather-drizzle', 'weather-rain', 'weather-storm', 'weather-snow'];
+
+        function getLatestWeatherSceneData() {
+            try {
+                if (window.__latestWeatherForDashboard && (window.__latestWeatherForDashboard.current || window.__latestWeatherForDashboard.daily)) {
+                    return window.__latestWeatherForDashboard;
+                }
+            } catch (error) { /* ignore */ }
+            try {
+                const cached = JSON.parse(localStorage.getItem('cachedWeatherFull') || '{}');
+                if (cached && (cached.current || cached.daily)) return cached;
+            } catch (error) { /* ignore */ }
+            return null;
+        }
+
+        function getInverterSceneWeatherState(weatherData) {
+            const current = weatherData?.current || {};
+            const code = Number(current.weathercode);
+            const cloudCoverRaw = current.cloudcover ?? current.cloud_cover ?? null;
+            const cloudCover = cloudCoverRaw === null || cloudCoverRaw === undefined || Number.isNaN(Number(cloudCoverRaw))
+                ? null
+                : Number(cloudCoverRaw);
+
+            // Daylight: prefer API is_day field. Fallback to timezone-aware local estimate
+            // (6am–8pm local time treated as day when no weather data is available).
+            let isDay;
+            if (current.is_day !== undefined && current.is_day !== null) {
+                isDay = Number(current.is_day) === 1;
+            } else {
+                // Derive from the user's location timezone if available, else browser local time
+                const tz = (typeof CONFIG !== 'undefined' && CONFIG?.preferences?.timezone) || null;
+                let localHour;
+                try {
+                    const now = new Date();
+                    if (tz) {
+                        localHour = Number(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+                    } else {
+                        localHour = now.getHours();
+                    }
+                } catch (_) {
+                    localHour = new Date().getHours();
+                }
+                isDay = localHour >= 6 && localHour < 20;
+            }
+
+            let effect = 'clear';
+            if ([95, 96, 99].includes(code)) effect = 'storm';
+            else if ([71, 73, 75, 77, 85, 86].includes(code)) effect = 'snow';
+            else if ([51, 53, 55, 56, 57].includes(code)) effect = 'drizzle';
+            else if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) effect = 'rain';
+            else if ([45, 48].includes(code)) effect = 'fog';
+            else if (code === 3 || (cloudCover !== null && cloudCover >= 70)) effect = 'cloudy';
+            else if ([1, 2].includes(code) || (cloudCover !== null && cloudCover >= 35)) effect = 'cloudy';
+
+            return {
+                effect,
+                label: Number.isFinite(code) ? weatherCodeToWord(code) : 'Clear',
+                isDay
+            };
+        }
+
+        function applyInverterSceneWeatherEffect(weatherData) {
+            const scene = document.querySelector('#inverterCard .energy-scene');
+            if (!scene) return;
+            const state = getInverterSceneWeatherState(weatherData);
+            INVERTER_SCENE_WEATHER_CLASSES.forEach((className) => scene.classList.remove(className));
+            scene.classList.add(`weather-${state.effect}`);
+            scene.classList.remove('is-daylight', 'is-night');
+            scene.classList.add(state.isDay ? 'is-daylight' : 'is-night');
+            scene.setAttribute('data-weather-effect', state.effect);
+            scene.setAttribute('data-weather-label', state.label || 'Clear');
+            const chip = scene.querySelector('.energy-scene__weather-chip');
+            if (chip) chip.textContent = state.label || 'Clear';
+        }
+
         // Ensure Leaflet is loaded (returns a Promise). Loads CSS+JS once via CDN.
         function ensureLeafletLoaded() {
             if (window._leafletPromise) return window._leafletPromise;
@@ -1951,6 +2218,10 @@
         function renderWeatherCard(data) {
             const card = document.getElementById('weatherCard');
             if (!data) { card.innerHTML = '<div style="color:var(--color-danger)">No data</div>'; return; }
+            try {
+                window.__latestWeatherForDashboard = data;
+                applyInverterSceneWeatherEffect(data);
+            } catch (error) { /* ignore */ }
 
             const place = data.place || {};
             const current = data.current || null;
@@ -1977,11 +2248,7 @@
             let locExtra = '';
             if (country) locExtra += country;
             if (lat !== null && lon !== null) locExtra += (locExtra ? ' • ' : '') + `${lat}, ${lon}`;
-            // Show weather source (Open-Meteo)
-            const source = data.source || 'open-meteo';
-            if (locExtra) locExtra += ` • <span style="opacity:0.7">${source}</span>`;
-            else if (lat !== null && lon !== null) locExtra = `${lat}, ${lon} • <span style="opacity:0.7">${source}</span>`;
-            else locExtra = `<span style="opacity:0.7">${source}</span>`;
+            const hasMap = lat !== null && lon !== null;
             // If the API resolved a location name, show it. If not, show a friendly
             // label and include an info icon when the server fell back to coordinates.
             let headerTooltip = '';
@@ -1989,7 +2256,8 @@
                 const reasonText = (place.fallbackReason || 'unknown').replace(/_/g,' ');
                 headerTooltip = ` <span class="info-tip" title="Using fallback coordinates: ${reasonText}">ⓘ</span>`;
             }
-            let html = `<div style="font-weight:600;color:var(--accent-blue);margin-bottom:6px">${locName || 'Unknown location'}${headerTooltip}</div>`;
+            let html = `<div class="weather-card-layout${hasMap ? ' weather-card-layout--has-map' : ''}"><div class="weather-card-summary">`;
+            html += `<div style="font-weight:600;color:var(--accent-blue);margin-bottom:6px">${locName || 'Unknown location'}${headerTooltip}</div>`;
             if (locExtra) html += `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">${locExtra}</div>`;
 
             // Show a visible, dismissible warning when the backend had to use fallback coordinates
@@ -2011,6 +2279,7 @@
                 }
             }
 
+            let currentDetailsRowHtml = '';
             if (current) {
                 // Determine today's weather description and rainfall if available
                 const todayCode = (current.weathercode !== undefined && current.weathercode !== null) ? current.weathercode : (daily && daily.weathercode ? daily.weathercode[0] : null);
@@ -2077,15 +2346,29 @@
                     }
                 } catch (e) { /* ignore */ }
 
-                html += `<div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">${todayDesc} • Rain: ${todayRain !== null ? todayRain.toFixed(1) + ' mm' : '—'}`;
-                if (windSpeed !== null) html += ` • Wind: <strong style="color:var(--text-primary)">${windSpeed.toFixed(1)} km/h</strong>${windDirName ? ' ' + windDirName : ''}`;
+                const detailsParts = [
+                    todayDesc,
+                    `Rain: ${todayRain !== null ? todayRain.toFixed(1) + ' mm' : '—'}`
+                ];
+                if (windSpeed !== null) {
+                    detailsParts.push(`Wind: <strong>${windSpeed.toFixed(1)} km/h</strong>${windDirName ? ' ' + windDirName : ''}`);
+                }
                 // Add current radiance/cloud values (use units W/m² for radiation)
-                html += ` • <span title="Current shortwave radiation">☀️ ${currentRad !== null ? String(currentRad) + ' W/m²' : '—'}</span>`;
-                html += ` • <span title="Current cloud cover">☁️ ${currentCloud !== null ? String(currentCloud) + '%' : '—'}</span>`;
-                html += `</div>`;
+                detailsParts.push(`<span title="Current shortwave radiation">☀️ ${currentRad !== null ? String(currentRad) + ' W/m²' : '—'}</span>`);
+                detailsParts.push(`<span title="Current cloud cover">☁️ ${currentCloud !== null ? String(currentCloud) + '%' : '—'}</span>`);
+                currentDetailsRowHtml = `<div class="weather-card-details-row">${detailsParts.join('<span class="weather-card-details-sep" aria-hidden="true">•</span>')}</div>`;
+            }
+
+            html += '</div>';
+            if (hasMap) {
+                html += `<div class="weather-map weather-map--inline" id="weather-map-${locKey}"></div>`;
+            }
+            if (currentDetailsRowHtml) {
+                html += currentDetailsRowHtml;
             }
 
             if (daily && daily.time) {
+                html += '<div class="weather-card-forecast">';
                 // Compute daily averages from hourly data for solar radiation and cloud cover
                 const hourly = data.hourly || {};
                 const hourlyTimes = hourly.time || [];
@@ -2165,13 +2448,9 @@
                         </div>
                     </div>`;
                 }
-                html += '</div>';
+                html += '</div></div>';
             }
-
-            // Insert a small inline map below the weather content when we have coordinates
-            if (lat !== null && lon !== null) {
-                html += `<div class="weather-map" id="weather-map-${locKey}"></div>`;
-            }
+            html += '</div>';
 
             card.innerHTML = html;
 
@@ -2852,6 +3131,89 @@
             }
         }
 
+        const AMBER_FORECAST_TILE_WIDTH_PX = 56;
+        const AMBER_FORECAST_TILE_GAP_PX = 4;
+        const AMBER_FORECAST_MOBILE_BREAKPOINT_PX = 640;
+        let amberForecastResponsiveRenderQueued = false;
+
+        function getElementInnerWidth(el) {
+            if (!el) return 0;
+            const styles = window.getComputedStyle(el);
+            const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+            const paddingRight = parseFloat(styles.paddingRight) || 0;
+            return Math.max(0, (el.clientWidth || 0) - paddingLeft - paddingRight);
+        }
+
+        function getAmberForecastCollapsedLayout(totalIntervals = 0) {
+            const amberCard = document.getElementById('amberCard');
+            const availableWidth =
+                getElementInnerWidth(amberCard) ||
+                getElementInnerWidth(amberCard?.parentElement) ||
+                getElementInnerWidth(amberCard?.closest('.card-body')) ||
+                document.documentElement?.clientWidth ||
+                window.innerWidth ||
+                0;
+            const isMobileViewport = window.matchMedia(`(max-width: ${AMBER_FORECAST_MOBILE_BREAKPOINT_PX}px)`).matches;
+            const maxRows = isMobileViewport ? 2 : 1;
+            const columns = Math.max(
+                1,
+                Math.floor((availableWidth + AMBER_FORECAST_TILE_GAP_PX) / (AMBER_FORECAST_TILE_WIDTH_PX + AMBER_FORECAST_TILE_GAP_PX))
+            );
+            const limit = totalIntervals > 0 ? Math.min(totalIntervals, columns * maxRows) : 0;
+
+            return {
+                availableWidth,
+                columns,
+                maxRows,
+                limit,
+                key: `${maxRows}:${columns}`
+            };
+        }
+
+        function scheduleAmberForecastResponsiveRender() {
+            if (amberForecastResponsiveRenderQueued) return;
+            amberForecastResponsiveRenderQueued = true;
+
+            window.requestAnimationFrame(() => {
+                amberForecastResponsiveRenderQueued = false;
+
+                const showAllBtn = document.getElementById('amberShowMore');
+                if (showAllBtn?.dataset?.showAll === '1') return;
+
+                const intervals = window.lastAmberResponse;
+                if (!Array.isArray(intervals) || !intervals.length) return;
+
+                const nextLayout = getAmberForecastCollapsedLayout(intervals.length);
+                if (window.lastAmberForecastLayoutKey === nextLayout.key) return;
+
+                renderAmberCard(intervals);
+            });
+        }
+
+        function initAmberForecastResponsiveLayout() {
+            if (!window.amberForecastResizeListenerBound) {
+                window.addEventListener('resize', scheduleAmberForecastResponsiveRender);
+                window.amberForecastResizeListenerBound = true;
+            }
+
+            const amberCard = document.getElementById('amberCard');
+            if (!amberCard || !('ResizeObserver' in window)) return;
+            if (window.amberForecastResizeObserverTarget === amberCard) return;
+
+            try {
+                if (window.amberForecastResizeObserver) {
+                    window.amberForecastResizeObserver.disconnect();
+                }
+            } catch (e) {}
+
+            const observer = new ResizeObserver(() => {
+                scheduleAmberForecastResponsiveRender();
+            });
+            observer.observe(amberCard);
+            window.amberForecastResizeObserver = observer;
+            window.amberForecastResizeObserverTarget = amberCard;
+        }
+
         function toggleAmberMore() {
             const btn = document.getElementById('amberShowMore');
             if (!btn) return;
@@ -2874,6 +3236,7 @@
 
         function renderAmberCard(data) {
             const card = document.getElementById('amberCard');
+            initAmberForecastResponsiveLayout();
             // Handle both wrapped {errno, result} and unwrapped array formats
             let intervals = [];
             if (Array.isArray(data)) {
@@ -2894,12 +3257,14 @@
             // Detect spikes in forecasts
             const spikeForecasts = forecasts.filter(i => i.spikeStatus && i.spikeStatus !== 'none');
             const hasSpikes = spikeForecasts.length > 0;
+            const totalForecasts = Math.max(forecasts.length, feedForecasts.length);
             
-            // How many forecasts to show (use button dataset for show-all state)
+            // Show a single row on wider viewports and allow two rows on mobile when collapsed.
             const showAllBtn = document.getElementById('amberShowMore');
             const showAll = showAllBtn?.dataset?.showAll === '1';
-            // If show-all is enabled, display everything returned; otherwise show 12
-            const forecastLimit = showAll ? forecasts.length : Math.min(forecasts.length, 12);
+            const collapsedLayout = getAmberForecastCollapsedLayout(totalForecasts);
+            window.lastAmberForecastLayoutKey = collapsedLayout.key;
+            const forecastLimit = showAll ? totalForecasts : collapsedLayout.limit;
 
             // Find price extremes in DISPLAYED forecasts only (to align with tiles)
             const displayForecasts = forecasts.slice(0, forecastLimit);
@@ -2926,8 +3291,9 @@
 
             // Compact info row: forecast count and time range
             try {
-                const returned = forecasts.length;
-                const lastInterval = forecasts.length ? new Date(forecasts[forecasts.length-1].startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'}) : '—';
+                const returned = totalForecasts;
+                const lastForecastInterval = forecasts[forecasts.length - 1] || feedForecasts[feedForecasts.length - 1] || null;
+                const lastInterval = lastForecastInterval ? new Date(lastForecastInterval.startTime).toLocaleString('en-AU', {hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'}) : '—';
                 html += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
                     <strong>${returned}</strong> forecast intervals available — until <strong>${lastInterval}</strong>
                 </div>`;
@@ -3013,7 +3379,12 @@
 
             // Current Prices Row
             if (currentGen || currentFeed) {
-                html += '<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">';
+                const currentPriceMetricCount = [
+                    !!currentGen,
+                    !!currentFeed,
+                    !!(currentGen && currentGen.renewables !== undefined)
+                ].filter(Boolean).length || 1;
+                html += `<div style="display:grid;grid-template-columns:repeat(${currentPriceMetricCount}, minmax(0, 1fr));gap:8px;margin-bottom:12px;align-items:start">`;
                 if (currentGen) {
                     const p = currentGen.perKwh;
                     const spot = currentGen.spotPerKwh;
@@ -3021,7 +3392,7 @@
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
                     // Format price using helper function for consistency
                     const priceStr = formatPrice(p);
-                    html += `<div style="min-width:100px">
+                    html += `<div style="min-width:0">
                         <div style="font-size:11px;color:var(--text-secondary)">Buy Now ${spike ? '<span style="color:var(--color-danger)">⚠️</span>' : ''}</div>
                         <div class="value ${cls}" style="font-size:28px;font-weight:700">${priceStr}</div>
                     </div>`;
@@ -3043,7 +3414,7 @@
                     const getCls = feedClassFromVal(displayVal);
                     // Format price using helper function for consistency
                     const feedPriceStr = formatPrice(displayVal);
-                    html += `<div style="min-width:100px">
+                    html += `<div style="min-width:0">
                         <div style="font-size:11px;color:var(--text-secondary)">Feed-In Price</div>
                         <div class="value ${getCls}" style="font-size:28px;font-weight:700">${feedPriceStr}</div>
                     </div>`;
@@ -3054,7 +3425,7 @@
                     const renewDesc = currentGen.descriptor || '';
                     const renewEmoji = { best: '🌱', great: '🌿', ok: '☁️', notGreat: '🏭', worst: '💨' }[renewDesc] || '';
                     const renewColor = renew > 55 ? cssVar('--color-success') : renew > 35 ? '#ffd43b' : cssVar('--color-danger');
-                    html += `<div style="min-width:100px">
+                    html += `<div style="min-width:0">
                         <div style="font-size:11px;color:var(--text-secondary)">Renewables ${renewEmoji}</div>
                         <div class="value" style="font-size:28px;font-weight:700;color:${renewColor}">${renew.toFixed(0)}%</div>
                     </div>`;
@@ -3143,7 +3514,7 @@
                     } else {
                         feedPriceStr = `${displayVal}¢`;
                     }
-                    html += `<div class="stat-item ${feedHighlightCls}" style="min-width:52px;padding:6px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
+                    html += `<div class="stat-item ${feedHighlightCls}" style="min-width:52px;padding:5px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
                                 <div style="display:flex;align-items:center;justify-content:center;gap:2px">
                                     <span class="value ${getCls}" style="font-size:13px;font-weight:700">${feedPriceStr}</span>
                         </div>
@@ -3407,13 +3778,56 @@
             }
         }
         
-        async function checkAutomationStatusForScheduler() {
+        let automationStatusSummaryInflight = null;
+        let automationStatusSummaryCache = null;
+
+        function invalidateAutomationStatusSummaryCache() {
+            automationStatusSummaryCache = null;
+        }
+
+        async function fetchAutomationStatusSummary(options = {}) {
+            const force = options.force === true;
+            const maxAgeMs = Number.isFinite(Number(options.maxAgeMs))
+                ? Math.max(0, Number(options.maxAgeMs))
+                : 1500;
+
+            if (!force && automationStatusSummaryCache) {
+                const ageMs = Date.now() - Number(automationStatusSummaryCache.fetchedAt || 0);
+                if (ageMs >= 0 && ageMs <= maxAgeMs) {
+                    return automationStatusSummaryCache.data;
+                }
+            }
+
+            if (!force && automationStatusSummaryInflight) {
+                return automationStatusSummaryInflight;
+            }
+
+            automationStatusSummaryInflight = (async () => {
+                const resp = await authenticatedFetch('/api/automation/status-summary');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                automationStatusSummaryCache = {
+                    fetchedAt: Date.now(),
+                    data
+                };
+                return data;
+            })();
+
+            try {
+                return await automationStatusSummaryInflight;
+            } finally {
+                automationStatusSummaryInflight = null;
+            }
+        }
+
+        async function checkAutomationStatusForScheduler(options = {}) {
             const warningDiv = document.getElementById('schedulerAutomationWarning');
             if (!warningDiv) return;
             
             try {
-                const resp = await authenticatedFetch('/api/automation/status-summary');
-                const data = await resp.json();
+                const data = await fetchAutomationStatusSummary({
+                    force: options.force === true
+                });
                 
                 if (data.errno === 0 && data.result?.enabled === true) {
                     warningDiv.style.display = 'block';
@@ -3663,10 +4077,17 @@
             return evDashboardState.commandReadinessByVehicleId[selectedId] || null;
         }
 
-        function isEVVehicleOfflineStatus(status = {}, statusError = '') {
-            const reasonCode = String(status?.reasonCode || '').trim().toLowerCase();
+        function getEVStatusReasonCode(status = {}, statusMeta = {}) {
+            return String(status?.reasonCode || statusMeta?.reasonCode || '').trim().toLowerCase();
+        }
+
+        function isEVVehicleOfflineStatus(status = {}, statusMeta = {}, statusError = '') {
+            const reasonCode = getEVStatusReasonCode(status, statusMeta);
+            const source = String(statusMeta?.source || '').trim().toLowerCase();
             const errorText = String(statusError || '').trim().toLowerCase();
-            return reasonCode === 'vehicle_offline' || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
+            return reasonCode === 'vehicle_offline'
+                || source === 'cache_vehicle_offline'
+                || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
         }
 
         function getEVStatusMetaSource(statusMeta = {}) {
@@ -3701,7 +4122,7 @@
 
         function isEVStaleDisconnectedStatus(status = {}, statusMeta = {}, statusError = '') {
             if (!isEVDisconnectedStatus(status)) return false;
-            if (isEVVehicleOfflineStatus(status, statusError)) return true;
+            if (isEVVehicleOfflineStatus(status, statusMeta, statusError)) return true;
             return isEVPotentiallyStaleStatus(status, statusMeta);
         }
 
@@ -3848,7 +4269,7 @@
                 };
             }
 
-            if (isEVVehicleOfflineStatus(status, statusError)) {
+            if (isEVVehicleOfflineStatus(status, statusMeta, statusError)) {
                 return {
                     kind: 'warn',
                     label: 'Wake Required',
@@ -4334,11 +4755,75 @@
             renderEVSelectedSummary();
         }
 
+        function getEVVehicleRenderFingerprint(vehicleId) {
+            const selectedId = String(vehicleId || '');
+            const vehicle = evDashboardState.vehicles.find((entry) => String(entry.vehicleId || '') === selectedId) || null;
+            const status = evDashboardState.statusByVehicleId[selectedId] || null;
+            const statusMeta = evDashboardState.statusMetaByVehicleId[selectedId] || {};
+            const readiness = evDashboardState.commandReadinessByVehicleId[selectedId] || null;
+            const readinessMeta = evDashboardState.readinessMetaByVehicleId[selectedId] || {};
+
+            return JSON.stringify({
+                selectedVehicleId: String(evDashboardState.selectedVehicleId || ''),
+                vehicleCount: evDashboardState.vehicles.length,
+                vehicleDisplayName: vehicle ? getEVVehicleDisplayName(vehicle) : '',
+                hasCredentials: vehicle ? hasEVVehicleCredentialsConfigured(vehicle) : false,
+                status: status ? {
+                    socPct: status.socPct ?? null,
+                    chargingState: status.chargingState ?? '',
+                    isPluggedIn: status.isPluggedIn ?? null,
+                    isHome: status.isHome ?? null,
+                    rangeKm: status.rangeKm ?? null,
+                    ratedRangeKm: status.ratedRangeKm ?? null,
+                    chargeLimitPct: status.chargeLimitPct ?? null,
+                    chargingAmps: status.chargingAmps ?? null,
+                    timeToFullChargeHours: status.timeToFullChargeHours ?? null,
+                    rangeAddedKm: status.rangeAddedKm ?? null,
+                    chargeEnergyAddedKwh: status.chargeEnergyAddedKwh ?? null,
+                    asOfIso: status.asOfIso ?? null
+                } : null,
+                statusMeta: {
+                    source: String(statusMeta.source || ''),
+                    error: String(statusMeta.error || '')
+                },
+                readiness: readiness ? {
+                    state: String(readiness.state || ''),
+                    transport: String(readiness.transport || ''),
+                    source: String(readiness.source || ''),
+                    vehicleCommandProtocolRequired: readiness.vehicleCommandProtocolRequired === true,
+                    reasonCode: String(readiness.reasonCode || '')
+                } : null,
+                readinessMeta: {
+                    source: String(readinessMeta.source || ''),
+                    error: String(readinessMeta.error || ''),
+                    loading: readinessMeta.loading === true
+                }
+            });
+        }
+
+        function maybeRenderEVOverviewAfterFetch(vehicleId, options = {}) {
+            if (options.deferRender === true) return;
+            if (options.silent !== true) {
+                renderEVOverview();
+                return;
+            }
+
+            const previousFingerprint = String(options.previousFingerprint || '');
+            const nextFingerprint = getEVVehicleRenderFingerprint(vehicleId);
+            if (previousFingerprint !== nextFingerprint) {
+                renderEVOverview();
+            }
+        }
+
         async function fetchEVVehicleCommandReadiness(vehicleId, options = {}) {
             const live = options.live === true;
             const silent = options.silent === true;
+            const deferRender = options.deferRender === true;
             const selectedId = String(vehicleId || '');
             if (!selectedId) return null;
+            const previousFingerprint = (silent && !deferRender)
+                ? getEVVehicleRenderFingerprint(selectedId)
+                : '';
 
             const selectedVehicle = evDashboardState.vehicles.find((vehicle) => String(vehicle.vehicleId || '') === selectedId) || null;
             if (!selectedVehicle || !hasEVVehicleCredentialsConfigured(selectedVehicle)) {
@@ -4349,7 +4834,7 @@
                     error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.',
                     loading: false
                 };
-                if (!silent) renderEVOverview();
+                maybeRenderEVOverviewAfterFetch(selectedId, { silent, deferRender, previousFingerprint });
                 return null;
             }
 
@@ -4367,7 +4852,7 @@
                     error: '',
                     loading: false
                 };
-                if (!silent) renderEVOverview();
+                maybeRenderEVOverviewAfterFetch(selectedId, { silent, deferRender, previousFingerprint });
                 return readiness;
             }
 
@@ -4430,15 +4915,19 @@
                 return null;
             } finally {
                 delete evDashboardState.loadingReadinessByVehicleId[selectedId];
-                renderEVOverview();
+                maybeRenderEVOverviewAfterFetch(selectedId, { silent, deferRender, previousFingerprint });
             }
         }
 
         async function fetchEVVehicleStatus(vehicleId, options = {}) {
             const live = options.live === true;
             const silent = options.silent === true;
+            const deferRender = options.deferRender === true;
             const selectedId = String(vehicleId || '');
             if (!selectedId) return null;
+            const previousFingerprint = (silent && !deferRender)
+                ? getEVVehicleRenderFingerprint(selectedId)
+                : '';
 
             if (isDashboardLocalMockEnabled()) {
                 const status = getMockEVStatus(selectedId);
@@ -4448,7 +4937,7 @@
                     loadedAtMs: Date.now(),
                     error: ''
                 };
-                if (silent) renderEVOverview();
+                maybeRenderEVOverviewAfterFetch(selectedId, { silent, deferRender, previousFingerprint });
                 return status;
             }
 
@@ -4466,14 +4955,21 @@
                 }
 
                 if (response.ok && data && data.errno === 0 && data.result) {
-                    evDashboardState.statusByVehicleId[selectedId] = data.result;
+                    const responseReasonCode = String(data.reasonCode || data.result.reasonCode || '').trim().toLowerCase();
+                    evDashboardState.statusByVehicleId[selectedId] = responseReasonCode && !String(data.result.reasonCode || '').trim()
+                        ? {
+                            ...data.result,
+                            reasonCode: responseReasonCode
+                        }
+                        : data.result;
                     const setupRequiredMessage = extractEVSetupRequiredMessage(data);
                     evDashboardState.statusMetaByVehicleId[selectedId] = {
                         source: data.source || (live ? 'live' : 'cache'),
                         loadedAtMs: Date.now(),
-                        error: setupRequiredMessage
+                        error: setupRequiredMessage,
+                        reasonCode: responseReasonCode
                     };
-                    return data.result;
+                    return evDashboardState.statusByVehicleId[selectedId];
                 }
 
                 const errorMessage = String(data?.error || `Failed to load status (HTTP ${response.status})`);
@@ -4492,7 +4988,7 @@
                 return null;
             } finally {
                 delete evDashboardState.loadingStatusByVehicleId[selectedId];
-                renderEVOverview();
+                maybeRenderEVOverviewAfterFetch(selectedId, { silent, deferRender, previousFingerprint });
             }
         }
 
@@ -4522,9 +5018,10 @@
 
             const forceLive = options.forceLive === true;
             await Promise.all([
-                fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true }),
-                fetchEVVehicleCommandReadiness(selectedId, { live: forceLive, silent: true })
+                fetchEVVehicleStatus(selectedId, { live: forceLive, silent: true, deferRender: true }),
+                fetchEVVehicleCommandReadiness(selectedId, { live: forceLive, silent: true, deferRender: true })
             ]);
+            renderEVOverview();
 
         }
 
@@ -4630,8 +5127,8 @@
 
                 if (evDashboardState.selectedVehicleId) {
                     await Promise.all([
-                        fetchEVVehicleStatus(evDashboardState.selectedVehicleId, { live: forceLiveSelected, silent: true }),
-                        fetchEVVehicleCommandReadiness(evDashboardState.selectedVehicleId, { live: forceLiveSelected, silent: true })
+                        fetchEVVehicleStatus(evDashboardState.selectedVehicleId, { live: forceLiveSelected, silent: true, deferRender: true }),
+                        fetchEVVehicleCommandReadiness(evDashboardState.selectedVehicleId, { live: forceLiveSelected, silent: true, deferRender: true })
                     ]);
                 }
             } catch (error) {
@@ -4809,7 +5306,7 @@
                 }
                 const appliedLocalAdjustment = applyEVAdjustmentCommandResult(vehicleId, command, extraPayload, commandResult);
                 if (!appliedLocalAdjustment) {
-                    await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
+                    await fetchEVVehicleStatus(vehicleId, { live: true, silent: true, deferRender: true });
                 }
                 return commandResult;
             } catch (error) {
@@ -4918,7 +5415,7 @@
                     error: ''
                 };
                 setEVOverviewMessage('success', 'Manual Tesla wake request accepted. Refreshing live status now.');
-                await fetchEVVehicleStatus(vehicleId, { live: true, silent: true });
+                await fetchEVVehicleStatus(vehicleId, { live: true, silent: true, deferRender: true });
                 setEVCommandHint('success', 'Vehicle wake requested. If Tesla still reports asleep, wait a few seconds and retry.');
                 return data?.result || null;
             } catch (error) {
@@ -4987,6 +5484,9 @@
             duration: 30,
             countdownInterval: null
         };
+        let quickControlStatusInflight = null;
+        let lastQuickControlStatusRequestMs = 0;
+        const QUICK_CONTROL_STATUS_MIN_INTERVAL_MS = 3000;
         
         function selectQuickControlType(type) {
             quickControlState.type = type;
@@ -5069,12 +5569,6 @@
             }
         }
         
-        // Initialize Quick Control status on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            // Load initial status
-            refreshQuickControlStatus();
-        });
-
         function isNotAuthenticatedError(error) {
             const msg = String(error?.message || error || '').toLowerCase();
             return msg.includes('not authenticated') || msg.includes('401');
@@ -5105,6 +5599,17 @@
         }
         
         async function refreshQuickControlStatus(showFeedback = false) {
+            const force = showFeedback === true;
+            const nowMs = Date.now();
+            if (!force && quickControlStatusInflight) {
+                return quickControlStatusInflight;
+            }
+            if (!force && lastQuickControlStatusRequestMs && (nowMs - lastQuickControlStatusRequestMs) < QUICK_CONTROL_STATUS_MIN_INTERVAL_MS) {
+                return null;
+            }
+            lastQuickControlStatusRequestMs = nowMs;
+
+            const run = async () => {
             if (showFeedback) {
                 const messageEl = document.getElementById('quickControlMessage');
                 if (messageEl) {
@@ -5170,9 +5675,23 @@
                     }
                 }
             }
+            };
+
+            if (force) {
+                return await run();
+            }
+
+            quickControlStatusInflight = run();
+            try {
+                return await quickControlStatusInflight;
+            } finally {
+                if (quickControlStatusInflight) {
+                    quickControlStatusInflight = null;
+                }
+            }
         }
         
-        async function checkQuickControlAutomationWarning() {
+        async function checkQuickControlAutomationWarning(options = {}) {
             const warningDiv = document.getElementById('quickControlAutomationWarning');
             if (!warningDiv) return;
 
@@ -5182,8 +5701,9 @@
             }
             
             try {
-                const resp = await authenticatedFetch('/api/automation/status-summary');
-                const data = await resp.json();
+                const data = await fetchAutomationStatusSummary({
+                    force: options.force === true
+                });
                 
                 if (data.errno === 0 && data.result?.enabled === true) {
                     warningDiv.style.display = 'block';
@@ -6785,6 +7305,36 @@
 
         // UI ticker for 'time since' labels
         let lastUpdateTicker = null;
+        const OVERVIEW_VISIBILITY_REFRESH_DEBOUNCE_MS = 5000;
+        let overviewForegroundRefreshReady = false;
+        let lastOverviewForegroundRefreshMs = 0;
+
+        function startLastUpdateTicker() {
+            if (lastUpdateTicker || document.hidden) return;
+            updateLastUpdateDisplays();
+            lastUpdateTicker = setInterval(updateLastUpdateDisplays, CONFIG.ui.tickerIntervalMs);
+        }
+
+        function stopLastUpdateTicker() {
+            if (!lastUpdateTicker) return;
+            clearInterval(lastUpdateTicker);
+            lastUpdateTicker = null;
+        }
+
+        function markOverviewForegroundRefresh() {
+            overviewForegroundRefreshReady = true;
+            lastOverviewForegroundRefreshMs = Date.now();
+        }
+
+        function shouldRunOverviewForegroundRefresh() {
+            if (!overviewForegroundRefreshReady) return false;
+            const now = Date.now();
+            if ((now - lastOverviewForegroundRefreshMs) < OVERVIEW_VISIBILITY_REFRESH_DEBOUNCE_MS) {
+                return false;
+            }
+            lastOverviewForegroundRefreshMs = now;
+            return true;
+        }
 
         // Helper to format milliseconds to human-readable string
         function formatMsToReadable(ms) {
@@ -6837,6 +7387,11 @@
          * Start all auto-refresh timers (when page visible and active)
          */
         function startAutoRefreshTimers() {
+            isPageVisible = !document.hidden;
+            if (!isPageVisible) {
+                autoRefreshActive = false;
+                return;
+            }
             if (autoRefreshActive) {
                 return; // Already running
             }
@@ -7240,6 +7795,8 @@
         // Parse FoxESS cloud time strings like "2025-11-29 19:01:57 AEDT+1100" into epoch ms.
         function parseFoxESSCloudTime(s) {
             if (!s || typeof s !== 'string') return null;
+            const directParsed = Date.parse(s);
+            if (!isNaN(directParsed)) return directParsed;
             // Try to find an ISO-like datetime + offset (e.g., "2025-11-29 19:01:57 AEDT+1100")
             // We'll extract the date/time and the trailing +HHMM or -HHMM offset if present.
             const m = s.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:.*?([+-]\d{4}))?$/);
@@ -7270,9 +7827,6 @@
                     if (lastUpdated.inverterCloud) {
                         const text = `Data age: ${formatSince(lastUpdated.inverterCloud)}`;
                         inv.textContent = text;
-                    } else if (lastUpdated.inverter) {
-                        const text = `Last checked: ${formatSince(lastUpdated.inverter)}`;
-                        inv.textContent = text;
                     } else {
                         inv.textContent = 'Data age: —';
                     }
@@ -7289,9 +7843,14 @@
                 // Also update the detailed inverter check label.
                 try {
                     const fetchAgoEl = document.getElementById('inverterFetchAgo');
+                    const fetchLabelEl = document.getElementById('inverterFetchLabel');
                     if (fetchAgoEl) {
                         const text = lastUpdated.inverter ? formatSince(lastUpdated.inverter) : '—';
                         fetchAgoEl.textContent = text;
+                    }
+                    if (fetchLabelEl) {
+                        const hasFetchAge = Number.isFinite(lastUpdated.inverter);
+                        fetchLabelEl.style.display = hasFetchAge ? 'inline-flex' : 'none';
                     }
                 } catch (e) { console.error('Error updating inverter display details:', e); }
             } catch (e) { console.error('Error in updateLastUpdateDisplays:', e); }
@@ -7751,10 +8310,7 @@
             
             // Start the 'since' ticker
             try {
-                updateLastUpdateDisplays();
-                if (!lastUpdateTicker) {
-                    lastUpdateTicker = setInterval(updateLastUpdateDisplays, 1000);
-                }
+                startLastUpdateTicker();
             } catch(e) { console.error('Update displays failed:', e); }
             
             // Init resizer for automation panel
@@ -7836,9 +8392,7 @@
                 return;
             }
             try {
-                const resp = await authenticatedFetch('/api/automation/status-summary');
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const data = await resp.json();
+                const data = await fetchAutomationStatusSummary();
                 if (data.errno !== 0 || !data.result) {
                     throw new Error(`Status summary errno: ${data.errno}`);
                 }
@@ -7857,6 +8411,57 @@
             }
         }
 
+        function normalizeTelemetryTimestampTrustClient(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            return (normalized === 'source' || normalized === 'derived' || normalized === 'synthetic')
+                ? normalized
+                : '';
+        }
+
+        function readTelemetryFrozenDurationMs(status = {}) {
+            const explicitAgeMs = Number(status.telemetryFingerprintAgeMs ?? status.fingerprintAgeMs);
+            if (Number.isFinite(explicitAgeMs) && explicitAgeMs >= 0) {
+                return explicitAgeMs;
+            }
+            const fingerprintSinceMs = Number(status.telemetryFingerprintSinceMs);
+            const referenceNowMs = Number(status.serverTime);
+            const nowMs = Number.isFinite(referenceNowMs) ? referenceNowMs : Date.now();
+            if (Number.isFinite(fingerprintSinceMs)) {
+                return Math.max(0, nowMs - fingerprintSinceMs);
+            }
+            return null;
+        }
+
+        function buildTelemetryPauseMessage(status = {}) {
+            const telemetryPauseReason = String(status.telemetryFailsafePauseReason || status.pauseReason || '').trim();
+            const telemetryAgeMs = Number(status.telemetryAgeMs ?? status.ageMs);
+            const telemetryAgeText = Number.isFinite(telemetryAgeMs)
+                ? formatMsToReadable(telemetryAgeMs)
+                : 'unknown age';
+
+            if (telemetryPauseReason === 'stale_telemetry') {
+                return `Automation paused: inverter telemetry is stale (${telemetryAgeText} old).`;
+            }
+            if (telemetryPauseReason === 'stale_telemetry_missing_timestamp') {
+                return 'Automation paused: inverter telemetry timestamp missing or unreadable.';
+            }
+            if (telemetryPauseReason === 'frozen_telemetry') {
+                const frozenDurationMs = readTelemetryFrozenDurationMs(status);
+                const frozenDurationText = Number.isFinite(frozenDurationMs)
+                    ? formatMsToReadable(frozenDurationMs)
+                    : 'an extended period';
+                const timestampTrust = normalizeTelemetryTimestampTrustClient(
+                    status.telemetryTimestampTrust || status.timestampTrust
+                );
+                if (timestampTrust === 'derived' || timestampTrust === 'synthetic') {
+                    return `Automation paused: inverter telemetry values were unchanged for ${frozenDurationText} while the timestamp was inferred.`;
+                }
+                return `Automation paused: inverter telemetry values were unchanged for ${frozenDurationText}.`;
+            }
+
+            return '';
+        }
+
         // Update the backend automation section UI
         function updateBackendAutomationUI(status) {
             try {
@@ -7870,19 +8475,7 @@
                 const inBlackout = status.inBlackout || false;
                 const blackoutWindow = status.currentBlackoutWindow;
                 const telemetryFailsafePaused = masterEnabled && status.telemetryFailsafePaused === true;
-                const telemetryPauseReason = String(status.telemetryFailsafePauseReason || '').trim();
-                const telemetryAgeMs = Number(status.telemetryAgeMs);
-                const telemetryAgeText = Number.isFinite(telemetryAgeMs)
-                    ? formatMsToReadable(telemetryAgeMs)
-                    : 'unknown age';
-                let telemetryPauseText = '';
-                if (telemetryPauseReason === 'stale_telemetry') {
-                    telemetryPauseText = `Automation paused: inverter telemetry is stale (${telemetryAgeText} old).`;
-                } else if (telemetryPauseReason === 'stale_telemetry_missing_timestamp') {
-                    telemetryPauseText = 'Automation paused: inverter telemetry timestamp missing or unreadable.';
-                } else if (telemetryPauseReason === 'frozen_telemetry') {
-                    telemetryPauseText = `Automation paused: inverter telemetry appears frozen (unchanged for ${telemetryAgeText}).`;
-                }
+                const telemetryPauseText = buildTelemetryPauseMessage(status);
                 // Normalize lastCheck (handle Firestore Timestamp shapes and seconds/ms ambiguity)
                 let lastCheckRaw = status.lastCheck;
                 let lastCheck = Date.now();
@@ -8307,15 +8900,13 @@
                     } else if (data.result?.skipped) {
                         const skipReason = String(data.result.reason || '');
                         if (skipReason === 'stale_telemetry' || skipReason === 'stale_telemetry_missing_timestamp' || skipReason === 'frozen_telemetry') {
-                            const ageMs = Number(data.result?.telemetry?.ageMs);
-                            const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
-                            if (skipReason === 'stale_telemetry') {
-                                showMessage('warning', `Automation paused: inverter telemetry is stale (${ageLabel} old).`, 6000);
-                            } else if (skipReason === 'stale_telemetry_missing_timestamp') {
-                                showMessage('warning', 'Automation paused: inverter telemetry timestamp missing or unreadable.', 6000);
-                            } else {
-                                showMessage('warning', `Automation paused: inverter telemetry appears frozen (${ageLabel}).`, 6000);
-                            }
+                            const pauseMessage = buildTelemetryPauseMessage({
+                                pauseReason: skipReason,
+                                ageMs: data.result?.telemetry?.ageMs,
+                                fingerprintAgeMs: data.result?.telemetry?.fingerprintAgeMs,
+                                timestampTrust: data.result?.telemetry?.timestampTrust
+                            });
+                            showMessage('warning', pauseMessage || 'Automation paused by telemetry fail-safe.', 6000);
                         }
                     } else {
                     }
@@ -9776,7 +10367,11 @@
                             
                             // Update scheduler warning if present
                             if (typeof checkAutomationStatusForScheduler === 'function') {
-                                checkAutomationStatusForScheduler();
+                                invalidateAutomationStatusSummaryCache();
+                                checkAutomationStatusForScheduler({ force: true });
+                            }
+                            if (typeof checkQuickControlAutomationWarning === 'function') {
+                                checkQuickControlAutomationWarning({ force: true });
                             }
                             
                             if (data.result.enabled) {
@@ -10472,21 +11067,34 @@
                     initializePageData(); 
                     checkAutomationStatusForScheduler(); // Check automation status for scheduler warning
                     refreshQuickControlStatus(); // Check quick control status
+                    markOverviewForegroundRefresh();
                 } catch (err) { console.error('Failed to initialize dashboard', err); }
             }
         });
 
         // Re-check automation status when page becomes visible (handles toggle from another tab/page)
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                if (typeof checkAutomationStatusForScheduler === 'function') {
-                    checkAutomationStatusForScheduler();
-                }
-                if (typeof refreshQuickControlStatus === 'function') {
-                    refreshQuickControlStatus();
-                }
-                if (typeof refreshSelectedEVStatusOnVisibility === 'function') {
-                    refreshSelectedEVStatusOnVisibility();
-                }
+            isPageVisible = !document.hidden;
+            if (document.hidden) {
+                stopAutoRefreshTimers();
+                stopLastUpdateTicker();
+                return;
+            }
+
+            startAutoRefreshTimers();
+            startLastUpdateTicker();
+            invalidateAutomationStatusSummaryCache();
+            if (!shouldRunOverviewForegroundRefresh()) {
+                return;
+            }
+
+            if (typeof checkAutomationStatusForScheduler === 'function') {
+                checkAutomationStatusForScheduler({ force: true });
+            }
+            if (typeof refreshQuickControlStatus === 'function') {
+                refreshQuickControlStatus();
+            }
+            if (typeof refreshSelectedEVStatusOnVisibility === 'function') {
+                refreshSelectedEVStatusOnVisibility();
             }
         });

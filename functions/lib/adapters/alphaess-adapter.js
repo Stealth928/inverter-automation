@@ -252,7 +252,10 @@ class AlphaEssDeviceAdapter extends DeviceAdapter {
     }
 
     const observedAtIso = context.observedAtIso || new Date().toISOString();
-    return normalizeStatus(result.result || {}, observedAtIso, systemSn);
+    return {
+      ...normalizeStatus(result.result || {}, observedAtIso, systemSn),
+      telemetryTimestampTrust: context.observedAtIso ? 'source' : 'synthetic'
+    };
   }
 
   async getCapabilities(_context = {}) {

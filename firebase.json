@@ -422,8 +422,8 @@
     "runtime": "nodejs22",
     "codebase": "default",
     "predeploy": [
-      "npm --prefix \"$RESOURCE_DIR\" run lint",
-      "npm --prefix \"$RESOURCE_DIR\" run test"
+      "npm --prefix functions run lint",
+      "npm --prefix functions run test"
     ]
   }
   ,

@@ -406,6 +406,82 @@ describe('admin route module', () => {
     expect(response.body).toEqual({ errno: 400, error: 'Show-once announcements require an ID' });
   });
 
+  test('admin announcement audience count reflects current eligibility filters', async () => {
+    const oldCreatedAt = new Date(Date.now() - (45 * 24 * 60 * 60 * 1000)).toISOString();
+    const youngCreatedAt = new Date(Date.now() - (2 * 24 * 60 * 60 * 1000)).toISOString();
+    const users = {
+      'uid-1': { automationEnabled: true, createdAt: oldCreatedAt },
+      'uid-2': { automationEnabled: false, createdAt: oldCreatedAt },
+      'uid-3': { automationEnabled: true, createdAt: youngCreatedAt },
+      'uid-4': { automationEnabled: true, createdAt: oldCreatedAt }
+    };
+    const configByUid = {
+      'uid-1': { tourComplete: true, setupComplete: true },
+      'uid-2': { tourComplete: false, setupComplete: false },
+      'uid-3': { tourComplete: true, setupComplete: true },
+      'uid-4': { tourComplete: true, setupComplete: true }
+    };
+
+    const makeUserConfigDoc = (uid) => ({
+      get: jest.fn(async () => ({
+        exists: Object.prototype.hasOwnProperty.call(configByUid, uid),
+        data: () => configByUid[uid] || {}
+      }))
+    });
+
+    const app = buildApp(createDeps({
+      db: {
+        collection: jest.fn((name) => {
+          if (name !== 'users') {
+            return {
+              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+              where: jest.fn(() => ({})),
+              add: jest.fn(async () => undefined)
+            };
+          }
+          return {
+            get: jest.fn(async () => makeQuerySnapshot(Object.entries(users).map(
+              ([uid, profile]) => makeDocSnapshot(uid, profile)
+            ))),
+            doc: jest.fn((uid) => ({
+              collection: jest.fn((subName) => {
+                if (subName !== 'config') throw new Error(`Unexpected users subcollection: ${subName}`);
+                return {
+                  doc: jest.fn((docId) => {
+                    if (docId !== 'main') throw new Error(`Unexpected config doc: ${docId}`);
+                    return makeUserConfigDoc(uid);
+                  })
+                };
+              })
+            }))
+          };
+        }),
+        getAll: jest.fn(async (...docRefs) => Promise.all(docRefs.map((docRef) => docRef.get())))
+      }
+    }));
+
+    const response = await request(app)
+      .post('/api/admin/announcement/audience-count')
+      .set('Authorization', 'Bearer token')
+      .send({
+        audience: {
+          requireTourComplete: true,
+          requireSetupComplete: true,
+          requireAutomationEnabled: true,
+          minAccountAgeDays: 7,
+          onlyIncludeUids: [],
+          includeUids: ['uid-2'],
+          excludeUids: ['uid-4']
+        }
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      errno: 0,
+      result: { count: 2 }
+    });
+  });
+
   test('dataworks ops returns cached GitHub diagnostics without refetching immediately', async () => {
     const nowMs = Date.now();
     const asOfIso = new Date(nowMs - (4 * 60 * 1000)).toISOString();

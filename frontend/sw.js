@@ -1,10 +1,11 @@
-const CACHE_VERSION = 'socrates-v64';
+const CACHE_VERSION = 'socrates-v65';
 const CACHE_PREFIX = 'socrates-';
 const API_CLIENT_VERSION = '5';
 const SHARED_UTILS_VERSION = '13';
 const APP_SHELL_VERSION = '24';
 const TOUR_VERSION = '33';
 const ADMIN_VERSION = '14';
+const DASHBOARD_VERSION = '6';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_FALLBACK_PAGE = '/app.html';
 
@@ -27,6 +28,7 @@ const STATIC_ASSETS = [
   `/js/shared-utils.js?v=${SHARED_UTILS_VERSION}`,
   `/js/app-shell.js?v=${APP_SHELL_VERSION}`,
   `/js/admin.js?v=${ADMIN_VERSION}`,
+  `/js/dashboard.js?v=${DASHBOARD_VERSION}`,
   '/favicon.ico',
   '/manifest.webmanifest',
   '/icons/icon-192.png?v=2',
@@ -267,6 +269,7 @@ self.addEventListener('fetch', (event) => {
     requestUrl.pathname === '/js/tour.js' ||
     requestUrl.pathname === '/js/app-shell.js' ||
     requestUrl.pathname === '/js/admin.js' ||
+    requestUrl.pathname === '/js/dashboard.js' ||
     requestUrl.pathname === '/js/api-client.js' ||
     requestUrl.pathname === '/js/shared-utils.js' ||
     requestUrl.pathname === '/css/shared-styles.css' ||
