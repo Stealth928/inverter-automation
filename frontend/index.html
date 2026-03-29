@@ -483,42 +483,58 @@
               </div>
 
               <div class="weather-now">
-                <strong>20.5&deg;C</strong>
-                <span>Sydney &middot; Showers &middot; Now (21:30)</span>
+                <div class="weather-now__main">
+                  <span class="weather-now__pulse" aria-hidden="true"></span>
+                  <strong>20.5&deg;C</strong>
+                  <span class="weather-now__cond">&#127783; Showers</span>
+                </div>
+                <div class="weather-now__place">Sydney &middot; Now (21:30)</div>
                 <div class="weather-now__meta">
-                  <span>Rain: 3.6 mm</span>
-                  <span>Wind: 5.5 km/h SSE</span>
-                  <span>Sun: 0 W/m&sup2;</span>
-                  <span>Humidity: 55%</span>
+                  <span>&#127783; Rain&thinsp;3.6 mm</span>
+                  <span>&#128168; Wind&thinsp;5.5 km/h SSE</span>
+                  <span>&#9728; Sun&thinsp;0 W/m&sup2;</span>
+                  <span>&#128167; Humidity&thinsp;55%</span>
                 </div>
               </div>
 
               <div class="weather-cards">
                 <div class="weather-card">
-                  <h4>Mon 30/3</h4>
+                  <div class="weather-card__top">
+                    <h4>Mon 30/3</h4>
+                    <span class="weather-card__emoji" aria-hidden="true">&#127783;</span>
+                  </div>
                   <p>Showers</p>
-                  <small>High 22.8&deg; / Low 18.6&deg;</small>
-                  <div class="weather-card__stats">
-                    <span>Rain 3.6 mm</span>
-                    <span>&#9728; 119 &nbsp; &#9729; 81%</span>
+                  <div class="weather-card__temps">High <strong>22.8&deg;</strong> / Low 18.6&deg;</div>
+                  <div class="weather-card__badges">
+                    <span class="wbadge wbadge--rain-mid">&#127783; 3.6 mm</span>
+                    <span class="wbadge wbadge--sun-mid">&#9728; 119</span>
+                    <span class="wbadge wbadge--cloud-bad">&#9729; 81%</span>
                   </div>
                 </div>
-                <div class="weather-card">
-                  <h4>Tue 31/3</h4>
-                  <p>&#9928; Thunderstorms</p>
-                  <small>High 21.4&deg; / Low 17.2&deg;</small>
-                  <div class="weather-card__stats">
-                    <span>Rain 12.4 mm</span>
-                    <span>&#9728; 68 &nbsp; &#9729; 92%</span>
+                <div class="weather-card weather-card--extreme">
+                  <div class="weather-card__top">
+                    <h4>Tue 31/3</h4>
+                    <span class="weather-card__emoji" aria-hidden="true">&#9928;</span>
+                  </div>
+                  <p>Thunderstorms</p>
+                  <div class="weather-card__temps">High <strong>21.4&deg;</strong> / Low 17.2&deg;</div>
+                  <div class="weather-card__badges">
+                    <span class="wbadge wbadge--rain-bad">&#127783; 12.4 mm</span>
+                    <span class="wbadge wbadge--sun-bad">&#9728; 68</span>
+                    <span class="wbadge wbadge--cloud-bad">&#9729; 92%</span>
                   </div>
                 </div>
-                <div class="weather-card">
-                  <h4>Wed 1/4</h4>
+                <div class="weather-card weather-card--clear">
+                  <div class="weather-card__top">
+                    <h4>Wed 1/4</h4>
+                    <span class="weather-card__emoji" aria-hidden="true">&#9925;</span>
+                  </div>
                   <p>Partly Cloudy</p>
-                  <small>High 29.8&deg; / Low 18.9&deg;</small>
-                  <div class="weather-card__stats">
-                    <span>Rain 0.0 mm</span>
-                    <span>&#9728; 282 &nbsp; &#9729; 24%</span>
+                  <div class="weather-card__temps">High <strong>29.8&deg;</strong> / Low 18.9&deg;</div>
+                  <div class="weather-card__badges">
+                    <span class="wbadge wbadge--rain-good">&#127783; 0.0 mm</span>
+                    <span class="wbadge wbadge--sun-good">&#9728; 282</span>
+                    <span class="wbadge wbadge--cloud-good">&#9729; 24%</span>
                   </div>
                 </div>
               </div>
