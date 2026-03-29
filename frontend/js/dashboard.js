@@ -4077,10 +4077,17 @@
             return evDashboardState.commandReadinessByVehicleId[selectedId] || null;
         }
 
-        function isEVVehicleOfflineStatus(status = {}, statusError = '') {
-            const reasonCode = String(status?.reasonCode || '').trim().toLowerCase();
+        function getEVStatusReasonCode(status = {}, statusMeta = {}) {
+            return String(status?.reasonCode || statusMeta?.reasonCode || '').trim().toLowerCase();
+        }
+
+        function isEVVehicleOfflineStatus(status = {}, statusMeta = {}, statusError = '') {
+            const reasonCode = getEVStatusReasonCode(status, statusMeta);
+            const source = String(statusMeta?.source || '').trim().toLowerCase();
             const errorText = String(statusError || '').trim().toLowerCase();
-            return reasonCode === 'vehicle_offline' || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
+            return reasonCode === 'vehicle_offline'
+                || source === 'cache_vehicle_offline'
+                || /vehicle.*(offline|asleep|unavailable)|\boffline\b|\basleep\b|wake the vehicle/.test(errorText);
         }
 
         function getEVStatusMetaSource(statusMeta = {}) {
@@ -4115,7 +4122,7 @@
 
         function isEVStaleDisconnectedStatus(status = {}, statusMeta = {}, statusError = '') {
             if (!isEVDisconnectedStatus(status)) return false;
-            if (isEVVehicleOfflineStatus(status, statusError)) return true;
+            if (isEVVehicleOfflineStatus(status, statusMeta, statusError)) return true;
             return isEVPotentiallyStaleStatus(status, statusMeta);
         }
 
@@ -4262,7 +4269,7 @@
                 };
             }
 
-            if (isEVVehicleOfflineStatus(status, statusError)) {
+            if (isEVVehicleOfflineStatus(status, statusMeta, statusError)) {
                 return {
                     kind: 'warn',
                     label: 'Wake Required',
@@ -4948,14 +4955,21 @@
                 }
 
                 if (response.ok && data && data.errno === 0 && data.result) {
-                    evDashboardState.statusByVehicleId[selectedId] = data.result;
+                    const responseReasonCode = String(data.reasonCode || data.result.reasonCode || '').trim().toLowerCase();
+                    evDashboardState.statusByVehicleId[selectedId] = responseReasonCode && !String(data.result.reasonCode || '').trim()
+                        ? {
+                            ...data.result,
+                            reasonCode: responseReasonCode
+                        }
+                        : data.result;
                     const setupRequiredMessage = extractEVSetupRequiredMessage(data);
                     evDashboardState.statusMetaByVehicleId[selectedId] = {
                         source: data.source || (live ? 'live' : 'cache'),
                         loadedAtMs: Date.now(),
-                        error: setupRequiredMessage
+                        error: setupRequiredMessage,
+                        reasonCode: responseReasonCode
                     };
-                    return data.result;
+                    return evDashboardState.statusByVehicleId[selectedId];
                 }
 
                 const errorMessage = String(data?.error || `Failed to load status (HTTP ${response.status})`);

@@ -1708,6 +1708,53 @@ test.describe('Dashboard Page', () => {
     expect(wakeRequests).toContainEqual({});
   });
 
+  test('should offer manual wake when Tesla marks cached status offline via top-level reason code only', async ({ page }) => {
+    await mockEvApis(page, {
+      vehicles: [{ vehicleId: 'veh-cache-offline', displayName: 'Model Y', hasCredentials: true }],
+      statusByVehicleId: {
+        'veh-cache-offline': {
+          status: 200,
+          body: {
+            errno: 0,
+            source: 'cache_vehicle_offline',
+            reasonCode: 'vehicle_offline',
+            result: {
+              socPct: 75,
+              chargingState: 'charging',
+              isPluggedIn: true,
+              isHome: true,
+              rangeKm: 306,
+              chargeLimitPct: 100,
+              timeToFullChargeHours: 3.4,
+              asOfIso: '2026-03-29T05:00:00.000Z'
+            }
+          }
+        }
+      },
+      readinessByVehicleId: {
+        'veh-cache-offline': {
+          status: 200,
+          body: {
+            errno: 0,
+            result: {
+              state: 'ready_direct',
+              transport: 'direct',
+              source: 'fleet_status',
+              vehicleCommandProtocolRequired: false
+            }
+          }
+        }
+      }
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/Wake Required/i);
+    await expect(page.locator('#evSelectedStatusPills')).toContainText(/CACHE_VEHICLE_OFFLINE/i);
+    await expect(page.locator('#evWakeVehicleBtn')).toBeVisible();
+    await expect(page.locator('#evSessionControlGroup')).toHaveClass(/is-hidden/);
+  });
+
   test('should recommend waking when cached Tesla status says not plugged in because the plug state may be stale', async ({ page }) => {
     const commandRequests = [];
 
