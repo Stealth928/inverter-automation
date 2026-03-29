@@ -4682,18 +4682,18 @@ section { padding: 80px 0; }
 .sc-track-wrap {
   overflow: hidden;
   border-radius: 14px;
-  height: 540px;
+  height: auto;
 }
 
 .sc-track {
   position: relative;
-  height: 100%;
+  height: auto;
 }
 
 .sc-slide {
-  position: absolute;
-  inset: 0;
-  height: 100%;
+  position: relative;
+  inset: auto;
+  height: auto;
   display: none;
   align-items: center;
   justify-content: center;
@@ -4704,9 +4704,12 @@ section { padding: 80px 0; }
   display: flex;
 }
 
+.sc-slide picture {
+  display: block;
+}
+
 .sc-slide img {
   max-width: 100%;
-  max-height: 100%;
   width: auto;
   height: auto;
   display: block;
@@ -4775,7 +4778,6 @@ section { padding: 80px 0; }
 }
 
 @media (max-width: 600px) {
-  .sc-track-wrap { height: 260px; }
   .sc-btn { width: 36px; height: 36px; font-size: 15px; }
   .sc-btn--prev { left: 8px; }
   .sc-btn--next { right: 8px; }
