@@ -2708,6 +2708,13 @@ test.describe('Dashboard Page', () => {
     expect(chartData.buy[0]).toBeCloseTo(1.13, 2);
     expect(chartData.feed[0]).toBeCloseTo(1.13, 2);
     expect(chartData.feed[1]).toBeCloseTo(4.17, 2);
+
+    const tickLabel = await page.evaluate(() => {
+      const tickCallback = window.__lastAmberChartConfig?.options?.scales?.y?.ticks?.callback;
+      return typeof tickCallback === 'function' ? tickCallback(0.10000000000000009) : null;
+    });
+
+    expect(tickLabel).toBe('0.10¢');
   });
 
   test('should ignore stale cached AEMO prices without generation and let manual refresh bypass browser cache', async ({ page }) => {

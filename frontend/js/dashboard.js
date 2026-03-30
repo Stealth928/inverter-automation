@@ -3721,7 +3721,7 @@
                             y: {
                                 beginAtZero: true,
                                 grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
-                                ticks: { color: cssVar('--text-secondary'), font: { size: 11 }, callback: val => val + '¢' }
+                                ticks: { color: cssVar('--text-secondary'), font: { size: 11 }, callback: (val) => formatPricingValue(val) }
                             }
                         }
                     }
