@@ -51,6 +51,24 @@ function toFiniteNumber(value, fallback = null) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const numeric = toFiniteNumber(value, null);
+    if (numeric !== null) {
+      return numeric;
+    }
+  }
+  return null;
+}
+
+function buildAemoMarketMetrics(row) {
+  return {
+    demand: toFiniteNumber(row?.TOTALDEMAND, null),
+    demandForecast: toFiniteNumber(row?.DEMANDFORECAST, null),
+    generation: firstFiniteNumber(row?.CLEAREDSUPPLY, row?.INITIALSUPPLY, row?.AVAILABLEGENERATION)
+  };
+}
+
 function convertAemoRrpToCentsPerKwh(value) {
   const rrpPerMwh = toFiniteNumber(value, null);
   if (rrpPerMwh === null) {
@@ -204,8 +222,7 @@ function buildCurrentLegacyRows(regionId, priceRecord, demandRecord) {
 
   const metadata = {
     asOf: endIso,
-    demand: toFiniteNumber(demandRecord?.TOTALDEMAND, null),
-    demandForecast: toFiniteNumber(demandRecord?.DEMANDFORECAST, null),
+    ...buildAemoMarketMetrics(demandRecord),
     aemoIntervalType: 'dispatch',
     aemoLastChanged: trimString(priceRecord.LASTCHANGED)
   };
@@ -268,8 +285,7 @@ function buildPredispatchLegacyRows(regionId, priceRows, demandRows) {
 
     const metadata = {
       asOf: endIso,
-      demand: toFiniteNumber(demandRow?.TOTALDEMAND, null),
-      demandForecast: toFiniteNumber(demandRow?.DEMANDFORECAST, null),
+      ...buildAemoMarketMetrics(demandRow),
       aemoIntervalType: 'predispatch',
       aemoLastChanged: trimString(priceRow.LASTCHANGED || demandRow?.LASTCHANGED),
       periodId: trimString(priceRow.PERIODID || demandRow?.PERIODID)
@@ -326,7 +342,7 @@ function buildHistoricalLegacyRows(regionId, rows, startIso, endIso) {
 
     const metadata = {
       asOf: rowEndIso,
-      demand: toFiniteNumber(row.TOTALDEMAND, null),
+      ...buildAemoMarketMetrics(row),
       aemoIntervalType: trimString(row.PERIODTYPE) || 'trade'
     };
 

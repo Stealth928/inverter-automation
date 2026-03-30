@@ -2736,6 +2736,71 @@
         let amberLastPersistedSiteId = '';
         const AEMO_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 
+        function toFinitePricingNumber(value) {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric : null;
+        }
+
+        function getFeedDisplayPriceCents(interval) {
+            const perKwh = toFinitePricingNumber(interval?.perKwh);
+            return perKwh === null ? null : -perKwh;
+        }
+
+        function formatPricingValue(value) {
+            const numeric = toFinitePricingNumber(value);
+            if (numeric === null) return '—';
+
+            const neg = numeric < 0;
+            const abs = Math.abs(numeric);
+            if (abs >= 100) {
+                const formattedDollars = `$${(abs / 100).toFixed(2)}`;
+                return neg ? `-${formattedDollars}` : formattedDollars;
+            }
+
+            const formattedCents = abs >= 10 ? `${abs.toFixed(1)}¢` : `${abs.toFixed(2)}¢`;
+            return neg ? `-${formattedCents}` : formattedCents;
+        }
+
+        function formatCompactPricingValue(value) {
+            const numeric = toFinitePricingNumber(value);
+            if (numeric === null) return '—';
+
+            const abs = Math.abs(numeric);
+            if (abs >= 100) {
+                const formattedDollars = `$${(abs / 100).toFixed(2)}`;
+                return numeric < 0 ? `-${formattedDollars}` : formattedDollars;
+            }
+
+            return `${numeric.toFixed(0)}¢`;
+        }
+
+        function getFeedPriceClass(value) {
+            const numeric = toFinitePricingNumber(value);
+            if (numeric === null) return 'price-neutral';
+            if (numeric < -6) return 'price-high';
+            if (numeric < 0) return 'price-mid';
+            if (numeric < 5) return 'price-neutral';
+            if (numeric < 20) return 'price-low';
+            return 'price-darkgreen';
+        }
+
+        function formatAemoMarketMetricMw(value) {
+            const numeric = toFinitePricingNumber(value);
+            if (numeric === null) return '—';
+
+            const abs = Math.abs(numeric);
+            if (abs >= 1000) {
+                const decimals = abs >= 10000 ? 1 : 2;
+                const gw = (numeric / 1000)
+                    .toFixed(decimals)
+                    .replace(/\.0$/, '')
+                    .replace(/(\.\d)0$/, '$1');
+                return `${gw} GW`;
+            }
+
+            return `${numeric.toFixed(0)} MW`;
+        }
+
         function getPricingProviderSafe() {
             try {
                 if (window.sharedUtils && typeof window.sharedUtils.normalizePricingProviderKey === 'function') {
@@ -3289,6 +3354,10 @@
             const currentFeed = feedIn.find(i => i.type === 'CurrentInterval');
             const forecasts = general.filter(i => i.type === 'ForecastInterval');
             const feedForecasts = feedIn.filter(i => i.type === 'ForecastInterval');
+            const showAemoMarketMetrics = getPricingProviderSafe() === 'aemo';
+            const marketMetricsSource = currentGen || currentFeed || null;
+            const currentDemandMw = showAemoMarketMetrics ? toFinitePricingNumber(marketMetricsSource?.demand) : null;
+            const currentGenerationMw = showAemoMarketMetrics ? toFinitePricingNumber(marketMetricsSource?.generation) : null;
 
             // Detect spikes in forecasts
             const spikeForecasts = forecasts.filter(i => i.spikeStatus && i.spikeStatus !== 'none');
@@ -3308,18 +3377,9 @@
             
             const maxBuyPrice = displayForecasts.length ? Math.max(...displayForecasts.map(i => i.perKwh)) : 0;
             const minBuyPrice = displayForecasts.length ? Math.min(...displayForecasts.map(i => i.perKwh)) : 0;
-            // Compute feed-in display values (positive = earning money)
-            const feedDisplayValues = displayFeedForecasts.length ? displayFeedForecasts.map(it => {
-                try {
-                    if (window.sharedUtils && typeof window.sharedUtils.feedDisplayValue === 'function') {
-                        // Negate to convert Amber's negative values to positive display
-                        return -Math.round(it.perKwh);
-                    }
-                } catch (e) {
-                    // fall through to inline transform
-                }
-                return -Math.round(it.perKwh);  // Negate Amber's negative values
-            }) : [];
+            const feedDisplayValues = displayFeedForecasts
+                .map((interval) => getFeedDisplayPriceCents(interval))
+                .filter((value) => value !== null);
             const minFeedSpot = feedDisplayValues.length ? Math.min(...feedDisplayValues) : 0;
             const maxFeedSpot = feedDisplayValues.length ? Math.max(...feedDisplayValues) : 0;
 
@@ -3340,21 +3400,6 @@
                     btn.textContent = isShowingAll ? 'Show less' : `Show all (${returned})`;
                 }
             } catch(e) { /* ignore diagnostics errors */ }
-
-            // Helper: format a price (val in cents). Values >= 100¢ shown as $X.YY, else as XX.XX¢
-            function formatPrice(val) {
-                const n = Number(val) || 0;
-                const neg = n < 0;
-                const abs = Math.abs(n);
-                if (abs >= 100) {
-                    // Format as dollar amount with 2 decimal places
-                    const s = `$${(abs / 100).toFixed(2)}`;
-                    return neg ? `-${s}` : s;
-                }
-                // Format as cents - show decimal only if needed
-                const s = abs >= 10 ? `${abs.toFixed(1)}¢` : `${abs.toFixed(2)}¢`;
-                return neg ? `-${s}` : s;
-            }
 
             function formatForecastRelativeLabel(value) {
                 const date = new Date(value);
@@ -3403,7 +3448,7 @@
             if (hasSpikes) {
                 const nextSpike = spikeForecasts[0];
                 const spikeTimeLabel = formatForecastRelativeLabel(nextSpike.startTime);
-                const spikePrice = formatPrice(nextSpike.perKwh);
+                const spikePrice = formatPricingValue(nextSpike.perKwh);
                 html += `<div style="background:color-mix(in srgb, var(--color-danger) 15%, transparent);border:1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);border-radius:8px;padding:10px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
                     <span style="font-size:24px">⚠️</span>
                     <div>
@@ -3418,6 +3463,8 @@
                 const currentPriceMetricCount = [
                     !!currentGen,
                     !!currentFeed,
+                    currentDemandMw !== null,
+                    currentGenerationMw !== null,
                     !!(currentGen && currentGen.renewables !== undefined)
                 ].filter(Boolean).length || 1;
                 html += `<div style="display:grid;grid-template-columns:repeat(${currentPriceMetricCount}, minmax(0, 1fr));gap:8px;margin-bottom:12px;align-items:start">`;
@@ -3426,33 +3473,31 @@
                     const spot = currentGen.spotPerKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
-                    // Format price using helper function for consistency
-                    const priceStr = formatPrice(p);
+                    const priceStr = formatPricingValue(p);
                     html += `<div style="min-width:0">
                         <div style="font-size:11px;color:var(--text-secondary)">Buy Now ${spike ? '<span style="color:var(--color-danger)">⚠️</span>' : ''}</div>
                         <div class="value ${cls}" style="font-size:28px;font-weight:700">${priceStr}</div>
                     </div>`;
                 }
                 if (currentFeed) {
-                    // Display feed-in price (what you earn when exporting)
-                    // Amber returns NEGATIVE values for feed-in (negative = you earn)
-                    // Display as positive for user clarity: -9¢ displays as 9¢
-                    const displayVal = -currentFeed.perKwh;
-                    function feedClassFromVal(v) {
-                        // v is display value in cents (positive = you earn at this rate)
-                        if (v < -6) return 'price-high'; // red - paying money (negative feed-in)
-                        if (v < 0) return 'price-mid'; // amber - slightly negative
-                        if (v < 5) return 'price-neutral'; // grey - very low earnings
-                        if (v < 20) return 'price-low'; // green - good rate
-                        if (v >= 20) return 'price-darkgreen'; // dark green - excellent rate
-                        return 'price-neutral';
-                    }
-                    const getCls = feedClassFromVal(displayVal);
-                    // Format price using helper function for consistency
-                    const feedPriceStr = formatPrice(displayVal);
+                    const displayVal = getFeedDisplayPriceCents(currentFeed);
+                    const getCls = getFeedPriceClass(displayVal);
+                    const feedPriceStr = formatPricingValue(displayVal);
                     html += `<div style="min-width:0">
                         <div style="font-size:11px;color:var(--text-secondary)">Feed-In Price</div>
                         <div class="value ${getCls}" style="font-size:28px;font-weight:700">${feedPriceStr}</div>
+                    </div>`;
+                }
+                if (currentDemandMw !== null) {
+                    html += `<div style="min-width:0">
+                        <div style="font-size:11px;color:var(--text-secondary)">Demand</div>
+                        <div class="value" style="font-size:24px;font-weight:700;color:var(--accent-blue)">${formatAemoMarketMetricMw(currentDemandMw)}</div>
+                    </div>`;
+                }
+                if (currentGenerationMw !== null) {
+                    html += `<div style="min-width:0">
+                        <div style="font-size:11px;color:var(--text-secondary)">Generation</div>
+                        <div class="value" style="font-size:24px;font-weight:700;color:var(--color-success)">${formatAemoMarketMetricMw(currentGenerationMw)}</div>
                     </div>`;
                 }
                 if (currentGen && currentGen.renewables !== undefined) {
@@ -3474,21 +3519,11 @@
                 // Buy price coloring (low=cheap, high=expensive)
                 const minBuyCls = minBuyPrice > 30 ? 'price-high' : minBuyPrice > 20 ? 'price-mid' : 'price-low';
                 const maxBuyCls = maxBuyPrice > 30 ? 'price-high' : maxBuyPrice > 20 ? 'price-mid' : 'price-low';
-                // Feed-in coloring (high=you earn money, low=you pay)
-                function feedClassFromVal(v) {
-                    if (v < -6) return 'price-high'; // red - paying money
-                    if (v < 0) return 'price-mid'; // amber - slightly negative
-                    if (v < 5) return 'price-neutral'; // grey - very low earnings
-                    if (v < 20) return 'price-low'; // green - good rate
-                    if (v >= 20) return 'price-darkgreen'; // dark green - excellent rate
-                    return 'price-neutral';
-                }
-                const minFeedCls = feedClassFromVal(minFeedSpot);
-                const maxFeedCls = feedClassFromVal(maxFeedSpot);
-                // Note: `formatPrice` helper is defined earlier to provide consistent formatting
+                const minFeedCls = getFeedPriceClass(minFeedSpot);
+                const maxFeedCls = getFeedPriceClass(maxFeedSpot);
                 html += `<div style="display:flex;gap:12px;margin-bottom:12px;padding:8px;background:var(--bg-input);border-radius:6px;font-size:11px">
-                    <div><span style="color:var(--text-secondary)">Forecast range:</span> <span class="${minBuyCls}" style="font-weight:600">${formatPrice(minBuyPrice)}</span> — <span class="${maxBuyCls}" style="font-weight:600">${formatPrice(maxBuyPrice)}</span></div>
-                    ${feedForecasts.length ? `<div><span style="color:var(--text-secondary)">Feed-in range:</span> <span class="${minFeedCls}" style="font-weight:600">${formatPrice(minFeedSpot)}</span> — <span class="${maxFeedCls}" style="font-weight:600">${formatPrice(maxFeedSpot)}</span></div>` : ''}
+                    <div><span style="color:var(--text-secondary)">Forecast range:</span> <span class="${minBuyCls}" style="font-weight:600">${formatPricingValue(minBuyPrice)}</span> — <span class="${maxBuyCls}" style="font-weight:600">${formatPricingValue(maxBuyPrice)}</span></div>
+                    ${feedForecasts.length ? `<div><span style="color:var(--text-secondary)">Feed-in range:</span> <span class="${minFeedCls}" style="font-weight:600">${formatPricingValue(minFeedSpot)}</span> — <span class="${maxFeedCls}" style="font-weight:600">${formatPricingValue(maxFeedSpot)}</span></div>` : ''}
                 </div>`;
             }
 
@@ -3505,12 +3540,7 @@
                     const ap = it.advancedPrice;
                     const bandInfo = ap ? `Low: ${ap.low.toFixed(0)}¢ | Pred: ${ap.predicted.toFixed(0)}¢ | High: ${ap.high.toFixed(0)}¢` : '';
                     const tooltip = spike ? `SPIKE: ${it.spikeStatus}` : bandInfo;
-                    let priceStr;
-                    if (p > 99) {
-                        priceStr = `$${(p/100).toFixed(2)}`;
-                    } else {
-                        priceStr = `${p.toFixed(0)}¢`;
-                    }
+                    const priceStr = formatCompactPricingValue(p);
                     html += `<div class="stat-item" style="min-width:52px;padding:5px;${spike ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}" title="${tooltip}">
                         <div style="display:flex;align-items:center;justify-content:center;gap:2px">
                             <span class="value ${cls}" style="font-size:12px;font-weight:600">${priceStr}</span>
@@ -3522,34 +3552,18 @@
                 html += '</div>';
             }
 
-            // Feed-in price forecasts - Amber app shows spotPerKwh rounded to whole cents
+            // Feed-in price forecasts
             if (displayFeedForecasts.length) {
                 html += '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;margin-top:12px;font-weight:600">📉 Feed-in Spot Forecast</div>';
                 html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
                 displayFeedForecasts.forEach(it => {
-                    // Use startTime converted to AEST - Amber shows interval START time
                     const startDate = new Date(it.startTime);
                     const time = startDate.toLocaleTimeString('en-AU', {hour:'numeric', minute:'2-digit', hour12:false, timeZone: USER_TZ || 'Australia/Sydney'});
-                    // Display -Round(perKwh) to match Amber app (negative perKwh = you earn, shown positive)
-                    const displayVal = -Math.round(it.perKwh);
-                    function feedClassFromVal(v) {
-                        // v is display value in cents (positive = you earn at this rate)
-                        if (v < -6) return 'price-high'; // red - paying money
-                        if (v < 0) return 'price-mid'; // amber - slightly negative
-                        if (v < 5) return 'price-neutral'; // grey - very low earnings
-                        if (v < 20) return 'price-low'; // green - good rate
-                        if (v >= 20) return 'price-darkgreen'; // dark green - excellent rate
-                        return 'price-neutral';
-                    }
-                    const getCls = feedClassFromVal(displayVal);
-                    const isVeryNegative = displayVal < -2;
-                    const feedHighlightCls = displayVal > 50 ? 'feedin-highlight' : '';
-                    let feedPriceStr;
-                    if (displayVal > 99) {
-                        feedPriceStr = `$${(displayVal/100).toFixed(2)}`;
-                    } else {
-                        feedPriceStr = `${displayVal}¢`;
-                    }
+                    const displayVal = getFeedDisplayPriceCents(it);
+                    const getCls = getFeedPriceClass(displayVal);
+                    const isVeryNegative = displayVal !== null && displayVal < -2;
+                    const feedHighlightCls = displayVal !== null && displayVal > 50 ? 'feedin-highlight' : '';
+                    const feedPriceStr = formatCompactPricingValue(displayVal);
                     html += `<div class="stat-item ${feedHighlightCls}" style="min-width:52px;padding:5px;${isVeryNegative ? 'border:1px solid rgba(248,81,73,0.5);background:rgba(248,81,73,0.1)' : ''}">
                                 <div style="display:flex;align-items:center;justify-content:center;gap:2px">
                                     <span class="value ${getCls}" style="font-size:13px;font-weight:700">${feedPriceStr}</span>
@@ -3594,8 +3608,8 @@
                 });
 
                 // Build datasets
-                const buySeries = displayForecasts.map(it => it ? Number(it.perKwh) : null);
-                const feedSeries = displayFeedForecasts.map(it => it ? -Math.round(it.perKwh) : null);
+                const buySeries = displayForecasts.map(it => it ? toFinitePricingNumber(it.perKwh) : null);
+                const feedSeries = displayFeedForecasts.map(it => getFeedDisplayPriceCents(it));
 
                 // Destroy old chart if exists
                 if (window.amberChartInst) {
@@ -3667,7 +3681,13 @@
                                 borderWidth: 1,
                                 padding: 10,
                                 cornerRadius: 6,
-                                displayColors: true
+                                displayColors: true,
+                                callbacks: {
+                                    label: (context) => {
+                                        if (!context?.dataset?.label) return null;
+                                        return `${context.dataset.label}: ${formatPricingValue(context.parsed?.y)}`;
+                                    }
+                                }
                             }
                         },
                         scales: {

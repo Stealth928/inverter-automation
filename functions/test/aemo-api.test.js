@@ -172,7 +172,8 @@ describe('aemo price unit normalization', () => {
           REGIONID: 'NSW1',
           SETTLEMENTDATE: '2026/03/26 20:00:00',
           TOTALDEMAND: '8123.4',
-          DEMANDFORECAST: '8200.1'
+          DEMANDFORECAST: '8200.1',
+          CLEAREDSUPPLY: '8194.0'
         }
       ],
       [
@@ -190,7 +191,8 @@ describe('aemo price unit normalization', () => {
           DATETIME: '2026/03/26 20:30:00',
           PERIODID: '1',
           TOTALDEMAND: '8300.0',
-          DEMANDFORECAST: '8350.0'
+          DEMANDFORECAST: '8350.0',
+          CLEAREDSUPPLY: '8364.0'
         }
       ]
     );
@@ -204,7 +206,10 @@ describe('aemo price unit normalization', () => {
       startTime: '2026-03-26T09:55:00.000Z',
       endTime: '2026-03-26T10:00:00.000Z',
       perKwh: 5.71,
-      spotPerKwh: 5.71
+      spotPerKwh: 5.71,
+      demand: 8123.4,
+      demandForecast: 8200.1,
+      generation: 8194
     });
     expect(currentFeedIn).toMatchObject({
       startTime: '2026-03-26T09:55:00.000Z',
@@ -216,7 +221,10 @@ describe('aemo price unit normalization', () => {
       startTime: '2026-03-26T10:00:00.000Z',
       endTime: '2026-03-26T10:30:00.000Z',
       perKwh: 6.5,
-      spotPerKwh: 6.5
+      spotPerKwh: 6.5,
+      demand: 8300,
+      demandForecast: 8350,
+      generation: 8364
     });
     expect(forecastFeedIn).toMatchObject({
       startTime: '2026-03-26T10:00:00.000Z',

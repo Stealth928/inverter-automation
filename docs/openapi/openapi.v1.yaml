@@ -594,6 +594,18 @@ components:
         spotPerKwh:
           type: number
           nullable: true
+        demand:
+          type: number
+          nullable: true
+          description: AEMO regional total demand in MW when available
+        demandForecast:
+          type: number
+          nullable: true
+          description: AEMO regional demand forecast in MW when available
+        generation:
+          type: number
+          nullable: true
+          description: AEMO regional cleared or initial generation in MW when available
         estimate:
           type: boolean
           nullable: true

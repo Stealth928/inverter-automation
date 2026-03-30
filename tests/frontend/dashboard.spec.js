@@ -21,8 +21,13 @@ async function mockDashboardConfig(page, overrides = {}) {
     deviceProvider = 'foxess',
     deviceSn = 'TEST-SN-001',
     inverterCapacityW = 10000,
-    batteryCapacityKWh = 13.5
+    batteryCapacityKWh = 13.5,
+    pricingProvider = 'amber',
+    amberSiteId = '',
+    aemoRegion = ''
   } = overrides;
+
+  const siteIdOrRegion = pricingProvider === 'aemo' ? aemoRegion : amberSiteId;
 
   await page.route('**/api/config', async (route) => {
     await route.fulfill(jsonResponse({
@@ -32,6 +37,10 @@ async function mockDashboardConfig(page, overrides = {}) {
         deviceSn,
         inverterCapacityW,
         batteryCapacityKWh,
+        pricingProvider,
+        ...(pricingProvider === 'aemo'
+          ? { aemoRegion, siteIdOrRegion }
+          : { amberSiteId, siteIdOrRegion }),
         rules: [],
         preferences: { forecastDays: 6 },
         config: {
@@ -2549,6 +2558,156 @@ test.describe('Dashboard Page', () => {
     await expect(amberCard).toContainText('1 spike expected');
     await expect(amberCard).toContainText('next tomorrow at 21:00');
     await expect(amberCard).not.toContainText('next at 21:00');
+  });
+
+  test('should show AEMO demand and generation beside prices and keep feed chart values precise', async ({ page }) => {
+    await page.addInitScript(() => {
+      class MockChart {
+        constructor(_ctx, config) {
+          this.config = config;
+          this.data = config.data;
+          this.options = config.options;
+          window.__lastAmberChartConfig = config;
+        }
+
+        destroy() {}
+      }
+
+      window.Chart = MockChart;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+        localStorage.removeItem('aemoRegion');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            id: 'NSW1',
+            region: 'NSW1',
+            nmi: 'NSW1',
+            network: 'AEMO',
+            name: 'New South Wales',
+            displayName: 'New South Wales (NSW1)'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T00:05:00.000Z',
+            perKwh: 1.13,
+            spotPerKwh: 1.13,
+            demand: 8420,
+            generation: 8570,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T00:05:00.000Z',
+            perKwh: -1.13,
+            spotPerKwh: -1.13,
+            demand: 8420,
+            generation: 8570,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T00:30:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: 1.13,
+            spotPerKwh: 1.13,
+            demand: 8452,
+            generation: 8601,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T00:30:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: -1.13,
+            spotPerKwh: -1.13,
+            demand: 8452,
+            generation: 8601,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T01:00:00.000Z',
+            endTime: '2026-03-30T01:30:00.000Z',
+            perKwh: 4.17,
+            spotPerKwh: 4.17,
+            demand: 8490,
+            generation: 8640,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T01:00:00.000Z',
+            endTime: '2026-03-30T01:30:00.000Z',
+            perKwh: -4.17,
+            spotPerKwh: -4.17,
+            demand: 8490,
+            generation: 8640,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+
+    const amberCard = page.locator('#amberCard');
+    await expect(page.locator('#pricingHeaderNote')).toContainText('AEMO reference only');
+    await expect(amberCard).toContainText('Demand');
+    await expect(amberCard).toContainText('Generation');
+    await expect(amberCard).toContainText('8.42 GW');
+    await expect(amberCard).toContainText('8.57 GW');
+
+    await expect.poll(async () => page.evaluate(() => {
+      const feedDataset = window.__lastAmberChartConfig?.data?.datasets?.find((dataset) => dataset.label === 'Feed-in Spot (¢)');
+      return Array.isArray(feedDataset?.data) ? feedDataset.data[0] : null;
+    })).toBe(1.13);
+
+    const chartData = await page.evaluate(() => {
+      const buyDataset = window.__lastAmberChartConfig?.data?.datasets?.find((dataset) => dataset.label === 'Buy Price (¢/kWh)');
+      const feedDataset = window.__lastAmberChartConfig?.data?.datasets?.find((dataset) => dataset.label === 'Feed-in Spot (¢)');
+      return {
+        buy: buyDataset?.data || [],
+        feed: feedDataset?.data || []
+      };
+    });
+
+    expect(chartData.buy[0]).toBeCloseTo(1.13, 2);
+    expect(chartData.feed[0]).toBeCloseTo(1.13, 2);
+    expect(chartData.feed[1]).toBeCloseTo(4.17, 2);
   });
 
   test('should adapt scheduler, quick control, and rule builder UI for AlphaESS capabilities', async ({ page }) => {
