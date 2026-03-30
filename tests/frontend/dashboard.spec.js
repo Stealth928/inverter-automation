@@ -24,10 +24,13 @@ async function mockDashboardConfig(page, overrides = {}) {
     batteryCapacityKWh = 13.5,
     pricingProvider = 'amber',
     amberSiteId = '',
-    aemoRegion = ''
+    aemoRegion = '',
+    siteIdOrRegion: siteIdOrRegionOverride = ''
   } = overrides;
-
-  const siteIdOrRegion = pricingProvider === 'aemo' ? aemoRegion : amberSiteId;
+  const normalizedPricingProvider = String(pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+  const resolvedSiteIdOrRegion = String(
+    siteIdOrRegionOverride || (normalizedPricingProvider === 'aemo' ? aemoRegion : amberSiteId) || ''
+  ).trim();
 
   await page.route('**/api/config', async (route) => {
     await route.fulfill(jsonResponse({
@@ -37,10 +40,10 @@ async function mockDashboardConfig(page, overrides = {}) {
         deviceSn,
         inverterCapacityW,
         batteryCapacityKWh,
-        pricingProvider,
-        ...(pricingProvider === 'aemo'
-          ? { aemoRegion, siteIdOrRegion }
-          : { amberSiteId, siteIdOrRegion }),
+        pricingProvider: normalizedPricingProvider,
+        amberSiteId,
+        aemoRegion,
+        siteIdOrRegion: resolvedSiteIdOrRegion,
         rules: [],
         preferences: { forecastDays: 6 },
         config: {
@@ -2558,6 +2561,171 @@ test.describe('Dashboard Page', () => {
     await expect(amberCard).toContainText('1 spike expected');
     await expect(amberCard).toContainText('next tomorrow at 21:00');
     await expect(amberCard).not.toContainText('next at 21:00');
+    await expect(amberCard.locator('.pricing-market-bars')).toHaveCount(0);
+  });
+
+  test('should keep AEMO demand and generation bars inline on wide cards and safe on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+        localStorage.removeItem('aemoRegion');
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith('pricingSelection:'))
+          .forEach((key) => localStorage.removeItem(key));
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'aemo',
+      aemoRegion: 'SA1'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'SA1', region: 'SA1', displayName: 'South Australia (SA1)', network: 'AEMO' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T03:00:00.000Z',
+            perKwh: -0.26,
+            spotPerKwh: -0.26,
+            demand: 894,
+            supply: 542,
+            generation: 542,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T03:00:00.000Z',
+            perKwh: 0.26,
+            spotPerKwh: 0.26,
+            demand: 894,
+            supply: 542,
+            generation: 542,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T03:30:00.000Z',
+            perKwh: 0.11,
+            spotPerKwh: 0.11,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T03:30:00.000Z',
+            perKwh: -0.11,
+            spotPerKwh: -0.11,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+
+    const amberCard = page.locator('#amberCard');
+    const marketBars = amberCard.locator('.pricing-market-bars');
+    await expect(marketBars).toBeVisible();
+    await expect(marketBars.locator('[data-market-metric="demand"] .pricing-market-bar__value')).toHaveText('894 MW');
+    await expect(marketBars.locator('[data-market-metric="generation"] .pricing-market-bar__value')).toHaveText('542 MW');
+
+    const wideLayout = await page.evaluate(() => {
+      const card = document.getElementById('amberCard');
+      const overview = card?.querySelector('.pricing-current-overview--market');
+      const metrics = overview?.querySelector('.pricing-current-metrics');
+      const container = overview?.querySelector('.pricing-market-bars');
+      const extractRowMetrics = (row) => {
+        const fill = row?.querySelector('.pricing-market-bar__fill');
+        const track = row?.querySelector('.pricing-market-bar__track');
+        const value = row?.querySelector('.pricing-market-bar__value');
+        return {
+          fillPercent: parseFloat((fill?.style.width || '0').replace('%', '')),
+          fillWidth: fill?.getBoundingClientRect().width || 0,
+          trackWidth: track?.getBoundingClientRect().width || 0,
+          valueColor: value ? window.getComputedStyle(value).color : '',
+          fillBackground: fill ? window.getComputedStyle(fill).backgroundImage : ''
+        };
+      };
+
+      const metricsRect = metrics?.getBoundingClientRect();
+      const barsRect = container?.getBoundingClientRect();
+
+      return {
+        viewportWidth: window.innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        amberCardClientWidth: card?.clientWidth || 0,
+        amberCardScrollWidth: card?.scrollWidth || 0,
+        metricsRight: metricsRect?.right || 0,
+        metricsTop: metricsRect?.top || 0,
+        metricsBottom: metricsRect?.bottom || 0,
+        metricsHeight: metricsRect?.height || 0,
+        barsLeft: barsRect?.left || 0,
+        barsTop: barsRect?.top || 0,
+        barsHeight: barsRect?.height || 0,
+        demand: extractRowMetrics(container?.querySelector('[data-market-metric="demand"]')),
+        generation: extractRowMetrics(container?.querySelector('[data-market-metric="generation"]'))
+      };
+    });
+
+    expect(wideLayout.barsLeft).toBeGreaterThanOrEqual(wideLayout.metricsRight - 1);
+    expect(Math.abs(wideLayout.barsTop - wideLayout.metricsTop)).toBeLessThan(32);
+    expect(wideLayout.barsHeight).toBeLessThanOrEqual(wideLayout.metricsHeight + 4);
+    expect(wideLayout.demand.fillPercent).toBeCloseTo(100, 2);
+    expect(wideLayout.generation.fillPercent).toBeCloseTo((542 / 894) * 100, 1);
+    expect(wideLayout.generation.valueColor).toBe(wideLayout.demand.valueColor);
+    expect(wideLayout.generation.fillBackground).toBe(wideLayout.demand.fillBackground);
+    expect(wideLayout.pageScrollWidth).toBeLessThanOrEqual(wideLayout.viewportWidth + 1);
+    expect(wideLayout.amberCardScrollWidth).toBeLessThanOrEqual(wideLayout.amberCardClientWidth + 1);
+    expect(wideLayout.demand.trackWidth).toBeGreaterThan(0);
+    expect(wideLayout.generation.trackWidth).toBeGreaterThan(0);
+    expect(wideLayout.demand.fillWidth).toBeLessThanOrEqual(wideLayout.demand.trackWidth + 1);
+    expect(wideLayout.generation.fillWidth).toBeLessThanOrEqual(wideLayout.generation.trackWidth + 1);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const mobileLayout = await page.evaluate(() => {
+      const card = document.getElementById('amberCard');
+      const overview = card?.querySelector('.pricing-current-overview--market');
+      const metrics = overview?.querySelector('.pricing-current-metrics');
+      const container = overview?.querySelector('.pricing-market-bars');
+      const metricsRect = metrics?.getBoundingClientRect();
+      const barsRect = container?.getBoundingClientRect();
+      return {
+        viewportWidth: window.innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        amberCardClientWidth: card?.clientWidth || 0,
+        amberCardScrollWidth: card?.scrollWidth || 0,
+        metricsBottom: metricsRect?.bottom || 0,
+        barsTop: barsRect?.top || 0,
+        barsWidth: barsRect?.width || 0
+      };
+    });
+
+    expect(mobileLayout.barsTop).toBeGreaterThanOrEqual(mobileLayout.metricsBottom - 1);
+    expect(mobileLayout.pageScrollWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.amberCardScrollWidth).toBeLessThanOrEqual(mobileLayout.amberCardClientWidth + 1);
+    expect(mobileLayout.barsWidth).toBeGreaterThan(0);
   });
 
   test('should show AEMO demand and generation beside prices and keep feed chart values precise', async ({ page }) => {

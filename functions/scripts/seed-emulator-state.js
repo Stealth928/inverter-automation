@@ -22,35 +22,45 @@ const AEMO_SNAPSHOT_PRESETS = Object.freeze({
     basePrice: 86.4,
     feedInBase: -18.7,
     demand: 8420,
-    demandStep: 95
+    demandStep: 95,
+    generation: 5989,
+    generationStep: 66
   }),
   QLD1: Object.freeze({
     regionId: 'QLD1',
     basePrice: 74.2,
     feedInBase: -15.9,
     demand: 6980,
-    demandStep: 88
+    demandStep: 88,
+    generation: 5210,
+    generationStep: 58
   }),
   VIC1: Object.freeze({
     regionId: 'VIC1',
     basePrice: 68.9,
     feedInBase: -14.1,
     demand: 6210,
-    demandStep: 72
+    demandStep: 72,
+    generation: 4890,
+    generationStep: 52
   }),
   SA1: Object.freeze({
     regionId: 'SA1',
     basePrice: 92.1,
     feedInBase: -22.4,
     demand: 1840,
-    demandStep: 36
+    demandStep: 36,
+    generation: 542,
+    generationStep: 18
   }),
   TAS1: Object.freeze({
     regionId: 'TAS1',
     basePrice: 58.7,
     feedInBase: -10.8,
     demand: 1280,
-    demandStep: 24
+    demandStep: 24,
+    generation: 940,
+    generationStep: 12
   })
 });
 
@@ -350,16 +360,25 @@ function alignToThirtyMinuteBoundary(date = new Date()) {
   return aligned;
 }
 
-function deriveAemoGenerationMw(demandMw, stepMw) {
-  const demand = Number(demandMw);
-  const step = Math.abs(Number(stepMw) || 0);
-  if (!Number.isFinite(demand)) {
-    return null;
-  }
-  return Math.round(demand + Math.max(25, step * 1.15));
+function buildAemoMarketFields(generation) {
+  const generationMw = Math.max(0, Math.round(generation));
+  const availableGeneration = Math.max(generationMw, Math.round(generationMw * 1.22));
+  const dispatchableGeneration = Math.max(generationMw, Math.round(generationMw * 1.08));
+  const initialSupply = Math.max(generationMw, Math.round(generationMw * 1.03));
+
+  return {
+    generation: generationMw,
+    supply: generationMw,
+    generationMw,
+    supplyMw: generationMw,
+    availableGeneration,
+    dispatchableGeneration,
+    clearedSupply: generationMw,
+    initialSupply
+  };
 }
 
-function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regionId, demand, demandForecast, generation, intervalType }) {
+function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regionId, demand, demandForecast, marketFields = {}, intervalType }) {
   return {
     type,
     channelType,
@@ -377,7 +396,7 @@ function buildAemoLegacyRow({ type, channelType, perKwh, startIso, endIso, regio
     asOf: endIso,
     demand,
     demandForecast,
-    generation,
+    ...marketFields,
     aemoIntervalType: intervalType
   };
 }
@@ -391,7 +410,8 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
   const currentFeedInPrice = roundTo(preset.feedInBase, 2);
   const currentDemand = Math.round(preset.demand);
   const currentDemandForecast = Math.round(currentDemand + preset.demandStep * 0.8);
-  const currentGeneration = deriveAemoGenerationMw(currentDemand, preset.demandStep);
+  const currentGeneration = Math.round(preset.generation);
+  const currentMarketFields = buildAemoMarketFields(currentGeneration);
 
   rows.push(buildAemoLegacyRow({
     type: 'CurrentInterval',
@@ -402,7 +422,7 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
     regionId,
     demand: currentDemand,
     demandForecast: currentDemandForecast,
-    generation: currentGeneration,
+    marketFields: currentMarketFields,
     intervalType: 'dispatch'
   }));
   rows.push(buildAemoLegacyRow({
@@ -414,7 +434,7 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
     regionId,
     demand: currentDemand,
     demandForecast: currentDemandForecast,
-    generation: currentGeneration,
+    marketFields: currentMarketFields,
     intervalType: 'dispatch'
   }));
 
@@ -430,7 +450,8 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
     const feedInPrice = roundTo(preset.feedInBase - (index % 3) * 1.4 - (wave / 3), 2);
     const demand = Math.round(preset.demand + index * preset.demandStep);
     const demandForecast = Math.round(demand + preset.demandStep * 0.8);
-    const generation = deriveAemoGenerationMw(demand, preset.demandStep);
+    const generation = Math.max(0, Math.round(preset.generation + index * preset.generationStep + Math.cos(index / 2.6) * 42));
+    const marketFields = buildAemoMarketFields(generation);
 
     rows.push(buildAemoLegacyRow({
       type: 'ForecastInterval',
@@ -441,7 +462,7 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
       regionId,
       demand,
       demandForecast,
-      generation,
+      marketFields,
       intervalType: 'predispatch'
     }));
     rows.push(buildAemoLegacyRow({
@@ -453,7 +474,7 @@ function buildAemoSnapshotRows(regionId, preset, anchorDate = new Date()) {
       regionId,
       demand,
       demandForecast,
-      generation,
+      marketFields,
       intervalType: 'predispatch'
     }));
 

@@ -3467,6 +3467,45 @@
                 return `on ${dateLabel} at ${timeLabel}`;
             }
 
+            function findMarketMetricValue(source, keys = []) {
+                if (!source || typeof source !== 'object' || !Array.isArray(keys)) {
+                    return null;
+                }
+
+                for (const key of keys) {
+                    const numeric = Number(source[key]);
+                    if (Number.isFinite(numeric)) {
+                        return numeric;
+                    }
+                }
+
+                return null;
+            }
+
+            function formatMarketPower(value) {
+                const numeric = Number(value);
+                if (!Number.isFinite(numeric)) return '—';
+
+                const abs = Math.abs(numeric);
+                if (abs >= 1000) {
+                    const decimals = abs >= 10000 ? 1 : 2;
+                    return `${(numeric / 1000).toFixed(decimals)} GW`;
+                }
+
+                return `${Math.round(numeric).toLocaleString('en-AU')} MW`;
+            }
+
+            function buildMarketBarMarkup(metric, maxValue) {
+                const widthPercent = Math.max(6, Math.min(100, (Math.abs(metric.value) / Math.max(maxValue, 1)) * 100));
+                return `<div class="pricing-market-bar pricing-market-bar--${metric.tone}" data-market-metric="${metric.key}">
+                    <span class="pricing-market-bar__label">${metric.label}</span>
+                    <div class="pricing-market-bar__track" aria-hidden="true">
+                        <span class="pricing-market-bar__fill" style="width:${widthPercent.toFixed(2)}%"></span>
+                    </div>
+                    <span class="pricing-market-bar__value">${formatMarketPower(metric.value)}</span>
+                </div>`;
+            }
+
             // Spike Alert Banner (if any forecasted spikes)
             if (hasSpikes) {
                 const nextSpike = spikeForecasts[0];
@@ -3483,6 +3522,23 @@
 
             // Current Prices Row
             if (currentGen || currentFeed) {
+                const isAemoProvider = getPricingProviderSafe() === 'aemo';
+                const marketMetrics = isAemoProvider && currentGen
+                    ? [
+                        {
+                            key: 'demand',
+                            label: 'Demand',
+                            tone: 'demand',
+                            value: findMarketMetricValue(currentGen, ['demand', 'totalDemand', 'demandMw'])
+                        },
+                        {
+                            key: 'generation',
+                            label: 'Generation',
+                            tone: 'generation',
+                            value: findMarketMetricValue(currentGen, ['generation', 'supply', 'generationMw', 'supplyMw', 'dispatchableGeneration', 'clearedSupply', 'initialSupply', 'availableGeneration'])
+                        }
+                    ].filter((metric) => Number.isFinite(metric.value))
+                    : [];
                 const currentPriceMetricCount = [
                     !!currentGen,
                     !!currentFeed,
@@ -3490,51 +3546,61 @@
                     currentGenerationMw !== null,
                     !!(currentGen && currentGen.renewables !== undefined)
                 ].filter(Boolean).length || 1;
-                html += `<div class="pricing-current-metrics" style="--pricing-current-metric-columns:${currentPriceMetricCount}">`;
+                const currentMetricParts = [];
                 if (currentGen) {
                     const p = currentGen.perKwh;
-                    const spot = currentGen.spotPerKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
                     const priceStr = formatPricingValue(p);
-                    html += `<div class="pricing-current-metric pricing-current-metric--buy">
+                    currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--buy">
                         <div class="pricing-current-metric__label">Buy Now ${spike ? '<span style="color:var(--color-danger)">⚠️</span>' : ''}</div>
                         <div class="value ${cls} pricing-current-metric__value">${priceStr}</div>
-                    </div>`;
+                    </div>`);
                 }
                 if (currentFeed) {
                     const displayVal = getFeedDisplayPriceCents(currentFeed);
                     const getCls = getFeedPriceClass(displayVal);
                     const feedPriceStr = formatPricingValue(displayVal);
-                    html += `<div class="pricing-current-metric pricing-current-metric--feedin">
+                    currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--feedin">
                         <div class="pricing-current-metric__label">Feed-In Price</div>
                         <div class="value ${getCls} pricing-current-metric__value">${feedPriceStr}</div>
-                    </div>`;
+                    </div>`);
                 }
                 if (currentDemandMw !== null) {
-                    html += `<div class="pricing-current-metric pricing-current-metric--demand">
+                    currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--demand">
                         <div class="pricing-current-metric__label">Demand</div>
                         <div class="value pricing-current-metric__value pricing-current-metric__value--market">${formatAemoMarketMetricMw(currentDemandMw)}</div>
-                    </div>`;
+                    </div>`);
                 }
                 if (currentGenerationMw !== null) {
-                    html += `<div class="pricing-current-metric pricing-current-metric--generation">
+                    currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--generation">
                         <div class="pricing-current-metric__label">Generation</div>
                         <div class="value pricing-current-metric__value pricing-current-metric__value--market">${formatAemoMarketMetricMw(currentGenerationMw)}</div>
-                    </div>`;
+                    </div>`);
                 }
                 if (currentGen && currentGen.renewables !== undefined) {
                     const renew = currentGen.renewables;
-                    // Map renewable descriptor to emoji and color
                     const renewDesc = currentGen.descriptor || '';
                     const renewEmoji = { best: '🌱', great: '🌿', ok: '☁️', notGreat: '🏭', worst: '💨' }[renewDesc] || '';
                     const renewColor = renew > 55 ? cssVar('--color-success') : renew > 35 ? '#ffd43b' : cssVar('--color-danger');
-                    html += `<div class="pricing-current-metric pricing-current-metric--renewables">
+                    currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--renewables">
                         <div class="pricing-current-metric__label">Renewables ${renewEmoji}</div>
                         <div class="value pricing-current-metric__value" style="color:${renewColor}">${renew.toFixed(0)}%</div>
-                    </div>`;
+                    </div>`);
                 }
-                html += '</div>';
+
+                const currentMetricsHtml = `<div class="pricing-current-metrics" style="--pricing-current-metric-count:${currentPriceMetricCount}">${currentMetricParts.join('')}</div>`;
+
+                if (marketMetrics.length > 0) {
+                    const maxMarketMetricValue = Math.max(...marketMetrics.map((metric) => Math.abs(metric.value)), 1);
+                    html += `<div class="pricing-current-overview pricing-current-overview--market">
+                        ${currentMetricsHtml}
+                        <div class="pricing-market-bars" aria-label="AEMO market overview">${marketMetrics.map((metric) => buildMarketBarMarkup(metric, maxMarketMetricValue)).join('')}</div>
+                    </div>`;
+                } else {
+                    html += `<div class="pricing-current-overview">${currentMetricsHtml}</div>`;
+                }
+                }
             }
 
             // Price Range Summary with consistent coloring logic
@@ -7017,6 +7083,22 @@
             }];
         }
 
+        function getMockAemoMarketFields(siteId, index = 0) {
+            const selectedSiteId = String(siteId || 'mock-site-local-1');
+            const demandBase = selectedSiteId === 'mock-site-local-2' ? 6980 : 8420;
+            const generationBase = selectedSiteId === 'mock-site-local-2' ? 5210 : 5989;
+            const demand = Math.max(120, Math.round(demandBase + (index * 64) + Math.sin(index / 3.4) * 120));
+            const generation = Math.max(90, Math.round(generationBase + (index * 38) + Math.cos(index / 3.1) * 88));
+            return {
+                demand,
+                supply: generation,
+                generation,
+                demandMw: demand,
+                supplyMw: generation,
+                generationMw: generation
+            };
+        }
+
         function getMockAmberPrices(next = 12, siteId = 'mock-site-local-1') {
             const descriptor = getPreviewScenarioDescriptor();
             const count = Math.max(12, Math.min(500, Number(next) || 12));
@@ -7025,6 +7107,7 @@
             base.setSeconds(0, 0);
             base.setMinutes(base.getMinutes() < 30 ? 0 : 30);
             const siteOffset = (String(siteId) === 'mock-site-local-2' ? 3.5 : 0) + descriptor.amberBuyOffset;
+            const isAemoProvider = getPricingProviderSafe() === 'aemo';
 
             function renewDescriptor(renewables) {
                 if (renewables >= 70) return 'best';
@@ -7044,12 +7127,14 @@
                 const renewables = Math.max(10, Math.min(95, Math.round(descriptor.renewablesBase + Math.sin(i / 4) * descriptor.renewablesVariance)));
                 const type = i === 0 ? 'CurrentInterval' : 'ForecastInterval';
                 const spikeStatus = buy >= 28 ? 'high' : 'none';
+                const marketFields = isAemoProvider ? getMockAemoMarketFields(siteId, i) : {};
 
                 const common = {
                     startTime: start.toISOString(),
                     nemTime: start.toISOString(),
                     type,
-                    date: start.toISOString().slice(0, 10)
+                    date: start.toISOString().slice(0, 10),
+                    ...marketFields
                 };
 
                 rows.push({
