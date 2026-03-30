@@ -1091,10 +1091,6 @@ describe('admin route module', () => {
     const batchRunReports = jest.fn(async () => ({
       data: {
         reports: [
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
           {
             dimensionHeaders: [{ name: 'date' }],
             metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
@@ -1158,13 +1154,13 @@ describe('admin route module', () => {
     expect(response.body.result.measurementId).toBe('G-MWF4ZBMREE');
     expect(response.body.result.propertySource).toBe('firebase-project-analytics');
     expect(response.body.result.mainPageOptions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: 'admin', label: 'Admin' })
+      expect.objectContaining({ key: '/admin.html', label: 'Admin' })
     ]));
-    expect(response.body.result.pageSeriesByKey.admin).toEqual([
+    expect(response.body.result.pageSeriesByKey['/admin.html']).toEqual([
       { date: '2026-03-21', activeUsers: 5, pageViews: 17, eventCount: 0 }
     ]);
     expect(response.body.result.mainPageOptions).toEqual([
-      { key: 'admin', label: 'Admin' }
+      { key: '/admin.html', label: 'Admin' }
     ]);
     expect(getAnalyticsDetails).toHaveBeenCalledWith({
       name: 'projects/test-project/analyticsDetails'
@@ -1430,8 +1426,6 @@ describe('admin route module', () => {
               }
             ]
           },
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] },
           {
             dimensionHeaders: [{ name: 'date' }],
             metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
@@ -1441,8 +1435,7 @@ describe('admin route module', () => {
                 metricValues: [{ value: '8' }, { value: '32' }]
               }
             ]
-          },
-          { dimensionHeaders: [{ name: 'date' }], metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }], rows: [] }
+          }
         ]
       }
     }));
@@ -1489,27 +1482,26 @@ describe('admin route module', () => {
       'history_fetch_report'
     ]);
     expect(response.body.result.mainPageOptions).toEqual([
-      { key: 'app', label: 'Dashboard' },
-      { key: 'settings', label: 'Settings' }
+      { key: '/app.html', label: 'Overview' },
+      { key: '/settings.html', label: 'Settings' }
     ]);
-    expect(response.body.result.pageSeriesByKey.app).toEqual([
+    expect(response.body.result.pageSeriesByKey['/app.html']).toEqual([
       { date: '2026-03-18', activeUsers: 7, pageViews: 44, eventCount: 0 },
       { date: '2026-03-19', activeUsers: 0, pageViews: 0, eventCount: 0 }
     ]);
-    expect(response.body.result.pageSeriesByKey.settings).toEqual([
+    expect(response.body.result.pageSeriesByKey['/settings.html']).toEqual([
       { date: '2026-03-18', activeUsers: 0, pageViews: 0, eventCount: 0 },
       { date: '2026-03-19', activeUsers: 8, pageViews: 32, eventCount: 0 }
     ]);
     expect(runReport).toHaveBeenCalledTimes(4);
     expect(batchRunReports).toHaveBeenCalledTimes(1);
     const appPageFilter = batchRunReports.mock.calls[0][0]?.requestBody?.requests?.[0]?.dimensionFilter;
-    const appPageFilterValues = Array.isArray(appPageFilter?.orGroup?.expressions)
-      ? appPageFilter.orGroup.expressions
-        .map((expression) => expression?.filter?.stringFilter?.value)
-        .filter(Boolean)
-      : [];
-    expect(appPageFilterValues).toEqual(expect.arrayContaining(['/app']));
-    expect(appPageFilterValues).not.toContain('/');
+    expect(appPageFilter).toEqual({
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { matchType: 'EXACT', value: '/app.html' }
+      }
+    });
   });
 
   test('firestore-metrics returns separate project cost and firestore doc-ops estimate fields', async () => {

@@ -204,6 +204,37 @@ async function waitForNonEmptyText(locator) {
   }).not.toBe('');
 }
 
+async function seedOverviewSummaryState(page, state = {}) {
+  return page.evaluate((payload) => {
+    try {
+      if (payload.weatherData) {
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(payload.weatherData));
+      }
+      if (Array.isArray(payload.pricingIntervals)) {
+        localStorage.setItem('cachedPricesFull', JSON.stringify(payload.pricingIntervals));
+      }
+    } catch (e) {
+      // ignore storage failures in tests
+    }
+
+    window.__latestOverviewInverterPayload = payload.inverterPayload || null;
+    window.lastAmberResponse = Array.isArray(payload.pricingIntervals) ? payload.pricingIntervals : [];
+    window.__latestWeatherForDashboard = payload.weatherData || null;
+    window.automationStatus = payload.automationStatus || null;
+    window.__latestQuickControlStatus = payload.quickControlStatus || null;
+    window.__latestSchedulerState = payload.schedulerState || null;
+
+    if (typeof payload.automationLastCheck === 'number') {
+      window.automationLastCheck = payload.automationLastCheck;
+    }
+
+    const hooks = window.__dashboardTestHooks || {};
+    return typeof hooks.buildOverviewSummaryModel === 'function'
+      ? hooks.buildOverviewSummaryModel()
+      : null;
+  }, state);
+}
+
 test.describe('Dashboard Page', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -219,6 +250,7 @@ test.describe('Dashboard Page', () => {
     await page.addInitScript(() => {
       window.__DISABLE_AUTH_REDIRECTS__ = true;
       window.__DISABLE_SERVICE_WORKER__ = true;
+      window.__ENABLE_DASHBOARD_TEST_HOOKS__ = true;
       window.mockFirebaseAuth = {
         currentUser: {
           uid: 'test-user-123',
@@ -1351,7 +1383,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should render dashboard visibility toggles and keep cards visible by default', async ({ page }) => {
-    const toggleKeys = ['inverter', 'prices', 'weather', 'ev', 'quickControls', 'scheduler'];
+    const toggleKeys = ['overviewSummary', 'inverter', 'prices', 'weather', 'ev', 'quickControls', 'scheduler'];
     for (const key of toggleKeys) {
       const toggle = page.locator(`[data-dashboard-toggle="${key}"]`);
       const card = page.locator(`[data-dashboard-card="${key}"]`);
@@ -1359,6 +1391,817 @@ test.describe('Dashboard Page', () => {
       await expect(toggle).toBeChecked();
       await expect(card).toBeVisible();
     }
+  });
+
+  test('should hide and restore the overview summary card from dashboard customisation', async ({ page }) => {
+    const summaryToggle = page.locator('[data-dashboard-toggle="overviewSummary"]');
+    const summaryCard = page.locator('[data-dashboard-card="overviewSummary"]');
+
+    await expect(summaryCard).toBeVisible();
+    await summaryToggle.uncheck();
+    await expect(summaryCard).toBeHidden();
+
+    await summaryToggle.check();
+    await expect(summaryCard).toBeVisible();
+  });
+
+  test('should render a plain-English overview summary from live dashboard signals', async ({ page }) => {
+    await page.addInitScript(({ nowIso, weatherData }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, {
+      nowIso: '2026-03-23T08:00:00.000Z',
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 24,
+          weathercode: 1,
+          shortwave_radiation: 620,
+          cloudcover: 18,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24', '2026-03-25'],
+          weathercode: [1, 61, 3],
+          precipitation_sum: [0.2, 6.4, 0.4],
+          temperature_2m_max: [29, 23, 25],
+          temperature_2m_min: [18, 17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00', '2026-03-25T19:00'],
+          shortwave_radiation: [620, 120, 260],
+          cloudcover: [18, 88, 46]
+        }
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-001',
+            time: '2026-03-23T08:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-23T08:00:00.000Z',
+            perKwh: 9,
+            spotPerKwh: 9,
+            renewables: 82,
+            descriptor: 'great',
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-23T08:00:00.000Z',
+            perKwh: -1.4,
+            spotPerKwh: -1.4,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:00:00.000Z',
+            perKwh: 144,
+            spotPerKwh: 144,
+            renewables: 34,
+            descriptor: 'ok',
+            spikeStatus: 'none',
+            advancedPrice: { low: 120, predicted: 144, high: 170 }
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:00:00.000Z',
+            perKwh: -28,
+            spotPerKwh: -28,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+    const summaryModel = await seedOverviewSummaryState(page, {
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 24,
+          weathercode: 1,
+          shortwave_radiation: 620,
+          cloudcover: 18,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24', '2026-03-25'],
+          weathercode: [1, 61, 3],
+          precipitation_sum: [0.2, 6.4, 0.4],
+          temperature_2m_max: [29, 23, 25],
+          temperature_2m_min: [18, 17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00', '2026-03-25T19:00'],
+          shortwave_radiation: [620, 120, 260],
+          cloudcover: [18, 88, 46]
+        }
+      },
+      inverterPayload: {
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-001',
+            time: '2026-03-23T08:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      },
+      pricingIntervals: [
+        {
+          channelType: 'general',
+          type: 'CurrentInterval',
+          startTime: '2026-03-23T08:00:00.000Z',
+          perKwh: 9,
+          spotPerKwh: 9,
+          renewables: 82,
+          descriptor: 'great',
+          spikeStatus: 'none'
+        },
+        {
+          channelType: 'feedIn',
+          type: 'CurrentInterval',
+          startTime: '2026-03-23T08:00:00.000Z',
+          perKwh: -1.4,
+          spotPerKwh: -1.4,
+          spikeStatus: 'none'
+        },
+        {
+          channelType: 'general',
+          type: 'ForecastInterval',
+          startTime: '2026-03-24T10:00:00.000Z',
+          perKwh: 144,
+          spotPerKwh: 144,
+          renewables: 34,
+          descriptor: 'ok',
+          spikeStatus: 'none',
+          advancedPrice: { low: 120, predicted: 144, high: 170 }
+        },
+        {
+          channelType: 'feedIn',
+          type: 'ForecastInterval',
+          startTime: '2026-03-24T10:00:00.000Z',
+          perKwh: -28,
+          spotPerKwh: -28,
+          spikeStatus: 'none'
+        }
+      ],
+      automationStatus: {
+        enabled: false,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        rules: {}
+      },
+      automationLastCheck: Date.parse('2026-03-23T08:00:00.000Z')
+    });
+
+    expect(summaryModel).toBeTruthy();
+    expect(summaryModel.badgeText).toBe('Live summary');
+    expect(summaryModel.headline).toContain('stronger export window later in the horizon');
+    expect(summaryModel.lead).toContain('Battery is at 68% and charging at 0.28 kW.');
+    expect(summaryModel.nowCopy).toContain('Automation is paused');
+    expect(summaryModel.nextItems.map((item) => item.text).join(' ')).toContain('Best export window tomorrow at 21:00');
+    expect(summaryModel.chips.map((chip) => chip.label)).toEqual(expect.arrayContaining(['Battery', 'Buy']));
+  });
+
+  test('should surface active automation context and smarter upcoming outlook in the overview summary', async ({ page }) => {
+    const fixedNowIso = '2026-03-23T08:00:00.000Z';
+    const fixedNowMs = Date.parse(fixedNowIso);
+
+    await page.addInitScript(({ nowIso, weatherData }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, {
+      nowIso: fixedNowIso,
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 24,
+          weathercode: 1,
+          shortwave_radiation: 620,
+          cloudcover: 18,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24', '2026-03-25'],
+          weathercode: [1, 3, 1],
+          precipitation_sum: [0.2, 0.4, 0.1],
+          temperature_2m_max: [29, 24, 26],
+          temperature_2m_min: [18, 17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00', '2026-03-25T19:00'],
+          shortwave_radiation: [620, 130, 280],
+          cloudcover: [18, 86, 34]
+        }
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-ACTIVE-001',
+      batteryCapacityKWh: 13.5
+    });
+    await mockEvApis(page, { vehicles: [] });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-ACTIVE-001',
+            time: fixedNowIso,
+            datas: [
+              { variable: 'SoC', value: 72, unit: '%' },
+              { variable: 'pvPower', value: 3.6, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.4, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 2.1, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0.9, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: fixedNowIso,
+            perKwh: 14.2,
+            spotPerKwh: 14.2,
+            renewables: 74,
+            descriptor: 'ok',
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: fixedNowIso,
+            perKwh: -6.4,
+            spotPerKwh: -6.4,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-23T12:00:00.000Z',
+            perKwh: 42,
+            spotPerKwh: 42,
+            renewables: 28,
+            descriptor: 'spike',
+            spikeStatus: 'spike'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-23T11:30:00.000Z',
+            perKwh: -17.2,
+            spotPerKwh: -17.2,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/automation/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: true,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          lastCheck: fixedNowMs - 20000,
+          lastTriggered: fixedNowMs - (9 * 60 * 1000),
+          activeRule: 'evening-drain',
+          activeRuleName: 'Evening Drain',
+          activeSegmentEnabled: true,
+          activeSegment: {
+            workMode: 'ForceDischarge',
+            startHour: 19,
+            startMinute: 0,
+            endHour: 22,
+            endMinute: 30
+          },
+          userTimezone: 'Australia/Sydney',
+          rules: {
+            'evening-drain': {
+              name: 'Evening Drain',
+              cooldownMinutes: 30,
+              lastTriggered: fixedNowMs - (9 * 60 * 1000),
+              action: {
+                workMode: 'ForceDischarge'
+              }
+            },
+            'night-charge': {
+              name: 'Night Charge',
+              cooldownMinutes: 45,
+              lastTriggered: null,
+              action: {
+                workMode: 'ForceCharge'
+              }
+            }
+          },
+          config: {
+            automation: { intervalMs: 60000 },
+            defaults: { cooldownMinutes: 5 }
+          }
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: true,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          lastCheck: fixedNowMs - 20000,
+          lastTriggered: fixedNowMs - (9 * 60 * 1000),
+          activeRule: 'evening-drain',
+          activeRuleName: 'Evening Drain',
+          activeSegmentEnabled: true,
+          activeSegment: {
+            workMode: 'ForceDischarge',
+            startHour: 19,
+            startMinute: 0,
+            endHour: 22,
+            endMinute: 30
+          },
+          userTimezone: 'Australia/Sydney',
+          nextCheckIn: 60000,
+          config: {
+            automation: { intervalMs: 60000 },
+            defaults: { cooldownMinutes: 5 }
+          }
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: { active: false } }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          groups: []
+        }
+      }, 200));
+    });
+
+    await page.reload();
+    const summaryModel = await seedOverviewSummaryState(page, {
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 24,
+          weathercode: 1,
+          shortwave_radiation: 620,
+          cloudcover: 18,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24', '2026-03-25'],
+          weathercode: [1, 3, 1],
+          precipitation_sum: [0.2, 0.4, 0.1],
+          temperature_2m_max: [29, 24, 26],
+          temperature_2m_min: [18, 17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00', '2026-03-25T19:00'],
+          shortwave_radiation: [620, 130, 280],
+          cloudcover: [18, 86, 34]
+        }
+      },
+      inverterPayload: {
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-ACTIVE-001',
+            time: fixedNowIso,
+            datas: [
+              { variable: 'SoC', value: 72, unit: '%' },
+              { variable: 'pvPower', value: 3.6, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.4, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 2.1, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0.9, unit: 'kW' }
+            ]
+          }
+        ]
+      },
+      pricingIntervals: [
+        {
+          channelType: 'general',
+          type: 'CurrentInterval',
+          startTime: fixedNowIso,
+          perKwh: 14.2,
+          spotPerKwh: 14.2,
+          renewables: 74,
+          descriptor: 'ok',
+          spikeStatus: 'none'
+        },
+        {
+          channelType: 'feedIn',
+          type: 'CurrentInterval',
+          startTime: fixedNowIso,
+          perKwh: -6.4,
+          spotPerKwh: -6.4,
+          spikeStatus: 'none'
+        },
+        {
+          channelType: 'general',
+          type: 'ForecastInterval',
+          startTime: '2026-03-23T12:00:00.000Z',
+          perKwh: 42,
+          spotPerKwh: 42,
+          renewables: 28,
+          descriptor: 'spike',
+          spikeStatus: 'spike'
+        },
+        {
+          channelType: 'feedIn',
+          type: 'ForecastInterval',
+          startTime: '2026-03-23T11:30:00.000Z',
+          perKwh: -17.2,
+          spotPerKwh: -17.2,
+          spikeStatus: 'none'
+        }
+      ],
+      automationStatus: {
+        enabled: true,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        lastCheck: fixedNowMs - 20000,
+        lastTriggered: fixedNowMs - (9 * 60 * 1000),
+        activeRule: 'evening-drain',
+        activeRuleName: 'Evening Drain',
+        activeSegmentEnabled: true,
+        activeSegment: {
+          workMode: 'ForceDischarge',
+          startHour: 19,
+          startMinute: 0,
+          endHour: 22,
+          endMinute: 30
+        },
+        userTimezone: 'Australia/Sydney',
+        rules: {
+          'evening-drain': {
+            name: 'Evening Drain',
+            cooldownMinutes: 30,
+            lastTriggered: fixedNowMs - (9 * 60 * 1000),
+            action: {
+              workMode: 'ForceDischarge'
+            }
+          },
+          'night-charge': {
+            name: 'Night Charge',
+            cooldownMinutes: 45,
+            lastTriggered: null,
+            action: {
+              workMode: 'ForceCharge'
+            }
+          }
+        },
+        config: {
+          automation: { intervalMs: 60000 },
+          defaults: { cooldownMinutes: 5 }
+        }
+      },
+      automationLastCheck: fixedNowMs - 20000
+    });
+
+    expect(summaryModel).toBeTruthy();
+    expect(summaryModel.nowCopy).toContain('Automation is running Evening Drain in battery discharge mode until 22:30.');
+    expect(summaryModel.nowCopy).toContain('Rule cooldown has about 21 min remaining.');
+    expect(summaryModel.nextItems.map((item) => item.text)).toEqual(expect.arrayContaining([
+      'Best export window today at 22:30 at 17.2¢.',
+      'Tomorrow: Overcast — 0 mm. Weaker solar expected.',
+      'Buy pricing spikes today at 23:00 at 42.0¢.'
+    ]));
+    expect(summaryModel.nextItems.map((item) => item.text).join(' ')).not.toContain('Automation reviews conditions in');
+  });
+
+  test('should render overview summary without throwing when inverter and pricing signals are missing', async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+
+    await page.addInitScript(({ nowIso, weatherData }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, {
+      nowIso: '2026-03-23T08:00:00.000Z',
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 21,
+          weathercode: 61,
+          shortwave_radiation: 90,
+          cloudcover: 92,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24'],
+          weathercode: [61, 63],
+          precipitation_sum: [7.2, 9.4],
+          temperature_2m_max: [22, 20],
+          temperature_2m_min: [17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00'],
+          shortwave_radiation: [90, 70],
+          cloudcover: [92, 95]
+        }
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-PARTIAL-001',
+      batteryCapacityKWh: 13.5
+    });
+    await mockEvApis(page, { vehicles: [] });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          rules: {}
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: { active: false }
+      }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          groups: []
+        }
+      }, 200));
+    });
+
+    await page.reload();
+    const summaryModel = await seedOverviewSummaryState(page, {
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 21,
+          weathercode: 61,
+          shortwave_radiation: 90,
+          cloudcover: 92,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24'],
+          weathercode: [61, 63],
+          precipitation_sum: [7.2, 9.4],
+          temperature_2m_max: [22, 20],
+          temperature_2m_min: [17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00'],
+          shortwave_radiation: [90, 70],
+          cloudcover: [92, 95]
+        }
+      },
+      pricingIntervals: [],
+      automationStatus: {
+        enabled: false,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        rules: {}
+      },
+      automationLastCheck: Date.parse('2026-03-23T08:00:00.000Z')
+    });
+
+    expect(summaryModel).toBeTruthy();
+    expect(summaryModel.badgeText).toBe('Partial summary');
+    expect(summaryModel.lead).toContain('weather is likely to suppress solar output');
+    expect(summaryModel.chips.map((chip) => chip.label)).toContain('Weather');
+    await page.waitForTimeout(300);
+
+    expect(pageErrors.filter((message) => message.includes('buildOverviewSummaryModel'))).toEqual([]);
   });
 
   test('should hide selected cards and keep remaining priority cards visible', async ({ page }) => {
@@ -1496,6 +2339,7 @@ test.describe('Dashboard Page', () => {
   test('should persist card visibility preferences across reload', async ({ page }) => {
     await page.evaluate(() => {
       const payload = JSON.stringify({
+        overviewSummary: false,
         inverter: false,
         prices: true,
         weather: true,
@@ -1509,6 +2353,8 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
     await page.waitForTimeout(300);
+    await expect(page.locator('[data-dashboard-toggle="overviewSummary"]')).not.toBeChecked();
+    await expect(page.locator('[data-dashboard-card="overviewSummary"]')).toBeHidden();
     await expect(page.locator('[data-dashboard-toggle="ev"]')).not.toBeChecked();
     await expect(page.locator('[data-dashboard-card="ev"]')).toBeHidden();
 
@@ -1517,7 +2363,7 @@ test.describe('Dashboard Page', () => {
         const fromUserKey = JSON.parse(localStorage.getItem('dashboardCardVisibility:test-user-123') || '{}');
         const fromGuestKey = JSON.parse(localStorage.getItem('dashboardCardVisibility:guest') || '{}');
         const parsed = (fromUserKey && Object.keys(fromUserKey).length > 0) ? fromUserKey : fromGuestKey;
-        return parsed.inverter === false && parsed.scheduler === false && parsed.ev === false;
+        return parsed.overviewSummary === false && parsed.inverter === false && parsed.scheduler === false && parsed.ev === false;
       } catch (e) {
         return false;
       }
@@ -3019,6 +3865,170 @@ test.describe('Dashboard Page', () => {
     await page.locator('#pricingRefreshBtn').click();
 
     await expect.poll(() => pricingCurrentRequestCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test('should refresh stale dashboard cards when the app window regains focus', async ({ page }) => {
+    await expect.poll(() => page.evaluate(() => {
+      return [
+        typeof window.__dashboardTestHooks?.markOverviewForegroundRefresh,
+        typeof window.__dashboardTestHooks?.handleOverviewForegroundResume
+      ].join(',');
+    })).toBe('function,function');
+
+    let pricingCurrentRequestCount = 0;
+    await page.route('**/api/pricing/current*', async (route) => {
+      pricingCurrentRequestCount += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T08:30:00.000Z',
+            endTime: '2026-03-30T08:35:00.000Z',
+            perKwh: 47.9,
+            spotPerKwh: 47.9,
+            renewables: 4,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T08:30:00.000Z',
+            endTime: '2026-03-30T08:35:00.000Z',
+            perKwh: -14.9,
+            spotPerKwh: -14.9,
+            renewables: 4,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    let inverterRealtimeRequestCount = 0;
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      inverterRealtimeRequestCount += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FOCUS-REFRESH-001',
+            time: '2026-03-30T08:30:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 75, unit: '%' },
+              { variable: 'pvPower', value: 0, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.63, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 5.6, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 6.23, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    let weatherRequestCount = 0;
+    await page.route('**/api/weather*', async (route) => {
+      weatherRequestCount += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          place: {
+            resolvedName: 'Roselands',
+            country: 'Australia',
+            latitude: -33.9332,
+            longitude: 151.0732
+          },
+          current: {
+            time: '2026-03-30T18:45',
+            temperature: 21.2,
+            weathercode: 3,
+            precipitation: 0,
+            windspeed: 8.3,
+            winddirection: 90,
+            shortwave_radiation: 200,
+            cloudcover: 38,
+            is_day: 0
+          },
+          daily: {
+            time: ['2026-03-30', '2026-03-31'],
+            weathercode: [3, 45],
+            precipitation_sum: [0, 0],
+            temperature_2m_max: [23.8, 26.1],
+            temperature_2m_min: [15.1, 13.2]
+          },
+          hourly: {
+            time: ['2026-03-30T18:00', '2026-03-30T19:00'],
+            shortwave_radiation: [200, 0],
+            cloudcover: [38, 42]
+          }
+        }
+      }, 200));
+    });
+
+    await page.evaluate(() => {
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+
+      const pricingSelect = document.getElementById('amberSiteId');
+      if (pricingSelect) {
+        pricingSelect.innerHTML = '<option value="4102819899">4102819899 (Ausgrid)</option>';
+        pricingSelect.value = '4102819899';
+      }
+
+      const now = Date.now();
+      const weatherDays = Number(document.getElementById('weatherDays')?.value || 6);
+      const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+      cacheState.amberTime = now;
+      cacheState.amberSiteId = '4102819899';
+      cacheState.amberProvider = 'amber';
+      cacheState.amberUserId = 'guest';
+      cacheState.weatherTime = now;
+      cacheState.weatherDays = weatherDays;
+      cacheState.weatherDate = new Date(now).toISOString().substring(0, 10);
+      localStorage.setItem('cacheState', JSON.stringify(cacheState));
+
+      localStorage.setItem('cachedWeatherFull', JSON.stringify({
+        place: { resolvedName: 'Roselands', country: 'Australia', latitude: -33.9332, longitude: 151.0732 },
+        current: { time: '2026-03-30T18:45', temperature: 21.2, weathercode: 3, shortwave_radiation: 200, cloudcover: 38, is_day: 0 },
+        daily: { time: ['2026-03-30'], weathercode: [3], precipitation_sum: [0], temperature_2m_max: [23.8], temperature_2m_min: [15.1] },
+        hourly: { time: ['2026-03-30T18:00'], shortwave_radiation: [200], cloudcover: [38] }
+      }));
+
+      window.__dashboardTestHooks.markOverviewForegroundRefresh();
+    });
+
+    await page.evaluate((advanceMs) => {
+      const RealDate = window.Date;
+      const shiftedNow = RealDate.now() + advanceMs;
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(shiftedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return shiftedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+      window.dispatchEvent(new Event('focus'));
+    }, 31 * 60 * 1000);
+
+    await expect.poll(() => pricingCurrentRequestCount).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => inverterRealtimeRequestCount).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => weatherRequestCount).toBeGreaterThanOrEqual(1);
   });
 
   test('should keep AEMO pricing metrics readable on narrow viewports', async ({ page }) => {

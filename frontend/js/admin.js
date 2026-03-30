@@ -1898,15 +1898,15 @@
         const dominantPage = pageMixRows.length
             ? pageMixRows.slice().sort((a, b) => b.recentViews - a.recentViews)[0]
             : null;
-        let pageMixText = 'Main-page mix appears once filtered page views are available.';
+        let pageMixText = 'Page mix appears once filtered page views are available.';
         if (dominantPage && totalRecentViews > 0) {
             const dominantLabel = findBehaviorPageLabel(dominantPage.key, pageOptions);
             const shareRecentPct = (dominantPage.recentViews / totalRecentViews) * 100;
             if (totalPriorViews > 0) {
                 const sharePriorPct = (dominantPage.priorViews / totalPriorViews) * 100;
-                pageMixText = `${dominantLabel} is ${formatOneDecimal(shareRecentPct)}% of tracked main-page views (${formatPointsDelta(shareRecentPct - sharePriorPct)} vs prior 7d).`;
+                pageMixText = `${dominantLabel} is ${formatOneDecimal(shareRecentPct)}% of tracked page views (${formatPointsDelta(shareRecentPct - sharePriorPct)} vs prior 7d).`;
             } else {
-                pageMixText = `${dominantLabel} is ${formatOneDecimal(shareRecentPct)}% of tracked main-page views in last 7d.`;
+                pageMixText = `${dominantLabel} is ${formatOneDecimal(shareRecentPct)}% of tracked page views in last 7d.`;
             }
         }
 
@@ -1967,11 +1967,11 @@
         if (pagesEmpty) pagesEmpty.style.display = '';
         if (eventsEmpty) eventsEmpty.style.display = '';
         if (pageFilter) {
-            pageFilter.innerHTML = '<option value="all">All main pages</option>';
+            pageFilter.innerHTML = '<option value="all">All tracked pages</option>';
             pageFilter.value = 'all';
             pageFilter.disabled = true;
         }
-        if (pageFilterSummary) pageFilterSummary.textContent = 'Showing all tracked product pages in the daily chart.';
+        if (pageFilterSummary) pageFilterSummary.textContent = 'Showing all tracked pages in the daily chart.';
     }
 
     function getBehaviorSelectedPageOption() {
@@ -1996,14 +1996,14 @@
         const selected = getBehaviorSelectedPageOption();
         summaryEl.textContent = selected
             ? `Daily chart showing ${selected.label} only. KPI cards and tables remain unfiltered.`
-            : 'Showing all tracked product pages in the daily chart.';
+            : 'Showing all tracked pages in the daily chart.';
     }
 
     function populateBehaviorPageFilter() {
         const pageFilter = document.getElementById('behaviorPageFilter');
         if (!pageFilter) return;
         const options = Array.isArray(behaviorMetricsData?.mainPageOptions) ? behaviorMetricsData.mainPageOptions : [];
-        pageFilter.innerHTML = ['<option value="all">All main pages</option>']
+        pageFilter.innerHTML = ['<option value="all">All tracked pages</option>']
             .concat(options.map((option) => `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`))
             .join('');
         pageFilter.disabled = options.length === 0;

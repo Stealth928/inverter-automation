@@ -1539,70 +1539,6 @@ function registerAdminRoutes(app, deps = {}) {
   ];
   const DEFAULT_GA4_MEASUREMENT_ID = 'G-MWF4ZBMREE';
   const ADMIN_BEHAVIOR_MAX_PROPERTY_SCAN_COUNT = 25;
-  const ADMIN_BEHAVIOR_MAIN_PAGES = [
-    {
-      key: 'app',
-      label: 'Dashboard',
-      buildFilter: () => ({
-        orGroup: {
-          expressions: [
-            {
-              filter: {
-                fieldName: 'pagePath',
-                stringFilter: { matchType: 'EXACT', value: '/app' }
-              }
-            },
-            {
-              filter: {
-                fieldName: 'pagePath',
-                stringFilter: { matchType: 'BEGINS_WITH', value: '/app' }
-              }
-            }
-          ]
-        }
-      })
-    },
-    {
-      key: 'control',
-      label: 'Control',
-      buildFilter: () => ({
-        filter: {
-          fieldName: 'pagePath',
-          stringFilter: { matchType: 'BEGINS_WITH', value: '/control' }
-        }
-      })
-    },
-    {
-      key: 'history',
-      label: 'History',
-      buildFilter: () => ({
-        filter: {
-          fieldName: 'pagePath',
-          stringFilter: { matchType: 'BEGINS_WITH', value: '/history' }
-        }
-      })
-    },
-    {
-      key: 'settings',
-      label: 'Settings',
-      buildFilter: () => ({
-        filter: {
-          fieldName: 'pagePath',
-          stringFilter: { matchType: 'BEGINS_WITH', value: '/settings' }
-        }
-      })
-    },
-    {
-      key: 'admin',
-      label: 'Admin',
-      buildFilter: () => ({
-        filter: {
-          fieldName: 'pagePath',
-          stringFilter: { matchType: 'BEGINS_WITH', value: '/admin' }
-        }
-      })
-    }
-  ];
   let adminBehaviorMetricsCache = {
     key: '',
     data: null,
@@ -2107,6 +2043,60 @@ function registerAdminRoutes(app, deps = {}) {
     pageViews: 0,
     eventCount: 0
   }));
+
+  const buildBehaviorPagePathFilter = (path) => ({
+    filter: {
+      fieldName: 'pagePath',
+      stringFilter: {
+        matchType: 'EXACT',
+        value: trimString(path) || '/'
+      }
+    }
+  });
+
+  const buildBehaviorPageLabel = (path, title) => {
+    const normalizedPath = trimString(path) || '/';
+    const normalizedTitle = trimString(title);
+    if (!normalizedTitle || normalizedTitle === normalizedPath) {
+      return normalizedPath;
+    }
+    return normalizedTitle;
+  };
+
+  const buildBehaviorFilterPages = (pages = []) => {
+    const uniquePages = [];
+    const seenPaths = new Set();
+    for (const page of Array.isArray(pages) ? pages : []) {
+      const path = trimString(page?.path) || '/';
+      if (seenPaths.has(path)) continue;
+      seenPaths.add(path);
+      uniquePages.push({
+        key: path,
+        path,
+        title: trimString(page?.title) || path
+      });
+    }
+
+    const labelCounts = new Map();
+    for (const page of uniquePages) {
+      const label = buildBehaviorPageLabel(page.path, page.title);
+      const key = label.toLowerCase();
+      labelCounts.set(key, (labelCounts.get(key) || 0) + 1);
+    }
+
+    return uniquePages.map((page) => {
+      const baseLabel = buildBehaviorPageLabel(page.path, page.title);
+      const label = labelCounts.get(baseLabel.toLowerCase()) > 1 && baseLabel !== page.path
+        ? `${baseLabel} (${page.path})`
+        : baseLabel;
+      return {
+        key: page.key,
+        label,
+        path: page.path,
+        title: page.title
+      };
+    });
+  };
 
   const buildGa4ApiErrorMessage = (error) => {
     const message = String(error?.message || error || 'Unable to load GA4 behavior metrics');
@@ -2730,7 +2720,7 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
       const property = `properties/${propertyId}`;
       const dateRanges = [{ startDate: `${days}daysAgo`, endDate: 'today' }];
 
-      const [summaryResponse, dailyResponse, topPagesResponse, topEventsResponse, mainPagesResponse] = await Promise.all([
+      const [summaryResponse, dailyResponse, topPagesResponse, topEventsResponse] = await Promise.all([
         analyticsdata.properties.runReport({
           property,
           requestBody: {
@@ -2787,22 +2777,6 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
             orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
             limit: '50'
           }
-        }),
-        analyticsdata.properties.batchRunReports({
-          property,
-          requestBody: {
-            requests: ADMIN_BEHAVIOR_MAIN_PAGES.map((page) => ({
-              dateRanges,
-              dimensions: [{ name: 'date' }],
-              metrics: [
-                { name: 'activeUsers' },
-                { name: 'screenPageViews' }
-              ],
-              dimensionFilter: page.buildFilter(),
-              orderBys: [{ dimension: { dimensionName: 'date' } }],
-              limit: String(Math.max(days, 31))
-            }))
-          }
         })
       ]);
 
@@ -2843,6 +2817,7 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
           };
         }).filter((entry) => entry.pageViews > 0)
         : [];
+      const filterPages = buildBehaviorFilterPages(topPages);
 
       const genericEventNames = new Set([
         'page_view',
@@ -2871,29 +2846,47 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
 
       const seriesDates = pageSeries.map((entry) => entry.date);
       const mainPageSeriesAll = Object.fromEntries(
-        ADMIN_BEHAVIOR_MAIN_PAGES.map((page) => [page.key, buildBehaviorPageSeriesTemplate(seriesDates)])
+        filterPages.map((page) => [page.key, buildBehaviorPageSeriesTemplate(seriesDates)])
       );
-      const mainPagesReports = Array.isArray(mainPagesResponse?.data?.reports)
-        ? mainPagesResponse.data.reports
-        : [];
-      for (const [pageIndex, page] of ADMIN_BEHAVIOR_MAIN_PAGES.entries()) {
-        const report = mainPagesReports[pageIndex] || {};
-        const dimensionHeaders = report.dimensionHeaders || [];
-        const metricHeaders = report.metricHeaders || [];
+      if (filterPages.length) {
+        const mainPagesResponse = await analyticsdata.properties.batchRunReports({
+          property,
+          requestBody: {
+            requests: filterPages.map((page) => ({
+              dateRanges,
+              dimensions: [{ name: 'date' }],
+              metrics: [
+                { name: 'activeUsers' },
+                { name: 'screenPageViews' }
+              ],
+              dimensionFilter: buildBehaviorPagePathFilter(page.path),
+              orderBys: [{ dimension: { dimensionName: 'date' } }],
+              limit: String(Math.max(days, 31))
+            }))
+          }
+        });
+        const mainPagesReports = Array.isArray(mainPagesResponse?.data?.reports)
+          ? mainPagesResponse.data.reports
+          : [];
         const seriesDateIndex = new Map(seriesDates.map((date, index) => [date, index]));
-        if (!Array.isArray(report.rows)) continue;
-        for (const row of report.rows) {
-          const date = normalizeGa4Date(parseGa4DimensionValue(row, dimensionHeaders, 'date'));
-          if (!date) continue;
-          let targetIndex = seriesDateIndex.get(date);
-          if (typeof targetIndex !== 'number') continue;
-          const target = mainPageSeriesAll[page.key][targetIndex];
-          target.activeUsers = Math.round(parseGa4MetricValue(row, metricHeaders, 'activeUsers'));
-          target.pageViews = Math.round(parseGa4MetricValue(row, metricHeaders, 'screenPageViews'));
+        for (const [pageIndex, page] of filterPages.entries()) {
+          const report = mainPagesReports[pageIndex] || {};
+          const dimensionHeaders = report.dimensionHeaders || [];
+          const metricHeaders = report.metricHeaders || [];
+          if (!Array.isArray(report.rows)) continue;
+          for (const row of report.rows) {
+            const date = normalizeGa4Date(parseGa4DimensionValue(row, dimensionHeaders, 'date'));
+            if (!date) continue;
+            const targetIndex = seriesDateIndex.get(date);
+            if (typeof targetIndex !== 'number') continue;
+            const target = mainPageSeriesAll[page.key][targetIndex];
+            target.activeUsers = Math.round(parseGa4MetricValue(row, metricHeaders, 'activeUsers'));
+            target.pageViews = Math.round(parseGa4MetricValue(row, metricHeaders, 'screenPageViews'));
+          }
         }
       }
 
-      const mainPageOptions = ADMIN_BEHAVIOR_MAIN_PAGES
+      const mainPageOptions = filterPages
         .map((page) => {
           const series = mainPageSeriesAll[page.key] || [];
           const totalPageViews = series.reduce((sum, entry) => sum + Number(entry.pageViews || 0), 0);
