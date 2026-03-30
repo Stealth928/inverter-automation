@@ -171,8 +171,11 @@ describe('aemo price unit normalization', () => {
         {
           REGIONID: 'NSW1',
           SETTLEMENTDATE: '2026/03/26 20:00:00',
+          DEMAND_AND_NONSCHEDGEN: '8432.5',
           TOTALDEMAND: '8123.4',
           DEMANDFORECAST: '8200.1',
+          DISPATCHABLEGENERATION: '7901.2',
+          INITIALSUPPLY: '8068.2',
           CLEAREDSUPPLY: '8194.0'
         }
       ],
@@ -190,8 +193,11 @@ describe('aemo price unit normalization', () => {
           REGIONID: 'NSW1',
           DATETIME: '2026/03/26 20:30:00',
           PERIODID: '1',
+          DEMAND_AND_NONSCHEDGEN: '8510.0',
           TOTALDEMAND: '8300.0',
           DEMANDFORECAST: '8350.0',
+          DISPATCHABLEGENERATION: '8011.6',
+          INITIALSUPPLY: '8312.0',
           CLEAREDSUPPLY: '8364.0'
         }
       ]
@@ -207,9 +213,9 @@ describe('aemo price unit normalization', () => {
       endTime: '2026-03-26T10:00:00.000Z',
       perKwh: 5.71,
       spotPerKwh: 5.71,
-      demand: 8123.4,
+      demand: 8432.5,
       demandForecast: 8200.1,
-      generation: 8194
+      generation: 7901.2
     });
     expect(currentFeedIn).toMatchObject({
       startTime: '2026-03-26T09:55:00.000Z',
@@ -222,9 +228,9 @@ describe('aemo price unit normalization', () => {
       endTime: '2026-03-26T10:30:00.000Z',
       perKwh: 6.5,
       spotPerKwh: 6.5,
-      demand: 8300,
+      demand: 8510,
       demandForecast: 8350,
-      generation: 8364
+      generation: 8011.6
     });
     expect(forecastFeedIn).toMatchObject({
       startTime: '2026-03-26T10:00:00.000Z',
@@ -238,6 +244,39 @@ describe('aemo price unit normalization', () => {
       forecastHorizonMinutes: 30,
       isForecastComplete: true,
       source: 'aemo'
+    });
+  });
+
+  test('buildCurrentPayload falls back to TOTALDEMAND and CLEAREDSUPPLY when preferred fields are missing', () => {
+    const { buildCurrentPayload } = loadAemoModule();
+
+    const payload = buildCurrentPayload(
+      'NSW1',
+      [
+        {
+          REGIONID: 'NSW1',
+          SETTLEMENTDATE: '2026/03/26 20:00:00',
+          RRP: '57.1'
+        }
+      ],
+      [
+        {
+          REGIONID: 'NSW1',
+          SETTLEMENTDATE: '2026/03/26 20:00:00',
+          TOTALDEMAND: '8123.4',
+          DEMANDFORECAST: '8200.1',
+          CLEAREDSUPPLY: '8194.0'
+        }
+      ],
+      [],
+      []
+    );
+
+    const currentGeneral = payload.data.find((row) => row.type === 'CurrentInterval' && row.channelType === 'general');
+    expect(currentGeneral).toMatchObject({
+      demand: 8123.4,
+      demandForecast: 8200.1,
+      generation: 8194
     });
   });
 

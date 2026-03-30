@@ -63,9 +63,15 @@ function firstFiniteNumber(...values) {
 
 function buildAemoMarketMetrics(row) {
   return {
-    demand: toFiniteNumber(row?.TOTALDEMAND, null),
+    // Align with AEMO dashboard demand-vs-generation card semantics.
+    demand: firstFiniteNumber(row?.DEMAND_AND_NONSCHEDGEN, row?.TOTALDEMAND),
     demandForecast: toFiniteNumber(row?.DEMANDFORECAST, null),
-    generation: firstFiniteNumber(row?.CLEAREDSUPPLY, row?.INITIALSUPPLY, row?.AVAILABLEGENERATION)
+    generation: firstFiniteNumber(
+      row?.DISPATCHABLEGENERATION,
+      row?.CLEAREDSUPPLY,
+      row?.INITIALSUPPLY,
+      row?.AVAILABLEGENERATION
+    )
   };
 }
 
