@@ -1351,7 +1351,7 @@ test.describe('Dashboard Page', () => {
   });
 
   test('should render dashboard visibility toggles and keep cards visible by default', async ({ page }) => {
-    const toggleKeys = ['inverter', 'prices', 'weather', 'ev', 'quickControls', 'scheduler'];
+    const toggleKeys = ['overviewSummary', 'inverter', 'prices', 'weather', 'ev', 'quickControls', 'scheduler'];
     for (const key of toggleKeys) {
       const toggle = page.locator(`[data-dashboard-toggle="${key}"]`);
       const card = page.locator(`[data-dashboard-card="${key}"]`);
@@ -1359,6 +1359,306 @@ test.describe('Dashboard Page', () => {
       await expect(toggle).toBeChecked();
       await expect(card).toBeVisible();
     }
+  });
+
+  test('should hide and restore the overview summary card from dashboard customisation', async ({ page }) => {
+    const summaryToggle = page.locator('[data-dashboard-toggle="overviewSummary"]');
+    const summaryCard = page.locator('[data-dashboard-card="overviewSummary"]');
+
+    await expect(summaryCard).toBeVisible();
+    await summaryToggle.uncheck();
+    await expect(summaryCard).toBeHidden();
+
+    await summaryToggle.check();
+    await expect(summaryCard).toBeVisible();
+  });
+
+  test('should render a plain-English overview summary from live dashboard signals', async ({ page }) => {
+    await page.addInitScript(({ nowIso, weatherData }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, {
+      nowIso: '2026-03-23T08:00:00.000Z',
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 24,
+          weathercode: 1,
+          shortwave_radiation: 620,
+          cloudcover: 18,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24', '2026-03-25'],
+          weathercode: [1, 61, 3],
+          precipitation_sum: [0.2, 6.4, 0.4],
+          temperature_2m_max: [29, 23, 25],
+          temperature_2m_min: [18, 17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00', '2026-03-25T19:00'],
+          shortwave_radiation: [620, 120, 260],
+          cloudcover: [18, 88, 46]
+        }
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-001',
+            time: '2026-03-23T08:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 68, unit: '%' },
+              { variable: 'pvPower', value: 4.2, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.85, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.62, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.28, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-23T08:00:00.000Z',
+            perKwh: 9,
+            spotPerKwh: 9,
+            renewables: 82,
+            descriptor: 'great',
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-23T08:00:00.000Z',
+            perKwh: -1.4,
+            spotPerKwh: -1.4,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:00:00.000Z',
+            perKwh: 144,
+            spotPerKwh: 144,
+            renewables: 34,
+            descriptor: 'ok',
+            spikeStatus: 'none',
+            advancedPrice: { low: 120, predicted: 144, high: 170 }
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-24T10:00:00.000Z',
+            perKwh: -28,
+            spotPerKwh: -28,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#overviewSummaryBadge')).toContainText('Live summary');
+    await expect(page.locator('#overviewSummaryHeadline')).toContainText('stronger export window later in the horizon');
+    await expect(page.locator('#overviewSummaryLead')).toContainText('Battery is at 68% and charging at 0.28 kW.');
+    await expect(page.locator('#overviewSummaryBody')).toContainText('Automation is paused');
+    await expect(page.locator('#overviewSummaryBody')).toContainText('Best export window tomorrow at 21:00');
+    await expect(page.locator('#overviewSummaryBody')).toContainText('Battery:');
+    await expect(page.locator('#overviewSummaryBody')).toContainText('Buy:');
+  });
+
+  test('should render overview summary without throwing when inverter and pricing signals are missing', async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+
+    await page.addInitScript(({ nowIso, weatherData }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, {
+      nowIso: '2026-03-23T08:00:00.000Z',
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T19:00',
+          temperature: 21,
+          weathercode: 61,
+          shortwave_radiation: 90,
+          cloudcover: 92,
+          is_day: 1
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24'],
+          weathercode: [61, 63],
+          precipitation_sum: [7.2, 9.4],
+          temperature_2m_max: [22, 20],
+          temperature_2m_min: [17, 16]
+        },
+        hourly: {
+          time: ['2026-03-23T19:00', '2026-03-24T19:00'],
+          shortwave_radiation: [90, 70],
+          cloudcover: [92, 95]
+        }
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-PARTIAL-001',
+      batteryCapacityKWh: 13.5
+    });
+    await mockEvApis(page, { vehicles: [] });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          rules: {}
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: { active: false }
+      }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          groups: []
+        }
+      }, 200));
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#overviewSummaryBadge')).toContainText('Partial summary');
+    await expect(page.locator('#overviewSummaryLead')).toContainText('weather is likely to suppress solar output');
+    await expect(page.locator('#overviewSummaryBody')).toContainText('Weather:');
+    await page.waitForTimeout(300);
+
+    expect(pageErrors.filter((message) => message.includes('buildOverviewSummaryModel'))).toEqual([]);
   });
 
   test('should hide selected cards and keep remaining priority cards visible', async ({ page }) => {
@@ -1496,6 +1796,7 @@ test.describe('Dashboard Page', () => {
   test('should persist card visibility preferences across reload', async ({ page }) => {
     await page.evaluate(() => {
       const payload = JSON.stringify({
+        overviewSummary: false,
         inverter: false,
         prices: true,
         weather: true,
@@ -1509,6 +1810,8 @@ test.describe('Dashboard Page', () => {
 
     await page.reload();
     await page.waitForTimeout(300);
+    await expect(page.locator('[data-dashboard-toggle="overviewSummary"]')).not.toBeChecked();
+    await expect(page.locator('[data-dashboard-card="overviewSummary"]')).toBeHidden();
     await expect(page.locator('[data-dashboard-toggle="ev"]')).not.toBeChecked();
     await expect(page.locator('[data-dashboard-card="ev"]')).toBeHidden();
 
@@ -1517,7 +1820,7 @@ test.describe('Dashboard Page', () => {
         const fromUserKey = JSON.parse(localStorage.getItem('dashboardCardVisibility:test-user-123') || '{}');
         const fromGuestKey = JSON.parse(localStorage.getItem('dashboardCardVisibility:guest') || '{}');
         const parsed = (fromUserKey && Object.keys(fromUserKey).length > 0) ? fromUserKey : fromGuestKey;
-        return parsed.inverter === false && parsed.scheduler === false && parsed.ev === false;
+        return parsed.overviewSummary === false && parsed.inverter === false && parsed.scheduler === false && parsed.ev === false;
       } catch (e) {
         return false;
       }

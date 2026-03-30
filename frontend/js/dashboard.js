@@ -815,6 +815,10 @@
                 // Update inverter card if relevant
                 if (endpoint.includes('/inverter/')) {
                     updateInverterCard(data, name);
+                    if (endpoint.includes('/inverter/real-time') || name === 'Real-time Data') {
+                        window.__latestOverviewInverterPayload = data;
+                        renderOverviewSummary();
+                    }
                 }
 
                 // If this was a real-time inverter fetch, prefer the cloud timestamp when available
@@ -2489,6 +2493,7 @@
             html += '</div>';
 
             card.innerHTML = html;
+            renderOverviewSummary();
 
             // Initialize or update the inline Leaflet map for this location
             try {
@@ -3659,6 +3664,7 @@
             // Add chart canvas to HTML before rendering
             html += '<div style="margin-top:16px;position:relative;height:200px;width:100%"><canvas id="amberPriceChart" style="width:100%;height:200px"></canvas></div>';
             card.innerHTML = html;
+            renderOverviewSummary();
 
             // Schedule chart rendering after DOM is ready
             setTimeout(() => renderAmberChart(displayForecasts, displayFeedForecasts), 100);
@@ -3853,12 +3859,19 @@
                 
                 currentSchedulerGroups = data.result.groups || [];
                 const globalEnable = data.result.enable;
+                window.__latestSchedulerState = {
+                    enabled: globalEnable === true || Number(globalEnable) === 1,
+                    groups: Array.isArray(currentSchedulerGroups)
+                        ? currentSchedulerGroups.map((group) => ({ ...group }))
+                        : []
+                };
                 const visibleGroups = (_providerCapabilities.provider === 'alphaess')
                     ? currentSchedulerGroups.slice(0, getSchedulerSlotCount())
                     : currentSchedulerGroups;
                 
                 if (visibleGroups.length === 0) {
                     container.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;padding:20px;text-align:center">No segments configured</div>';
+                    renderOverviewSummary();
                     return;
                 }
                 
@@ -3911,6 +3924,7 @@
                 // Also show in result panel
                 document.getElementById('result').className = 'success';
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+                renderOverviewSummary();
             } catch (error) {
                 container.innerHTML = `<div style="color:var(--color-danger);font-size:12px;padding:20px">Error: ${error.message}</div>`;
             }
@@ -4891,6 +4905,7 @@
             updateEVVehicleCountBadge();
             renderEVVehicleTabs();
             renderEVSelectedSummary();
+            renderOverviewSummary();
         }
 
         function getEVVehicleRenderFingerprint(vehicleId) {
@@ -5860,6 +5875,7 @@
             const statusDiv = document.getElementById('quickControlStatus');
             const formDiv = document.getElementById('quickControlForm');
             const startBtn = document.getElementById('btnStartQuickControl');
+            window.__latestQuickControlStatus = status || null;
             
             if (!status || !status.active) {
                 // No active quick control - check if just expired (server auto-cleaned)
@@ -5896,6 +5912,7 @@
                     clearInterval(quickControlState.countdownInterval);
                     quickControlState.countdownInterval = null;
                 }
+                renderOverviewSummary();
                 return;
             }
             
@@ -5969,6 +5986,7 @@
                 // Start countdown timer
                 startCountdownTimer(status.expiresAt);
             }
+            renderOverviewSummary();
         }
         
         function formatCountdown(ms) {
@@ -7280,7 +7298,887 @@
         applyMockPreferenceFromQuery();
         updateDataSourceBadges();
 
+        window.__latestOverviewInverterPayload = null;
+        window.__latestQuickControlStatus = null;
+        window.__latestSchedulerState = null;
+
+        function toOverviewFiniteNumber(value) {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric : null;
+        }
+
+        function normalizeOverviewPowerKw(value, unit = '') {
+            const numeric = toOverviewFiniteNumber(value);
+            if (numeric === null) return null;
+
+            const normalizedUnit = String(unit || '').trim().toLowerCase();
+            if (normalizedUnit.includes('kw')) return Math.abs(numeric);
+            if (normalizedUnit === 'w' || normalizedUnit.includes('watt')) return Math.abs(numeric) / 1000;
+            return Math.abs(numeric) > 100 ? Math.abs(numeric) / 1000 : Math.abs(numeric);
+        }
+
+        function flattenOverviewDatapoints(payload) {
+            const result = payload?.result;
+            const items = [];
+
+            if (Array.isArray(result)) {
+                result.forEach((entry) => {
+                    if (Array.isArray(entry?.datas)) {
+                        items.push(...entry.datas);
+                    } else if (entry && typeof entry === 'object' && (entry.variable || entry.key)) {
+                        items.push(entry);
+                    }
+                });
+                return items;
+            }
+
+            if (Array.isArray(result?.datas)) {
+                items.push(...result.datas);
+            }
+
+            return items;
+        }
+
+        function findOverviewDatapoint(items, keys = []) {
+            if (!Array.isArray(items) || !keys.length) return null;
+
+            for (const key of keys) {
+                const normalizedKey = String(key || '').trim().toLowerCase();
+                if (!normalizedKey) continue;
+
+                const exact = items.find((entry) => {
+                    const variable = String(entry?.variable || entry?.key || '').trim().toLowerCase();
+                    return variable === normalizedKey;
+                });
+                if (exact) return exact;
+
+                const includes = items.find((entry) => {
+                    const variable = String(entry?.variable || entry?.key || '').trim().toLowerCase();
+                    return variable.includes(normalizedKey);
+                });
+                if (includes) return includes;
+            }
+
+            return null;
+        }
+
+        function readOverviewPower(items, keys = []) {
+            const item = findOverviewDatapoint(items, keys);
+            return {
+                raw: item?.value ?? null,
+                kw: normalizeOverviewPowerKw(item?.value, item?.unit),
+                item
+            };
+        }
+
+        function readOverviewNumber(items, keys = []) {
+            const item = findOverviewDatapoint(items, keys);
+            return toOverviewFiniteNumber(item?.value);
+        }
+
+        function resolveOverviewWeatherHourlyValue(hourly = {}, fields = [], currentTime = '') {
+            const times = Array.isArray(hourly.time) ? hourly.time : [];
+            if (!times.length || !Array.isArray(fields) || !fields.length) return null;
+
+            const candidates = fields
+                .map((field) => Array.isArray(hourly[field]) ? hourly[field] : null)
+                .filter(Boolean);
+            if (!candidates.length) return null;
+
+            const normalizedCurrentTime = String(currentTime || '').trim();
+            let index = -1;
+            if (normalizedCurrentTime) {
+                index = times.indexOf(normalizedCurrentTime);
+                if (index === -1) {
+                    const currentHour = normalizedCurrentTime.substring(0, 13);
+                    index = times.findIndex((entry) => String(entry || '').substring(0, 13) === currentHour);
+                }
+            }
+            if (index === -1) index = 0;
+
+            for (const values of candidates) {
+                const numeric = toOverviewFiniteNumber(values[index]);
+                if (numeric !== null) return numeric;
+            }
+
+            return null;
+        }
+
+        function formatOverviewPowerKw(value) {
+            const numeric = toOverviewFiniteNumber(value);
+            if (numeric === null) return null;
+
+            const abs = Math.abs(numeric);
+            const digits = abs >= 10 ? 0 : (abs >= 1 ? 1 : 2);
+            return `${abs.toFixed(digits)} kW`;
+        }
+
+        function formatOverviewPrice(value) {
+            const numeric = toOverviewFiniteNumber(value);
+            if (numeric === null) return null;
+            return formatPricingValue(numeric);
+        }
+
+        function joinOverviewList(parts = []) {
+            const items = parts.filter(Boolean);
+            if (!items.length) return '';
+            if (items.length === 1) return items[0];
+            if (items.length === 2) return `${items[0]} and ${items[1]}`;
+            return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+        }
+
+        function getOverviewLocalDayKey(value) {
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return '';
+            try {
+                return new Intl.DateTimeFormat('en-CA', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    timeZone: USER_TZ || 'Australia/Sydney'
+                }).format(date);
+            } catch (error) {
+                return date.toISOString().substring(0, 10);
+            }
+        }
+
+        function formatOverviewClock(value) {
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return null;
+            try {
+                return date.toLocaleTimeString('en-AU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                    timeZone: USER_TZ || 'Australia/Sydney'
+                });
+            } catch (error) {
+                return date.toLocaleTimeString('en-AU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+            }
+        }
+
+        function formatOverviewRelativeDateTime(value) {
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return null;
+
+            const timeLabel = formatOverviewClock(date);
+            const todayKey = getOverviewLocalDayKey(new Date());
+            const targetKey = getOverviewLocalDayKey(date);
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowKey = getOverviewLocalDayKey(tomorrow);
+
+            if (targetKey && targetKey === todayKey) return `today at ${timeLabel}`;
+            if (targetKey && targetKey === tomorrowKey) return `tomorrow at ${timeLabel}`;
+
+            try {
+                const dateLabel = date.toLocaleDateString('en-AU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    timeZone: USER_TZ || 'Australia/Sydney'
+                });
+                return `${dateLabel} at ${timeLabel}`;
+            } catch (error) {
+                return timeLabel;
+            }
+        }
+
+        function describeOverviewBuyPrice(cents) {
+            if (cents <= 10) return 'soft';
+            if (cents <= 20) return 'manageable';
+            if (cents <= 30) return 'firm';
+            return 'elevated';
+        }
+
+        function describeOverviewFeedPrice(cents) {
+            if (cents < 0) return 'negative';
+            if (cents < 10) return 'muted';
+            if (cents < 25) return 'decent';
+            return 'strong';
+        }
+
+        function readOverviewFeedIntervalCents(interval) {
+            if (!interval || typeof interval !== 'object') return null;
+            try {
+                if (typeof getFeedDisplayPriceCents === 'function') {
+                    return toOverviewFiniteNumber(getFeedDisplayPriceCents(interval));
+                }
+            } catch (error) { /* ignore and fall back */ }
+
+            const raw = toOverviewFiniteNumber(interval.perKwh);
+            if (raw === null) return null;
+            return raw < 0 ? -raw : raw;
+        }
+
+        function extractInverterOverviewSignal(payload) {
+            const items = flattenOverviewDatapoints(payload);
+            if (!items.length) return null;
+
+            const frames = Array.isArray(payload?.result) ? payload.result : [];
+            const solarPrimary = readOverviewPower(items, ['solarPowerTotal', 'solarpowertotal', 'pvPower', 'pvpower', 'acSolarPower', 'acsolarpower', 'generationpower', 'generation']);
+            const loadPrimary = readOverviewPower(items, ['loadsPower', 'loadspower', 'loadpower', 'houseLoad', 'houseload', 'consumption']);
+            const importPrimary = readOverviewPower(items, ['gridConsumptionPower', 'gridconsumptionpower', 'grid_consumption_power', 'gridpower', 'grid_power']);
+            const exportPrimary = readOverviewPower(items, ['feedinPower', 'feedinpower', 'feed_in', 'feedin']);
+            const chargePrimary = readOverviewPower(items, ['batChargePower', 'batchargepower', 'bat_charge_power', 'chargepower']);
+            const dischargePrimary = readOverviewPower(items, ['batDischargePower', 'batdischargepower', 'bat_discharge_power', 'dischargepower']);
+            const socPct = readOverviewNumber(items, ['soc', 'SoC', 'socvalue', 'batSoc', 'stateofcharge', 'batterySoc']);
+
+            let solarKw = solarPrimary.kw;
+            if (solarKw === null) {
+                const pvStringValues = [1, 2, 3, 4]
+                    .map((index) => readOverviewPower(items, [`pv${index}power`, `pv${index}Power`]).kw)
+                    .filter((value) => value !== null);
+                if (pvStringValues.length) {
+                    solarKw = pvStringValues.reduce((total, value) => total + value, 0);
+                }
+            }
+
+            const loadKw = loadPrimary.kw;
+            const importKw = importPrimary.kw;
+            const exportKw = exportPrimary.kw;
+            const chargeKw = chargePrimary.kw;
+            const dischargeKw = dischargePrimary.kw;
+            const batteryMode = chargeKw !== null && chargeKw > 0.05
+                ? 'charging'
+                : (dischargeKw !== null && dischargeKw > 0.05 ? 'discharging' : 'idle');
+            const batteryPowerKw = batteryMode === 'charging'
+                ? chargeKw
+                : (batteryMode === 'discharging' ? dischargeKw : null);
+            const gridMode = importKw !== null && importKw > 0.05
+                ? 'import'
+                : (exportKw !== null && exportKw > 0.05 ? 'export' : 'balanced');
+            const timestamp = frames.find((frame) => frame?.time)?.time || null;
+
+            if (
+                socPct === null
+                && solarKw === null
+                && loadKw === null
+                && importKw === null
+                && exportKw === null
+                && batteryPowerKw === null
+            ) {
+                return null;
+            }
+
+            return {
+                socPct,
+                solarKw,
+                loadKw,
+                importKw,
+                exportKw,
+                batteryMode,
+                batteryPowerKw,
+                gridMode,
+                timestamp
+            };
+        }
+
+        function extractPricingOverviewSignal(intervalsInput) {
+            const intervals = Array.isArray(intervalsInput) ? intervalsInput.filter(Boolean) : [];
+            if (!intervals.length) return null;
+
+            const currentBuy = intervals.find((entry) => entry?.channelType === 'general' && entry?.type === 'CurrentInterval') || null;
+            const currentFeed = intervals.find((entry) => entry?.channelType === 'feedIn' && entry?.type === 'CurrentInterval') || null;
+            const buyForecasts = intervals.filter((entry) => entry?.channelType === 'general' && entry?.type === 'ForecastInterval');
+            const feedForecasts = intervals.filter((entry) => entry?.channelType === 'feedIn' && entry?.type === 'ForecastInterval');
+
+            const currentBuyCents = toOverviewFiniteNumber(currentBuy?.perKwh);
+            const currentFeedCents = readOverviewFeedIntervalCents(currentFeed);
+
+            const cheapestFuture = buyForecasts.reduce((lowest, interval) => {
+                const priceCents = toOverviewFiniteNumber(interval?.perKwh);
+                if (priceCents === null) return lowest;
+                if (!lowest || priceCents < lowest.priceCents) {
+                    return {
+                        priceCents,
+                        startTime: interval.startTime || null
+                    };
+                }
+                return lowest;
+            }, null);
+
+            const highestFuture = buyForecasts.reduce((highest, interval) => {
+                const priceCents = toOverviewFiniteNumber(interval?.perKwh);
+                if (priceCents === null) return highest;
+                if (!highest || priceCents > highest.priceCents) {
+                    return {
+                        priceCents,
+                        startTime: interval.startTime || null
+                    };
+                }
+                return highest;
+            }, null);
+
+            const bestFeedFuture = feedForecasts.reduce((highest, interval) => {
+                const priceCents = readOverviewFeedIntervalCents(interval);
+                if (priceCents === null) return highest;
+                if (!highest || priceCents > highest.priceCents) {
+                    return {
+                        priceCents,
+                        startTime: interval.startTime || null
+                    };
+                }
+                return highest;
+            }, null);
+
+            const nextSpike = buyForecasts.find((interval) => interval?.spikeStatus && interval.spikeStatus !== 'none');
+
+            if (currentBuyCents === null && currentFeedCents === null && !cheapestFuture && !highestFuture && !bestFeedFuture) {
+                return null;
+            }
+
+            return {
+                currentBuyCents,
+                currentFeedCents,
+                cheapestFuture,
+                highestFuture,
+                bestFeedFuture,
+                nextSpike: nextSpike ? {
+                    priceCents: toOverviewFiniteNumber(nextSpike.perKwh),
+                    startTime: nextSpike.startTime || null
+                } : null,
+                forecastCount: buyForecasts.length
+            };
+        }
+
+        function extractWeatherOverviewSignal(weatherData) {
+            if (!weatherData || typeof weatherData !== 'object') return null;
+
+            const current = weatherData.current || {};
+            const daily = weatherData.daily || {};
+            const hourly = weatherData.hourly || {};
+            const dailyTimes = Array.isArray(daily.time) ? daily.time : [];
+            const rainSeries = daily.precipitation_sum || daily.precipitation || daily.rain_sum || [];
+            const weatherCodes = Array.isArray(daily.weathercode) ? daily.weathercode : [];
+
+            const currentCondition = weatherCodeToWord(
+                current.weathercode !== undefined && current.weathercode !== null
+                    ? current.weathercode
+                    : weatherCodes[0]
+            );
+            const currentTempC = toOverviewFiniteNumber(current.temperature);
+            const solarNowWm2 = toOverviewFiniteNumber(current.shortwave_radiation)
+                ?? resolveOverviewWeatherHourlyValue(hourly, ['shortwave_radiation'], current.time);
+            const cloudNowPct = toOverviewFiniteNumber(current.cloudcover ?? current.cloud_cover)
+                ?? resolveOverviewWeatherHourlyValue(hourly, ['cloudcover', 'cloud_cover'], current.time);
+            const todayRainMm = toOverviewFiniteNumber(rainSeries[0]);
+            const tomorrowRainMm = toOverviewFiniteNumber(rainSeries[1]);
+            const tomorrowCondition = weatherCodes[1] !== undefined ? weatherCodeToWord(weatherCodes[1]) : null;
+
+            let solarSupport = 'moderate';
+            if (
+                (solarNowWm2 !== null && solarNowWm2 >= 450)
+                && (cloudNowPct === null || cloudNowPct <= 35)
+                && (todayRainMm === null || todayRainMm < 3)
+            ) {
+                solarSupport = 'strong';
+            } else if (
+                (solarNowWm2 !== null && solarNowWm2 <= 150)
+                || (cloudNowPct !== null && cloudNowPct >= 70)
+                || (todayRainMm !== null && todayRainMm >= 5)
+                || /Overcast|Rain|Showers|Thunderstorm|Snow/i.test(currentCondition)
+            ) {
+                solarSupport = 'weak';
+            }
+
+            let nextWetDay = null;
+            for (let index = 1; index < dailyTimes.length; index += 1) {
+                const rainMm = toOverviewFiniteNumber(rainSeries[index]);
+                const condition = weatherCodes[index] !== undefined ? weatherCodeToWord(weatherCodes[index]) : 'Unknown';
+                if (
+                    (rainMm !== null && rainMm >= 5)
+                    || /Overcast|Rain|Showers|Thunderstorm|Snow/i.test(condition)
+                ) {
+                    nextWetDay = {
+                        label: index === 1 ? 'Tomorrow' : `Day ${index + 1}`,
+                        rainMm,
+                        condition
+                    };
+                    break;
+                }
+            }
+
+            if (!currentCondition && currentTempC === null && solarNowWm2 === null && cloudNowPct === null && !nextWetDay) {
+                return null;
+            }
+
+            return {
+                currentCondition,
+                currentTempC,
+                solarNowWm2,
+                cloudNowPct,
+                todayRainMm,
+                tomorrowRainMm,
+                tomorrowCondition,
+                solarSupport,
+                nextWetDay
+            };
+        }
+
+        function extractAutomationOverviewSignal(status) {
+            if (!status || typeof status !== 'object') return null;
+
+            const rules = status.rules && typeof status.rules === 'object' ? status.rules : {};
+            const ruleCount = Object.keys(rules).length;
+            const activeRule = String(status.activeRuleName || status.activeRule || '').trim() || null;
+            const enabled = status.enabled === true;
+            const inBlackout = status.inBlackout === true;
+            const telemetryFailsafePaused = enabled && status.telemetryFailsafePaused === true;
+            const stateLabel = inBlackout
+                ? 'Blackout window'
+                : (telemetryFailsafePaused ? 'Failsafe paused' : (enabled ? 'Automation active' : 'Automation paused'));
+            const nextCycleMs = Number.isFinite(Number(window.automationLastCheck))
+                ? Math.max(0, Number(CONFIG?.automation?.intervalMs || 60000) - (Date.now() - Number(window.automationLastCheck)))
+                : null;
+
+            return {
+                enabled,
+                inBlackout,
+                telemetryFailsafePaused,
+                activeRule,
+                ruleCount,
+                stateLabel,
+                nextCycleMs
+            };
+        }
+
+        function extractEVOverviewSignal() {
+            if (!evDashboardState || !Array.isArray(evDashboardState.vehicles) || evDashboardState.vehicles.length === 0) {
+                return null;
+            }
+
+            const selectedVehicle = getSelectedEVVehicle();
+            if (!selectedVehicle) return null;
+
+            const vehicleId = String(selectedVehicle.vehicleId || '');
+            const status = evDashboardState.statusByVehicleId[vehicleId] || {};
+            const statusMeta = evDashboardState.statusMetaByVehicleId[vehicleId] || {};
+            const readiness = evDashboardState.commandReadinessByVehicleId[vehicleId] || null;
+            const readinessMeta = evDashboardState.readinessMetaByVehicleId[vehicleId] || {};
+            const commandDescriptor = describeEVCommandAvailability(
+                selectedVehicle,
+                readiness,
+                status,
+                statusMeta,
+                String(statusMeta.error || ''),
+                String(readinessMeta.error || '')
+            );
+
+            return {
+                vehicleCount: evDashboardState.vehicles.length,
+                selectedName: getEVVehicleDisplayName(selectedVehicle),
+                socPct: toOverviewFiniteNumber(status.socPct),
+                chargingState: String(status.chargingState || '').trim(),
+                isPluggedIn: status.isPluggedIn === true,
+                isCharging: String(status.chargingState || '').trim().toLowerCase() === 'charging',
+                timeToFullHours: toOverviewFiniteNumber(status.timeToFullChargeHours),
+                commandLabel: String(commandDescriptor.label || '').trim() || null
+            };
+        }
+
+        function extractQuickControlOverviewSignal(status) {
+            if (!status || typeof status !== 'object') return null;
+            if (status.active !== true) return null;
+
+            const powerKw = normalizeOverviewPowerKw(status.power, 'w');
+            const remainingMs = Number.isFinite(Number(status.expiresAt))
+                ? Math.max(0, Number(status.expiresAt) - Date.now())
+                : null;
+
+            return {
+                active: true,
+                type: String(status.type || 'charge').trim().toLowerCase(),
+                powerKw,
+                remainingMs,
+                expiresAt: status.expiresAt || null
+            };
+        }
+
+        function extractSchedulerOverviewSignal(snapshot) {
+            const resolved = snapshot && typeof snapshot === 'object'
+                ? snapshot
+                : (window.__latestSchedulerState && typeof window.__latestSchedulerState === 'object' ? window.__latestSchedulerState : null);
+            const groups = Array.isArray(resolved?.groups)
+                ? resolved.groups.filter(Boolean)
+                : (Array.isArray(currentSchedulerGroups) ? currentSchedulerGroups.filter(Boolean) : []);
+
+            if (!groups.length && resolved?.enabled === undefined) return null;
+
+            const enabledGroups = groups
+                .filter((group) => Number(group.enable) === 1)
+                .sort((left, right) => {
+                    const leftStart = (Number(left.startHour) || 0) * 60 + (Number(left.startMinute) || 0);
+                    const rightStart = (Number(right.startHour) || 0) * 60 + (Number(right.startMinute) || 0);
+                    return leftStart - rightStart;
+                });
+
+            const firstEnabled = enabledGroups[0] || null;
+            const nextWindow = firstEnabled
+                ? {
+                    label: `${String(firstEnabled.startHour || 0).padStart(2, '0')}:${String(firstEnabled.startMinute || 0).padStart(2, '0')} - ${String(firstEnabled.endHour || 0).padStart(2, '0')}:${String(firstEnabled.endMinute || 0).padStart(2, '0')} ${String(firstEnabled.workMode || 'SelfUse').trim()}`
+                }
+                : null;
+
+            return {
+                enabled: resolved?.enabled === true || Number(resolved?.enabled) === 1,
+                activeCount: enabledGroups.length,
+                nextWindow
+            };
+        }
+
+        function buildOverviewSummaryModel() {
+            const inverter = extractInverterOverviewSignal(window.__latestOverviewInverterPayload);
+            const pricing = extractPricingOverviewSignal(window.lastAmberResponse);
+            const weather = extractWeatherOverviewSignal(getLatestWeatherSceneData());
+            const automation = extractAutomationOverviewSignal(window.automationStatus || latestAutomationStatusSnapshot);
+            const ev = extractEVOverviewSignal();
+            const quickControl = extractQuickControlOverviewSignal(window.__latestQuickControlStatus);
+            const scheduler = extractSchedulerOverviewSignal(window.__latestSchedulerState);
+            const hasValue = (value) => value !== null && value !== undefined;
+            const inverterSocPct = inverter?.socPct;
+            const inverterSolarKw = inverter?.solarKw;
+            const inverterLoadKw = inverter?.loadKw;
+            const inverterBatteryMode = inverter?.batteryMode;
+            const inverterBatteryPowerKw = inverter?.batteryPowerKw;
+            const inverterGridMode = inverter?.gridMode;
+            const pricingCurrentBuyCents = pricing?.currentBuyCents;
+            const pricingCurrentFeedCents = pricing?.currentFeedCents;
+            const pricingBestFeedFuture = pricing?.bestFeedFuture || null;
+            const pricingCheapestFuture = pricing?.cheapestFuture || null;
+            const pricingNextSpike = pricing?.nextSpike || null;
+            const evSocPct = ev?.socPct;
+            const evTimeToFullHours = ev?.timeToFullHours;
+
+            const sourceEntries = [
+                ['inverter', inverter],
+                ['pricing', pricing],
+                ['weather', weather],
+                ['automation', automation],
+                ['Tesla', ev],
+                ['quick control', quickControl],
+                ['scheduler', scheduler]
+            ].filter(([, value]) => Boolean(value));
+
+            if (!sourceEntries.length) {
+                return {
+                    waiting: true,
+                    badgeText: 'Preparing',
+                    badgeTone: 'waiting',
+                    metaText: 'Waiting for inverter, pricing, weather, automation, Tesla, quick control, and scheduler signals.',
+                    headline: 'Waiting for the first dashboard signals...',
+                    lead: 'This card will summarise the live dashboard into a concise plain-English read as each source comes online.'
+                };
+            }
+
+            let headline = 'The dashboard is broadly steady, with no immediate red flags in the live signals.';
+            if (quickControl?.active) {
+                headline = `Quick control is ${quickControl.type === 'charge' ? 'charging' : 'discharging'} the battery for the next ${formatMsToReadable(quickControl.remainingMs || 0)}.`;
+            } else if (automation?.telemetryFailsafePaused) {
+                headline = 'Automation is paused by telemetry fail-safe, so the live state needs attention before the next cycle.';
+            } else if (automation?.inBlackout) {
+                headline = 'Automation is inside a blackout window, so the system is intentionally holding steady.';
+            } else if (pricingBestFeedFuture && hasValue(inverterSocPct) && inverterSocPct >= 60) {
+                headline = 'The battery looks well positioned for a stronger export window later in the horizon.';
+            } else if (inverterBatteryMode === 'charging' && weather?.solarSupport === 'strong') {
+                headline = 'Solar is comfortably replenishing the battery right now.';
+            } else if (inverterBatteryMode === 'discharging' && hasValue(pricingCurrentBuyCents) && pricingCurrentBuyCents >= 25) {
+                headline = 'The battery is helping carry the site through a relatively expensive period.';
+            } else if (weather?.solarSupport === 'weak' && hasValue(inverterSocPct) && inverterSocPct < 40) {
+                headline = 'Solar looks weaker ahead, so reserve management matters more than usual.';
+            } else if (hasValue(pricingCurrentBuyCents) && pricingCurrentBuyCents <= 10) {
+                headline = 'Pricing is soft right now, which keeps the short-term operating window comfortable.';
+            }
+
+            const leadClauses = [];
+            if (hasValue(inverterSocPct)) {
+                if (inverterBatteryMode === 'charging' && hasValue(inverterBatteryPowerKw)) {
+                    leadClauses.push(`Battery is at ${Math.round(inverterSocPct)}% and charging at ${formatOverviewPowerKw(inverterBatteryPowerKw)}.`);
+                } else if (inverterBatteryMode === 'discharging' && hasValue(inverterBatteryPowerKw)) {
+                    leadClauses.push(`Battery is at ${Math.round(inverterSocPct)}% and discharging at ${formatOverviewPowerKw(inverterBatteryPowerKw)}.`);
+                } else {
+                    leadClauses.push(`Battery is holding at ${Math.round(inverterSocPct)}%.`);
+                }
+            }
+            if (hasValue(inverterSolarKw) && hasValue(inverterLoadKw)) {
+                const netSolarKw = inverterSolarKw - inverterLoadKw;
+                if (netSolarKw > 0.35) {
+                    leadClauses.push(`Solar is covering the home and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`);
+                } else if (netSolarKw < -0.35) {
+                    const fallbackSource = inverterBatteryMode === 'discharging'
+                        ? 'the battery'
+                        : (inverterGridMode === 'import' ? 'the grid' : 'other sources');
+                    leadClauses.push(`Solar is below the house load, so the shortfall is being covered by ${fallbackSource}.`);
+                } else {
+                    leadClauses.push('Solar and house load are fairly balanced.');
+                }
+            }
+            if (hasValue(pricingCurrentBuyCents)) {
+                const buyText = `Buy pricing is ${describeOverviewBuyPrice(pricingCurrentBuyCents)} at ${formatOverviewPrice(pricingCurrentBuyCents)}.`;
+                if (hasValue(pricingCurrentFeedCents)) {
+                    leadClauses.push(`${buyText} Feed-in is ${describeOverviewFeedPrice(pricingCurrentFeedCents)} at ${formatOverviewPrice(pricingCurrentFeedCents)}.`);
+                } else {
+                    leadClauses.push(buyText);
+                }
+            }
+            if (weather) {
+                const tempText = weather.currentTempC !== null ? ` at ${Math.round(weather.currentTempC)}C` : '';
+                if (weather.solarSupport === 'strong') {
+                    leadClauses.push(`${weather.currentCondition}${tempText} weather still supports solar output.`);
+                } else if (weather.solarSupport === 'weak') {
+                    leadClauses.push(`${weather.currentCondition}${tempText} weather is likely to suppress solar output.`);
+                } else {
+                    leadClauses.push(`${weather.currentCondition}${tempText} weather looks fairly neutral for solar.`);
+                }
+            }
+            const lead = leadClauses.filter(Boolean).slice(0, 3).join(' ');
+
+            const nowClauses = [];
+            if (quickControl?.active) {
+                nowClauses.push(`Quick control is overriding normal behaviour with a ${quickControl.type} request at ${formatOverviewPowerKw(quickControl.powerKw)} for another ${formatMsToReadable(quickControl.remainingMs || 0)}.`);
+            }
+            if (automation) {
+                if (automation.inBlackout) {
+                    nowClauses.push('Automation is intentionally paused inside its blackout window.');
+                } else if (automation.telemetryFailsafePaused) {
+                    nowClauses.push('Automation is paused by telemetry fail-safe until fresh inverter data returns.');
+                } else if (automation.enabled && automation.activeRule) {
+                    nowClauses.push(`Automation is live and currently backing ${automation.activeRule}.`);
+                } else if (automation.enabled) {
+                    nowClauses.push(`Automation is live with ${automation.ruleCount} rule${automation.ruleCount === 1 ? '' : 's'} armed, but nothing is firing right now.`);
+                } else {
+                    nowClauses.push('Automation is paused, so nothing will adjust automatically until the master switch is re-enabled.');
+                }
+            }
+            if (ev) {
+                if (ev.isCharging && hasValue(evSocPct)) {
+                    nowClauses.push(`${ev.selectedName} is charging from ${Math.round(evSocPct)}%${hasValue(evTimeToFullHours) ? ` with about ${formatEVHoursToFull(evTimeToFullHours)} remaining` : ''}.`);
+                } else if (hasValue(evSocPct)) {
+                    const chargingLabel = formatEVChargingState(ev.chargingState).toLowerCase();
+                    nowClauses.push(`${ev.selectedName} is ${chargingLabel} at ${Math.round(evSocPct)}%.`);
+                } else if (ev.commandLabel) {
+                    nowClauses.push(`${ev.selectedName} is linked but currently reports ${ev.commandLabel.toLowerCase()}.`);
+                }
+            }
+            if (scheduler?.enabled && scheduler.activeCount > 0 && !quickControl?.active) {
+                nowClauses.push(`Manual scheduler has ${scheduler.activeCount} enabled window${scheduler.activeCount === 1 ? '' : 's'} ready.`);
+            }
+            const nowCopy = nowClauses.filter(Boolean).slice(0, 2).join(' ') || 'No manual override or automation exception stands out right now.';
+
+            // Build up to 3 independent forecast items for the "Coming up" panel
+            const nextItems = [];
+
+            // 1. Urgent override state (quick control end time)
+            if (quickControl?.active) {
+                nextItems.push({
+                    text: `Quick control ends in ${formatMsToReadable(quickControl.remainingMs || 0)}${automation?.enabled ? ' — automation resumes after.' : '.'}`,
+                    tone: 'alert'
+                });
+            } else {
+                // 1b. Pricing forecast: best export, spike, or cheaper buy
+                if (pricingBestFeedFuture && hasValue(inverterSocPct) && inverterSocPct >= 55) {
+                    nextItems.push({
+                        text: `Best export window ${formatOverviewRelativeDateTime(pricingBestFeedFuture.startTime)} at ${formatOverviewPrice(pricingBestFeedFuture.priceCents)}.`,
+                        tone: 'good'
+                    });
+                } else if (hasValue(pricingNextSpike?.priceCents)) {
+                    nextItems.push({
+                        text: `Buy spike expected ${formatOverviewRelativeDateTime(pricingNextSpike.startTime)} at ${formatOverviewPrice(pricingNextSpike.priceCents)}.`,
+                        tone: 'warning'
+                    });
+                } else if (pricingCheapestFuture && hasValue(pricingCurrentBuyCents) && pricingCheapestFuture.priceCents < pricingCurrentBuyCents - 2) {
+                    nextItems.push({
+                        text: `Cheaper buy window ${formatOverviewRelativeDateTime(pricingCheapestFuture.startTime)} at ${formatOverviewPrice(pricingCheapestFuture.priceCents)}.`,
+                        tone: 'good'
+                    });
+                }
+            }
+
+            // 2. Weather / solar outlook
+            if (weather?.nextWetDay) {
+                const rainNote = weather.nextWetDay.rainMm !== null ? ` — ${weather.nextWetDay.rainMm.toFixed(0)} mm` : '';
+                nextItems.push({
+                    text: `${weather.nextWetDay.label}: ${weather.nextWetDay.condition}${rainNote}. Weaker solar expected.`,
+                    tone: 'warning'
+                });
+            }
+
+            // 3. Next system action (EV charge, scheduler, automation cycle)
+            if (ev?.isCharging && hasValue(evTimeToFullHours)) {
+                nextItems.push({
+                    text: `${ev.selectedName} fully charged in about ${formatEVHoursToFull(evTimeToFullHours)}.`,
+                    tone: 'muted'
+                });
+            } else if (!quickControl?.active && scheduler?.enabled && scheduler.nextWindow) {
+                nextItems.push({
+                    text: `Next manual window: ${scheduler.nextWindow.label}.`,
+                    tone: 'muted'
+                });
+            } else if (!quickControl?.active && automation?.enabled && automation.nextCycleMs !== null) {
+                nextItems.push({
+                    text: `Automation reviews conditions in ${formatMsToReadable(automation.nextCycleMs)}.`,
+                    tone: 'muted'
+                });
+            }
+
+            if (!nextItems.length) {
+                nextItems.push({ text: 'No notable changes in the loaded forecast horizon.', tone: 'muted' });
+            }
+
+            const chips = [];
+            if (hasValue(inverterSocPct)) {
+                chips.push({
+                    tone: inverterSocPct < 25 ? 'warning' : (inverterSocPct >= 70 ? 'good' : 'muted'),
+                    label: 'Battery',
+                    value: `${Math.round(inverterSocPct)}%`
+                });
+            }
+            if (hasValue(inverterSolarKw)) {
+                chips.push({
+                    tone: inverterSolarKw > 0.5 ? 'good' : 'muted',
+                    label: 'Solar',
+                    value: formatOverviewPowerKw(inverterSolarKw)
+                });
+            }
+            if (hasValue(pricingCurrentBuyCents)) {
+                chips.push({
+                    tone: pricingCurrentBuyCents <= 10 ? 'good' : (pricingCurrentBuyCents >= 30 ? 'warning' : 'muted'),
+                    label: 'Buy',
+                    value: formatOverviewPrice(pricingCurrentBuyCents)
+                });
+            }
+            if (hasValue(pricingCurrentFeedCents)) {
+                chips.push({
+                    tone: pricingCurrentFeedCents < 0 ? 'alert' : (pricingCurrentFeedCents >= 25 ? 'good' : 'muted'),
+                    label: 'Feed-in',
+                    value: formatOverviewPrice(pricingCurrentFeedCents)
+                });
+            }
+            if (weather) {
+                const weatherValue = weather.currentTempC !== null
+                    ? `${weather.currentCondition} ${Math.round(weather.currentTempC)}C`
+                    : weather.currentCondition;
+                chips.push({
+                    tone: weather.solarSupport === 'strong' ? 'good' : (weather.solarSupport === 'weak' ? 'warning' : 'muted'),
+                    label: 'Weather',
+                    value: weatherValue
+                });
+            }
+            if (quickControl?.active) {
+                chips.push({
+                    tone: 'alert',
+                    label: 'Quick control',
+                    value: `${quickControl.type === 'charge' ? 'Charge' : 'Discharge'} ${formatOverviewPowerKw(quickControl.powerKw)}`
+                });
+            } else if (automation) {
+                chips.push({
+                    tone: automation.telemetryFailsafePaused ? 'alert' : (automation.enabled ? 'good' : 'warning'),
+                    label: 'Automation',
+                    value: automation.activeRule || automation.stateLabel
+                });
+            }
+            if (ev) {
+                const evValue = hasValue(evSocPct)
+                    ? `${Math.round(evSocPct)}% ${formatEVChargingState(ev.chargingState)}`
+                    : (ev.commandLabel || 'Connected');
+                chips.push({
+                    tone: ev.isCharging ? 'good' : 'muted',
+                    label: ev.selectedName,
+                    value: evValue
+                });
+            }
+            if (scheduler?.enabled && scheduler.activeCount > 0) {
+                chips.push({
+                    tone: 'muted',
+                    label: 'Scheduler',
+                    value: `${scheduler.activeCount} window${scheduler.activeCount === 1 ? '' : 's'}`
+                });
+            }
+
+            const sourceLabels = sourceEntries.map(([label]) => label);
+            const badgeTone = sourceEntries.length >= 4 ? 'live' : 'partial';
+            const badgeText = isPreviewMode()
+                ? 'Preview summary'
+                : (sourceEntries.length >= 4 ? 'Live summary' : 'Partial summary');
+            const metaText = `${isPreviewMode() ? 'Preview mode using' : 'Using'} ${joinOverviewList(sourceLabels)} signals.`;
+
+            return {
+                waiting: false,
+                badgeText,
+                badgeTone,
+                metaText,
+                headline,
+                lead,
+                nowCopy,
+                nextItems: nextItems.slice(0, 3),
+                chips: chips.slice(0, 6)
+            };
+        }
+
+        function renderOverviewSummary() {
+            const bodyEl = document.getElementById('overviewSummaryBody');
+            const headlineEl = document.getElementById('overviewSummaryHeadline');
+            const leadEl = document.getElementById('overviewSummaryLead');
+            const metaEl = document.getElementById('overviewSummaryMeta');
+            const badgeEl = document.getElementById('overviewSummaryBadge');
+            if (!bodyEl || !headlineEl || !leadEl || !metaEl || !badgeEl) return;
+
+            const model = buildOverviewSummaryModel();
+            metaEl.textContent = model.metaText;
+            badgeEl.textContent = model.badgeText;
+            badgeEl.className = `card-badge overview-summary-badge--${model.badgeTone}`;
+
+            if (model.waiting) {
+                bodyEl.className = 'overview-brief-shell is-loading';
+                headlineEl.textContent = model.headline;
+                leadEl.textContent = model.lead;
+                return;
+            }
+
+            bodyEl.className = 'overview-brief-shell';
+            bodyEl.innerHTML = `
+                <div class="overview-brief-left">
+                    <div class="overview-brief-status">
+                        <span class="card-badge overview-summary-badge--${model.badgeTone}" id="overviewSummaryBadge">${escapeHtml(model.badgeText)}</span>
+                        <div class="overview-brief-status-meta" id="overviewSummaryMeta">${escapeHtml(model.metaText)}</div>
+                    </div>
+                    <div>
+                        <div class="overview-brief-eyebrow">Dashboard digest</div>
+                        <div class="overview-brief-headline" id="overviewSummaryHeadline">${escapeHtml(model.headline)}</div>
+                    </div>
+                    <div class="overview-brief-body" id="overviewSummaryLead">${escapeHtml(model.lead)}</div>
+                    <div class="overview-brief-insights" id="overviewSummaryChips">
+                        ${model.chips.map((chip) => `
+                            <span class="overview-brief-chip overview-brief-chip--${escapeHtml(chip.tone || 'muted')}">
+                                <strong>${escapeHtml(chip.label)}:</strong>
+                                <span>${escapeHtml(chip.value)}</span>
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+                <section class="overview-brief-panel" aria-label="Current dashboard status">
+                    <div class="overview-brief-panel-label">Right now</div>
+                    <div class="overview-brief-panel-copy" id="overviewSummaryNow">${escapeHtml(model.nowCopy)}</div>
+                </section>
+                <section class="overview-brief-panel" aria-label="Upcoming outlook and forecast">
+                    <div class="overview-brief-panel-label">Coming up</div>
+                    <div class="overview-brief-next-items" id="overviewSummaryNext">
+                        ${model.nextItems.map((item) => `
+                            <div class="overview-brief-next-item">
+                                <span class="overview-brief-next-dot overview-brief-next-dot--${escapeHtml(item.tone || 'muted')}"></span>
+                                <span>${escapeHtml(item.text)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+            `;
+        }
+
         const DASHBOARD_CARD_VISIBILITY_DEFAULTS = {
+            overviewSummary: true,
             inverter: true,
             prices: true,
             weather: true,
@@ -8199,6 +9097,7 @@
 
             initDashboardCardVisibilityPreferences();
             initDashboardVisibilityCollapse();
+            renderOverviewSummary();
 
             // Ensure right-panel collapsed by default unless user explicitly expanded it before
             try {
@@ -8919,6 +9818,7 @@
             window.automationEnabled = !!status.enabled;
             window.automationInBlackout = !!status.inBlackout;
             window.automationFailsafePaused = !!status.enabled && !!status.telemetryFailsafePaused;
+            renderOverviewSummary();
             
             // Start countdown timer if not already running (or restart if state changed)
             const shouldRun = !previewMode && window.automationEnabled && !window.automationInBlackout && !window.automationFailsafePaused;

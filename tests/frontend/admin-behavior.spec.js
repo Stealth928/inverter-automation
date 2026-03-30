@@ -392,11 +392,11 @@ test.describe('Admin Behaviour Tab', () => {
           { date: '2026-03-21', activeUsers: 8, pageViews: 16, eventCount: 16 }
         ],
         mainPageOptions: [
-          { key: 'app', label: 'Dashboard' },
-          { key: 'settings', label: 'Settings' }
+          { key: '/app.html', label: 'Overview' },
+          { key: '/settings.html', label: 'Settings' }
         ],
         pageSeriesByKey: {
-          app: [
+          '/app.html': [
             { date: '2026-03-08', activeUsers: 4, pageViews: 6, eventCount: 0 },
             { date: '2026-03-09', activeUsers: 4, pageViews: 6, eventCount: 0 },
             { date: '2026-03-10', activeUsers: 4, pageViews: 6, eventCount: 0 },
@@ -412,7 +412,7 @@ test.describe('Admin Behaviour Tab', () => {
             { date: '2026-03-20', activeUsers: 6, pageViews: 10, eventCount: 0 },
             { date: '2026-03-21', activeUsers: 6, pageViews: 10, eventCount: 0 }
           ],
-          settings: [
+          '/settings.html': [
             { date: '2026-03-08', activeUsers: 2, pageViews: 4, eventCount: 0 },
             { date: '2026-03-09', activeUsers: 2, pageViews: 4, eventCount: 0 },
             { date: '2026-03-10', activeUsers: 2, pageViews: 4, eventCount: 0 },
@@ -453,7 +453,8 @@ test.describe('Admin Behaviour Tab', () => {
     await expect(page.locator('#behaviorCustomEventTypes')).toHaveText('2');
     await expect(page.locator('#behaviorSignalMomentum')).toContainText(/Users \+60\.0%/i);
     await expect(page.locator('#behaviorSignalRepeatPressure')).toContainText(/8\.1 views\/user/i);
-    await expect(page.locator('#behaviorSignalPageMix')).toContainText(/Dashboard is 62\.5%/i);
+    await expect(page.locator('#behaviorSignalPageMix')).toContainText(/Overview is 62\.5%/i);
+    await expect(page.locator('#behaviorPageFilter option')).toContainText(['All tracked pages', 'Overview', 'Settings']);
     await expect(page.locator('#behaviorTopPagesBody')).toContainText('/app.html');
     await expect(page.locator('#behaviorTopEventsBody')).toContainText('Settings Save All');
     await expect(page.locator('#behaviorMetricsUpdated')).toContainText(/GA4 property 123456789/i);
