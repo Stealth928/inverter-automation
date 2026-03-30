@@ -3600,7 +3600,6 @@
                 } else {
                     html += `<div class="pricing-current-overview">${currentMetricsHtml}</div>`;
                 }
-                }
             }
 
             // Price Range Summary with consistent coloring logic
