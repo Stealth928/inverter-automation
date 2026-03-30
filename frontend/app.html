@@ -2228,7 +2228,7 @@
         }
         .pricing-market-bar {
             display: grid;
-            grid-template-columns: auto minmax(0, 1fr) auto;
+            grid-template-columns: 84px minmax(0, 1fr) 76px;
             align-items: center;
             gap: 8px;
             min-width: 0;
@@ -2240,6 +2240,7 @@
             letter-spacing: 0.04em;
             line-height: 1;
             white-space: nowrap;
+            text-align: left;
         }
         .pricing-market-bar__value {
             font-size: 15px;
@@ -2247,6 +2248,7 @@
             white-space: nowrap;
             line-height: 1;
             color: #58a6ff;
+            text-align: right;
         }
         .pricing-market-bar__track {
             position: relative;
@@ -2297,6 +2299,7 @@
                 grid-template-columns: 1fr;
             }
             .pricing-market-bar {
+                grid-template-columns: 72px minmax(0, 1fr) 68px;
                 gap: 6px;
             }
             .pricing-market-bar__value {

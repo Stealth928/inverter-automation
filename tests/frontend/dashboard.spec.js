@@ -2656,13 +2656,18 @@ test.describe('Dashboard Page', () => {
       const metrics = overview?.querySelector('.pricing-current-metrics');
       const container = overview?.querySelector('.pricing-market-bars');
       const extractRowMetrics = (row) => {
+        const label = row?.querySelector('.pricing-market-bar__label');
         const fill = row?.querySelector('.pricing-market-bar__fill');
         const track = row?.querySelector('.pricing-market-bar__track');
         const value = row?.querySelector('.pricing-market-bar__value');
         return {
+          labelWidth: label?.getBoundingClientRect().width || 0,
           fillPercent: parseFloat((fill?.style.width || '0').replace('%', '')),
           fillWidth: fill?.getBoundingClientRect().width || 0,
+          trackLeft: track?.getBoundingClientRect().left || 0,
+          trackRight: track?.getBoundingClientRect().right || 0,
           trackWidth: track?.getBoundingClientRect().width || 0,
+          valueWidth: value?.getBoundingClientRect().width || 0,
           valueColor: value ? window.getComputedStyle(value).color : '',
           fillBackground: fill ? window.getComputedStyle(fill).backgroundImage : ''
         };
@@ -2693,6 +2698,10 @@ test.describe('Dashboard Page', () => {
     expect(wideLayout.barsHeight).toBeLessThanOrEqual(wideLayout.metricsHeight + 4);
     expect(wideLayout.demand.fillPercent).toBeCloseTo(100, 2);
     expect(wideLayout.generation.fillPercent).toBeCloseTo((542 / 894) * 100, 1);
+    expect(Math.abs(wideLayout.demand.trackLeft - wideLayout.generation.trackLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(wideLayout.demand.trackRight - wideLayout.generation.trackRight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(wideLayout.demand.labelWidth - wideLayout.generation.labelWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(wideLayout.demand.valueWidth - wideLayout.generation.valueWidth)).toBeLessThanOrEqual(1);
     expect(wideLayout.generation.valueColor).toBe(wideLayout.demand.valueColor);
     expect(wideLayout.generation.fillBackground).toBe(wideLayout.demand.fillBackground);
     expect(wideLayout.pageScrollWidth).toBeLessThanOrEqual(wideLayout.viewportWidth + 1);
