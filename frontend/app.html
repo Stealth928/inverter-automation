@@ -274,10 +274,15 @@
             background: color-mix(in srgb, var(--border-primary) 82%, transparent);
             color: var(--text-secondary);
         }
+        .overview-summary-badge--beta {
+            background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+            color: color-mix(in srgb, var(--color-warning) 84%, white);
+            border: 1px solid color-mix(in srgb, var(--color-warning) 48%, transparent);
+        }
         /* Compact desktop layout: summary | now | coming up */
         .overview-brief-shell {
             display: grid;
-            grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.9fr) minmax(220px, 0.9fr);
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
             gap: 14px;
             align-items: start;
         }
@@ -288,6 +293,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            min-width: 0;
         }
         .overview-brief-right {
             display: flex;
@@ -303,7 +309,7 @@
             margin-bottom: 4px;
         }
         .overview-brief-headline {
-            max-width: 30ch;
+            max-width: none;
             font-size: clamp(1rem, 1.2vw, 1.25rem);
             line-height: 1.15;
             font-weight: 700;
@@ -311,7 +317,7 @@
             text-wrap: balance;
         }
         .overview-brief-body {
-            max-width: 56ch;
+            max-width: none;
             font-size: 12px;
             line-height: 1.5;
             color: var(--text-secondary);
@@ -5221,6 +5227,7 @@
                         <div class="overview-brief-left">
                             <div class="overview-brief-status">
                                 <span class="card-badge overview-summary-badge--waiting" id="overviewSummaryBadge">Preparing</span>
+                                <span class="card-badge overview-summary-badge--beta" title="Beta testing mode">Beta testing</span>
                                 <div class="overview-brief-status-meta" id="overviewSummaryMeta">Waiting for live dashboard signals to build the first summary.</div>
                             </div>
                             <div>

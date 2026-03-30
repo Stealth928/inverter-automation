@@ -2884,6 +2884,54 @@
             return getAmberCurrent({ mode });
         }
 
+        function getCachedPricingSiteId(provider = getPricingProviderSafe()) {
+            try {
+                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                const cachedProvider = String(cacheState.amberProvider || provider).trim().toLowerCase() || provider;
+                const cachedSiteId = String(cacheState.amberSiteId || '').trim();
+                if (cachedSiteId && cachedProvider === provider) {
+                    return cachedSiteId;
+                }
+            } catch (e) { /* ignore */ }
+            return '';
+        }
+
+        function resolvePricingSiteId(select = document.getElementById('amberSiteId'), provider = getPricingProviderSafe()) {
+            const selectedSiteId = String(select?.value || '').trim();
+            if (selectedSiteId) {
+                return selectedSiteId;
+            }
+
+            const storedSiteId = getStoredAmberSiteIdSafe();
+            if (storedSiteId) {
+                return storedSiteId;
+            }
+
+            if (amberConfiguredSiteId) {
+                return String(amberConfiguredSiteId).trim();
+            }
+
+            return getCachedPricingSiteId(provider);
+        }
+
+        function applyPricingSiteFallback(select, siteId, provider = getPricingProviderSafe()) {
+            const normalizedSiteId = String(siteId || '').trim();
+            if (!select || !normalizedSiteId) {
+                return '';
+            }
+
+            const hasMatchingOption = Array.from(select.options || []).some((option) => String(option.value || '').trim() === normalizedSiteId);
+            if (!hasMatchingOption) {
+                const fallbackLabel = provider === 'aemo'
+                    ? `${normalizedSiteId} (saved region)`
+                    : `${normalizedSiteId} (saved site)`;
+                select.innerHTML = `<option value="${escapeHtml(normalizedSiteId)}">${escapeHtml(fallbackLabel)}</option>`;
+            }
+
+            select.value = normalizedSiteId;
+            return normalizedSiteId;
+        }
+
         // Prefer shared-utils helpers, but keep a local fallback for stale cached bundles.
         function getStoredAmberSiteIdSafe() {
             try {
@@ -3044,13 +3092,25 @@
                     // Auto-fetch current prices
                     setTimeout(() => refreshPricingCard(forceRefresh ? 'reload' : 'load'), 500);
                 } else {
-                    select.innerHTML = `<option value="">No ${provider === 'aemo' ? 'regions' : 'sites'}</option>`;
-                    card.innerHTML = `<div style="color:var(--color-warning)">No ${provider === 'aemo' ? 'regions' : 'sites'} found</div>`;
+                    const fallbackSiteId = resolvePricingSiteId(select, provider);
+                    if (fallbackSiteId) {
+                        applyPricingSiteFallback(select, fallbackSiteId, provider);
+                        card.innerHTML = `<div style="color:var(--color-warning)">Saved ${provider === 'aemo' ? 'region' : 'site'} retained while the ${provider === 'aemo' ? 'region' : 'site'} list is unavailable</div>`;
+                    } else {
+                        select.innerHTML = `<option value="">No ${provider === 'aemo' ? 'regions' : 'sites'}</option>`;
+                        card.innerHTML = `<div style="color:var(--color-warning)">No ${provider === 'aemo' ? 'regions' : 'sites'} found</div>`;
+                    }
                 }
             } catch (e) {
                 console.error('[Amber] Error loading sites:', e);
-                select.innerHTML = '<option value="">Error</option>';
-                card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
+                const fallbackSiteId = resolvePricingSiteId(select, provider);
+                if (fallbackSiteId) {
+                    applyPricingSiteFallback(select, fallbackSiteId, provider);
+                    card.innerHTML = `<div style="color:var(--color-danger)">Error loading ${provider === 'aemo' ? 'regions' : 'sites'}: ${escapeHtml(e.message)}</div>`;
+                } else {
+                    select.innerHTML = '<option value="">Error</option>';
+                    card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
+                }
             }
         }
 
@@ -3058,7 +3118,10 @@
             const select = document.getElementById('amberSiteId');
             const provider = getPricingProviderSafe();
             const refreshMode = normalizePricingRefreshMode(refreshRequest);
-            let siteId = select.value;
+            let siteId = resolvePricingSiteId(select, provider);
+            if (siteId && (!select || !String(select.value || '').trim())) {
+                applyPricingSiteFallback(select, siteId, provider);
+            }
             if (!siteId && isDashboardLocalMockEnabled()) {
                 const mockSites = getMockAmberSites();
                 if (mockSites.length > 0) {
@@ -7427,6 +7490,56 @@
             return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
         }
 
+        function normalizeOverviewTimestampMs(value) {
+            if (value === null || value === undefined || value === '') return null;
+
+            if (value instanceof Date) {
+                const millis = value.getTime();
+                return Number.isNaN(millis) ? null : millis;
+            }
+
+            if (typeof value === 'number') {
+                if (!Number.isFinite(value)) return null;
+                return value > 1e12 ? value : value * 1000;
+            }
+
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (!trimmed) return null;
+                const parsedNumber = Number(trimmed);
+                if (Number.isFinite(parsedNumber) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+                    return parsedNumber > 1e12 ? parsedNumber : parsedNumber * 1000;
+                }
+
+                const parsedDate = Date.parse(trimmed);
+                return Number.isNaN(parsedDate) ? null : parsedDate;
+            }
+
+            if (typeof value === 'object') {
+                const sec = value._seconds ?? value.seconds;
+                const nsec = value._nanoseconds ?? value.nanos ?? 0;
+                if (typeof sec === 'number') {
+                    return (sec * 1000) + Math.floor((nsec || 0) / 1e6);
+                }
+                if (typeof value.toMillis === 'function') {
+                    const millis = Number(value.toMillis());
+                    return Number.isFinite(millis) ? millis : null;
+                }
+                if (typeof value.toDate === 'function') {
+                    const date = value.toDate();
+                    const millis = date instanceof Date ? date.getTime() : NaN;
+                    return Number.isNaN(millis) ? null : millis;
+                }
+
+                const parsed = Number(value);
+                if (Number.isFinite(parsed)) {
+                    return parsed > 1e12 ? parsed : parsed * 1000;
+                }
+            }
+
+            return null;
+        }
+
         function getOverviewLocalDayKey(value) {
             const date = value instanceof Date ? value : new Date(value);
             if (Number.isNaN(date.getTime())) return '';
@@ -7437,6 +7550,28 @@
                     day: '2-digit',
                     timeZone: USER_TZ || 'Australia/Sydney'
                 }).format(date);
+            } catch (error) {
+                return date.toISOString().substring(0, 10);
+            }
+        }
+
+        function formatOverviewRelativeDayLabel(value, options = {}) {
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return null;
+
+            const capitalize = options.capitalize === true;
+            const todayKey = getOverviewLocalDayKey(new Date());
+            const tomorrowKey = getOverviewLocalDayKey(new Date(Date.now() + (24 * 60 * 60 * 1000)));
+            const targetKey = getOverviewLocalDayKey(date);
+
+            if (targetKey && targetKey === todayKey) return capitalize ? 'Today' : 'today';
+            if (targetKey && targetKey === tomorrowKey) return capitalize ? 'Tomorrow' : 'tomorrow';
+
+            try {
+                return date.toLocaleDateString('en-AU', {
+                    weekday: 'long',
+                    timeZone: USER_TZ || 'Australia/Sydney'
+                });
             } catch (error) {
                 return date.toISOString().substring(0, 10);
             }
@@ -7466,14 +7601,11 @@
             if (Number.isNaN(date.getTime())) return null;
 
             const timeLabel = formatOverviewClock(date);
-            const todayKey = getOverviewLocalDayKey(new Date());
-            const targetKey = getOverviewLocalDayKey(date);
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowKey = getOverviewLocalDayKey(tomorrow);
+            const relativeDayLabel = formatOverviewRelativeDayLabel(date);
 
-            if (targetKey && targetKey === todayKey) return `today at ${timeLabel}`;
-            if (targetKey && targetKey === tomorrowKey) return `tomorrow at ${timeLabel}`;
+            if (relativeDayLabel === 'today' || relativeDayLabel === 'tomorrow') {
+                return `${relativeDayLabel} at ${timeLabel}`;
+            }
 
             try {
                 const dateLabel = date.toLocaleDateString('en-AU', {
@@ -7485,6 +7617,31 @@
             } catch (error) {
                 return timeLabel;
             }
+        }
+
+        function formatOverviewWallClock(hour, minute) {
+            const safeHour = Math.max(0, Math.min(23, Number(hour) || 0));
+            const safeMinute = Math.max(0, Math.min(59, Number(minute) || 0));
+            return `${String(safeHour).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+        }
+
+        function describeOverviewAutomationMode(mode) {
+            const normalized = String(mode || '').trim();
+            if (!normalized) return null;
+
+            const modeMap = {
+                ForceDischarge: 'battery discharge mode',
+                ForceCharge: 'battery charge mode',
+                SelfUse: 'self-use mode',
+                Feedin: 'feed-in mode',
+                Backup: 'backup mode'
+            };
+
+            return modeMap[normalized] || null;
+        }
+
+        function isOverviewLowSolarCondition(condition) {
+            return /Overcast|Rain|Showers|Thunderstorm|Snow/i.test(String(condition || ''));
         }
 
         function describeOverviewBuyPrice(cents) {
@@ -7680,7 +7837,7 @@
                 (solarNowWm2 !== null && solarNowWm2 <= 150)
                 || (cloudNowPct !== null && cloudNowPct >= 70)
                 || (todayRainMm !== null && todayRainMm >= 5)
-                || /Overcast|Rain|Showers|Thunderstorm|Snow/i.test(currentCondition)
+                || isOverviewLowSolarCondition(currentCondition)
             ) {
                 solarSupport = 'weak';
             }
@@ -7691,10 +7848,10 @@
                 const condition = weatherCodes[index] !== undefined ? weatherCodeToWord(weatherCodes[index]) : 'Unknown';
                 if (
                     (rainMm !== null && rainMm >= 5)
-                    || /Overcast|Rain|Showers|Thunderstorm|Snow/i.test(condition)
+                    || isOverviewLowSolarCondition(condition)
                 ) {
                     nextWetDay = {
-                        label: index === 1 ? 'Tomorrow' : `Day ${index + 1}`,
+                        label: formatOverviewRelativeDayLabel(dailyTimes[index], { capitalize: true }) || (index === 1 ? 'Tomorrow' : `Day ${index + 1}`),
                         rainMm,
                         condition
                     };
@@ -7725,6 +7882,9 @@
             const rules = status.rules && typeof status.rules === 'object' ? status.rules : {};
             const ruleCount = Object.keys(rules).length;
             const activeRule = String(status.activeRuleName || status.activeRule || '').trim() || null;
+            const activeRuleConfig = activeRule
+                ? (rules[activeRule] || Object.values(rules).find((rule) => String(rule?.name || '').trim() === activeRule) || null)
+                : null;
             const enabled = status.enabled === true;
             const inBlackout = status.inBlackout === true;
             const telemetryFailsafePaused = enabled && status.telemetryFailsafePaused === true;
@@ -7734,12 +7894,37 @@
             const nextCycleMs = Number.isFinite(Number(window.automationLastCheck))
                 ? Math.max(0, Number(CONFIG?.automation?.intervalMs || 60000) - (Date.now() - Number(window.automationLastCheck)))
                 : null;
+            const activeSegment = status.activeSegment && typeof status.activeSegment === 'object'
+                ? status.activeSegment
+                : null;
+            const activeMode = String(
+                activeSegment?.workMode
+                || status.currentRuleMode
+                || activeRuleConfig?.action?.workMode
+                || ''
+            ).trim() || null;
+            const activeRuleCooldownMinutes = toOverviewFiniteNumber(
+                activeRuleConfig?.cooldownMinutes
+                ?? status?.config?.defaults?.cooldownMinutes
+                ?? CONFIG?.defaults?.cooldownMinutes
+            );
+            const activeRuleLastTriggeredMs = normalizeOverviewTimestampMs(activeRuleConfig?.lastTriggered ?? status.lastTriggered);
+            const activeRuleCooldownRemainingMs = activeRuleCooldownMinutes !== null && activeRuleLastTriggeredMs !== null
+                ? Math.max(0, (activeRuleCooldownMinutes * 60 * 1000) - (Date.now() - activeRuleLastTriggeredMs))
+                : null;
 
             return {
                 enabled,
                 inBlackout,
                 telemetryFailsafePaused,
                 activeRule,
+                activeMode,
+                activeRuleCooldownMinutes,
+                activeRuleCooldownRemainingMs,
+                activeRuleLastTriggeredMs,
+                activeSegment,
+                activeSegmentEnabled: status.activeSegmentEnabled === true,
+                segmentEndLabel: activeSegment ? formatOverviewWallClock(activeSegment.endHour, activeSegment.endMinute) : null,
                 ruleCount,
                 stateLabel,
                 nextCycleMs
@@ -7849,6 +8034,7 @@
             const pricingCurrentFeedCents = pricing?.currentFeedCents;
             const pricingBestFeedFuture = pricing?.bestFeedFuture || null;
             const pricingCheapestFuture = pricing?.cheapestFuture || null;
+            const pricingHighestFuture = pricing?.highestFuture || null;
             const pricingNextSpike = pricing?.nextSpike || null;
             const evSocPct = ev?.socPct;
             const evTimeToFullHours = ev?.timeToFullHours;
@@ -7941,14 +8127,31 @@
                 nowClauses.push(`Quick control is overriding normal behaviour with a ${quickControl.type} request at ${formatOverviewPowerKw(quickControl.powerKw)} for another ${formatMsToReadable(quickControl.remainingMs || 0)}.`);
             }
             if (automation) {
+                const activeModeLabel = describeOverviewAutomationMode(automation.activeMode);
+                const cooldownLabel = automation.activeRuleCooldownRemainingMs !== null && automation.activeRuleCooldownRemainingMs > 0
+                    ? formatMsToReadable(automation.activeRuleCooldownRemainingMs)
+                    : null;
                 if (automation.inBlackout) {
                     nowClauses.push('Automation is intentionally paused inside its blackout window.');
                 } else if (automation.telemetryFailsafePaused) {
                     nowClauses.push('Automation is paused by telemetry fail-safe until fresh inverter data returns.');
                 } else if (automation.enabled && automation.activeRule) {
-                    nowClauses.push(`Automation is live and currently backing ${automation.activeRule}.`);
+                    if (automation.activeSegmentEnabled === false) {
+                        nowClauses.push(`Automation selected ${automation.activeRule}, but the inverter segment is still pending confirmation.`);
+                    } else if (automation.segmentEndLabel) {
+                        const modeText = activeModeLabel ? ` in ${activeModeLabel}` : '';
+                        nowClauses.push(`Automation is running ${automation.activeRule}${modeText} until ${automation.segmentEndLabel}.`);
+                    } else {
+                        nowClauses.push(`Automation is live and currently backing ${automation.activeRule}.`);
+                    }
+                    if (cooldownLabel) {
+                        nowClauses.push(`Rule cooldown has about ${cooldownLabel} remaining.`);
+                    }
                 } else if (automation.enabled) {
-                    nowClauses.push(`Automation is live with ${automation.ruleCount} rule${automation.ruleCount === 1 ? '' : 's'} armed, but nothing is firing right now.`);
+                    const armedLabel = automation.ruleCount > 0
+                        ? `${automation.ruleCount} rule${automation.ruleCount === 1 ? '' : 's'} armed`
+                        : 'no enabled rules armed';
+                    nowClauses.push(`Automation is live with ${armedLabel}, but no rule currently owns the inverter.`);
                 } else {
                     nowClauses.push('Automation is paused, so nothing will adjust automatically until the master switch is re-enabled.');
                 }
@@ -7970,58 +8173,87 @@
 
             // Build up to 3 independent forecast items for the "Coming up" panel
             const nextItems = [];
+            const nextItemTexts = new Set();
+            const pushNextItem = (text, tone = 'muted') => {
+                const normalized = String(text || '').trim();
+                if (!normalized || nextItemTexts.has(normalized)) return;
+                nextItemTexts.add(normalized);
+                nextItems.push({ text: normalized, tone });
+            };
+            const bestFeedWhen = pricingBestFeedFuture?.startTime ? formatOverviewRelativeDateTime(pricingBestFeedFuture.startTime) : null;
+            const cheapestBuyWhen = pricingCheapestFuture?.startTime ? formatOverviewRelativeDateTime(pricingCheapestFuture.startTime) : null;
+            const highestBuyWhen = pricingHighestFuture?.startTime ? formatOverviewRelativeDateTime(pricingHighestFuture.startTime) : null;
+            const nextSpikeWhen = pricingNextSpike?.startTime ? formatOverviewRelativeDateTime(pricingNextSpike.startTime) : null;
 
-            // 1. Urgent override state (quick control end time)
             if (quickControl?.active) {
-                nextItems.push({
-                    text: `Quick control ends in ${formatMsToReadable(quickControl.remainingMs || 0)}${automation?.enabled ? ' — automation resumes after.' : '.'}`,
-                    tone: 'alert'
-                });
-            } else {
-                // 1b. Pricing forecast: best export, spike, or cheaper buy
-                if (pricingBestFeedFuture && hasValue(inverterSocPct) && inverterSocPct >= 55) {
-                    nextItems.push({
-                        text: `Best export window ${formatOverviewRelativeDateTime(pricingBestFeedFuture.startTime)} at ${formatOverviewPrice(pricingBestFeedFuture.priceCents)}.`,
-                        tone: 'good'
-                    });
-                } else if (hasValue(pricingNextSpike?.priceCents)) {
-                    nextItems.push({
-                        text: `Buy spike expected ${formatOverviewRelativeDateTime(pricingNextSpike.startTime)} at ${formatOverviewPrice(pricingNextSpike.priceCents)}.`,
-                        tone: 'warning'
-                    });
-                } else if (pricingCheapestFuture && hasValue(pricingCurrentBuyCents) && pricingCheapestFuture.priceCents < pricingCurrentBuyCents - 2) {
-                    nextItems.push({
-                        text: `Cheaper buy window ${formatOverviewRelativeDateTime(pricingCheapestFuture.startTime)} at ${formatOverviewPrice(pricingCheapestFuture.priceCents)}.`,
-                        tone: 'good'
-                    });
+                const quickControlEndLabel = quickControl.expiresAt
+                    ? formatOverviewRelativeDateTime(quickControl.expiresAt)
+                    : null;
+                pushNextItem(
+                    quickControlEndLabel
+                        ? `Quick control hands back ${quickControlEndLabel}${automation?.enabled ? ' and automation resumes after.' : '.'}`
+                        : `Quick control ends in ${formatMsToReadable(quickControl.remainingMs || 0)}${automation?.enabled ? ' and automation resumes after.' : '.'}`,
+                    'alert'
+                );
+            }
+
+            if (!quickControl?.active) {
+                if (pricingBestFeedFuture && bestFeedWhen && hasValue(inverterSocPct) && inverterSocPct >= 55) {
+                    pushNextItem(`Best export window ${bestFeedWhen} at ${formatOverviewPrice(pricingBestFeedFuture.priceCents)}.`, 'good');
+                } else if (
+                    pricingCheapestFuture
+                    && cheapestBuyWhen
+                    && (
+                        !hasValue(pricingCurrentBuyCents)
+                        || pricingCheapestFuture.priceCents <= pricingCurrentBuyCents - 3
+                    )
+                ) {
+                    pushNextItem(`Cheapest buy window ${cheapestBuyWhen} at ${formatOverviewPrice(pricingCheapestFuture.priceCents)}.`, 'good');
                 }
             }
 
-            // 2. Weather / solar outlook
             if (weather?.nextWetDay) {
                 const rainNote = weather.nextWetDay.rainMm !== null ? ` — ${weather.nextWetDay.rainMm.toFixed(0)} mm` : '';
-                nextItems.push({
-                    text: `${weather.nextWetDay.label}: ${weather.nextWetDay.condition}${rainNote}. Weaker solar expected.`,
-                    tone: 'warning'
-                });
+                pushNextItem(`${weather.nextWetDay.label}: ${weather.nextWetDay.condition}${rainNote}. Weaker solar expected.`, 'warning');
+            } else if (
+                weather?.tomorrowCondition
+                && !isOverviewLowSolarCondition(weather.tomorrowCondition)
+                && (weather.tomorrowRainMm === null || weather.tomorrowRainMm < 3)
+            ) {
+                const rainNote = weather.tomorrowRainMm !== null ? ` — ${weather.tomorrowRainMm.toFixed(0)} mm` : '';
+                pushNextItem(`Tomorrow: ${weather.tomorrowCondition}${rainNote}. Better solar support is likely.`, 'good');
             }
 
-            // 3. Next system action (EV charge, scheduler, automation cycle)
-            if (ev?.isCharging && hasValue(evTimeToFullHours)) {
-                nextItems.push({
-                    text: `${ev.selectedName} fully charged in about ${formatEVHoursToFull(evTimeToFullHours)}.`,
-                    tone: 'muted'
-                });
-            } else if (!quickControl?.active && scheduler?.enabled && scheduler.nextWindow) {
-                nextItems.push({
-                    text: `Next manual window: ${scheduler.nextWindow.label}.`,
-                    tone: 'muted'
-                });
-            } else if (!quickControl?.active && automation?.enabled && automation.nextCycleMs !== null) {
-                nextItems.push({
-                    text: `Automation reviews conditions in ${formatMsToReadable(automation.nextCycleMs)}.`,
-                    tone: 'muted'
-                });
+            if (!quickControl?.active) {
+                if (hasValue(pricingNextSpike?.priceCents) && nextSpikeWhen) {
+                    pushNextItem(`Buy pricing spikes ${nextSpikeWhen} at ${formatOverviewPrice(pricingNextSpike.priceCents)}.`, 'warning');
+                } else if (
+                    pricingHighestFuture
+                    && highestBuyWhen
+                    && (
+                        !hasValue(pricingCurrentBuyCents)
+                        || pricingHighestFuture.priceCents >= pricingCurrentBuyCents + 8
+                    )
+                ) {
+                    pushNextItem(`Highest buy pricing ${highestBuyWhen} at ${formatOverviewPrice(pricingHighestFuture.priceCents)}.`, 'warning');
+                } else if (
+                    pricingCheapestFuture
+                    && cheapestBuyWhen
+                    && hasValue(pricingCurrentBuyCents)
+                    && pricingCheapestFuture.priceCents <= pricingCurrentBuyCents - 3
+                ) {
+                    pushNextItem(`Cheapest buy window ${cheapestBuyWhen} at ${formatOverviewPrice(pricingCheapestFuture.priceCents)}.`, 'good');
+                }
+            }
+
+            if (nextItems.length < 3 && ev?.isCharging && hasValue(evTimeToFullHours)) {
+                pushNextItem(`${ev.selectedName} reaches full charge in about ${formatEVHoursToFull(evTimeToFullHours)}.`, 'muted');
+            }
+            if (nextItems.length < 3 && !quickControl?.active && automation?.enabled && automation.activeRule && automation.segmentEndLabel) {
+                pushNextItem(`${automation.activeRule} is scheduled through ${automation.segmentEndLabel} local time.`, 'muted');
+            }
+            if (nextItems.length < 3 && !quickControl?.active && scheduler?.enabled && scheduler.nextWindow) {
+                pushNextItem(`Next manual window: ${scheduler.nextWindow.label}.`, 'muted');
             }
 
             if (!nextItems.length) {
@@ -8143,6 +8375,7 @@
                 <div class="overview-brief-left">
                     <div class="overview-brief-status">
                         <span class="card-badge overview-summary-badge--${model.badgeTone}" id="overviewSummaryBadge">${escapeHtml(model.badgeText)}</span>
+                        <span class="card-badge overview-summary-badge--beta" title="Beta testing mode">Beta testing</span>
                         <div class="overview-brief-status-meta" id="overviewSummaryMeta">${escapeHtml(model.metaText)}</div>
                     </div>
                     <div>
@@ -8176,6 +8409,14 @@
                 </section>
             `;
         }
+
+        try {
+            if ((typeof navigator !== 'undefined' && navigator.webdriver === true) || window.__ENABLE_DASHBOARD_TEST_HOOKS__ === true) {
+                window.__dashboardTestHooks = window.__dashboardTestHooks || {};
+                window.__dashboardTestHooks.buildOverviewSummaryModel = buildOverviewSummaryModel;
+                window.__dashboardTestHooks.renderOverviewSummary = renderOverviewSummary;
+            }
+        } catch (error) { /* ignore test hook exposure failures */ }
 
         const DASHBOARD_CARD_VISIBILITY_DEFAULTS = {
             overviewSummary: true,
@@ -8389,6 +8630,81 @@
             }
             lastOverviewForegroundRefreshMs = now;
             return true;
+        }
+
+        function shouldRefreshInverterOnForeground() {
+            const ttlMs = Math.max(10 * 1000, Number(CONFIG.cache.inverter) || Number(REFRESH.inverterMs) || (5 * 60 * 1000));
+            const lastFetchMs = Number(lastUpdated.inverter || 0);
+            return !lastFetchMs || (Date.now() - lastFetchMs) >= ttlMs;
+        }
+
+        function shouldRefreshPricingOnForeground() {
+            const select = document.getElementById('amberSiteId');
+            const provider = getPricingProviderSafe();
+            const siteId = resolvePricingSiteId(select, provider);
+            if (!siteId) {
+                return false;
+            }
+
+            const ttlMs = getPricingLocalCacheTtlMs(provider);
+            const currentOwnerId = typeof getAmberUserStorageId === 'function' ? String(getAmberUserStorageId() || '') : '';
+
+            try {
+                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                const cacheTime = Number(cacheState.amberTime || 0);
+                if (!cacheTime) return true;
+                if (String(cacheState.amberSiteId || '') !== siteId) return true;
+                if (String(cacheState.amberProvider || provider) !== provider) return true;
+                if (String(cacheState.amberUserId || '') !== currentOwnerId) return true;
+                return (Date.now() - cacheTime) >= ttlMs;
+            } catch (e) {
+                const lastRefreshMs = Number(lastUpdated.amber || 0);
+                return !lastRefreshMs || (Date.now() - lastRefreshMs) >= ttlMs;
+            }
+        }
+
+        function getRequestedWeatherForecastDays() {
+            const prefEl = document.getElementById('preferences_forecastDays');
+            const primaryEl = document.getElementById('weatherDays');
+            let days = CONFIG?.preferences?.forecastDays || 6;
+            try {
+                if (prefEl && prefEl.value && String(prefEl.value).trim()) {
+                    days = Number(prefEl.value);
+                } else if (primaryEl && primaryEl.value && String(primaryEl.value).trim()) {
+                    days = Number(primaryEl.value);
+                }
+            } catch (e) { /* use CONFIG value */ }
+            return Math.max(1, Math.min(16, Number(days) || 6));
+        }
+
+        function shouldRefreshWeatherOnForeground() {
+            const ttlMs = Math.max(10 * 1000, Number(CONFIG.cache.weather) || Number(REFRESH.weatherMs) || (30 * 60 * 1000));
+            const requestedDays = getRequestedWeatherForecastDays();
+            const today = new Date().toISOString().substring(0, 10);
+
+            try {
+                const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
+                const cacheTime = Number(cacheState.weatherTime || 0);
+                if (!cacheTime) return true;
+                if (Number(cacheState.weatherDays || 0) !== requestedDays) return true;
+                if (String(cacheState.weatherDate || '') !== today) return true;
+                return (Date.now() - cacheTime) >= ttlMs;
+            } catch (e) {
+                const lastRefreshMs = Number(lastUpdated.weather || 0);
+                return !lastRefreshMs || (Date.now() - lastRefreshMs) >= ttlMs;
+            }
+        }
+
+        function refreshOverviewCardsIfStale() {
+            if (shouldRefreshPricingOnForeground()) {
+                refreshPricingCard('auto');
+            }
+            if (shouldRefreshInverterOnForeground()) {
+                callAPI('/api/inverter/real-time', 'Real-time Data');
+            }
+            if (shouldRefreshWeatherOnForeground()) {
+                getWeather(false);
+            }
         }
 
         // Helper to format milliseconds to human-readable string
@@ -9315,24 +9631,22 @@
                             defaultDays = Number(cfg.result.forecastDays);
                         }
                     }
-                    // Clamp to allowed range
-                    defaultDays = Math.max(1, Math.min(16, defaultDays || 6));
-                    // Store in CONFIG so getWeather() can access it
-                    CONFIG.preferences.forecastDays = defaultDays;
-                    if (daysEl) daysEl.value = defaultDays;
-                    // If preference changed from what was cached, invalidate cache so fresh data is fetched
-                    const cacheState = JSON.parse(localStorage.getItem('cacheState') || '{}');
-                    if (cacheState.weatherDays && cacheState.weatherDays !== defaultDays) {
-                        cacheState.weatherDays = defaultDays;
-                        localStorage.setItem('cacheState', JSON.stringify(cacheState));
+
+                    const days = getRequestedWeatherForecastDays();
+                    const resolvedDays = Math.max(1, Math.min(16, Number(days) || defaultDays));
+                    if (daysEl) {
+                        daysEl.value = String(resolvedDays);
                     }
+                    CONFIG.preferences = CONFIG.preferences || {};
+                    CONFIG.preferences.forecastDays = resolvedDays;
                 } catch (e) {
                     console.error('[Weather Init] Exception in setup:', e);
                     try { document.getElementById('weatherDays').value = 6; } catch (ee) {}
+                    try { CONFIG.preferences = CONFIG.preferences || {}; } catch (eee) {}
                     try { CONFIG.preferences.forecastDays = 6; } catch (eee) {}
                 }
                 updateWeatherRequestedLabel();
-                document.getElementById('weatherDays').addEventListener('input', updateWeatherRequestedLabel);
+                document.getElementById('weatherDays')?.addEventListener('input', updateWeatherRequestedLabel);
                 getWeather(isPageReload);  // Bypass cache on page reload
             } catch(e) { console.warn('Failed to initialize weather:', e); }
 
@@ -11355,7 +11669,7 @@
         
         async function deleteBackendRule(ruleName) {
             if (!confirm(`Delete rule "${ruleName}"? This cannot be undone.`)) return;
-            
+
             try {
                 const resp = await authenticatedFetch('/api/automation/rule/delete', {
                     method: 'POST',
@@ -11363,7 +11677,7 @@
                     body: JSON.stringify({ ruleName })
                 });
                 const data = await resp.json();
-                
+
                 if (data.errno === 0) {
                     // Trigger an immediate cycle to clear any segments from the deleted rule
                     console.log(`[Automation] Rule ${ruleName} deleted - triggering immediate cycle to clear segments`);
@@ -11380,7 +11694,7 @@
                     } catch (cycleErr) {
                         console.warn('[Automation] Failed to run cycle after deleting rule:', cycleErr);
                     }
-                    
+
                     loadBackendAutomationStatus();
                 } else {
                     alert('Failed to delete rule: ' + (data.error || 'Unknown error'));
@@ -11396,7 +11710,7 @@
                 const statusResp = await authenticatedFetch('/api/automation/status');
                 const statusData = await statusResp.json();
                 const currentEnabled = statusData.result?.enabled || false;
-                
+
                 const resp = await authenticatedFetch('/api/automation/enable', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -11406,7 +11720,7 @@
                 if (data.errno === 0) {
                     // Refresh status immediately to show updated state
                     await loadBackendAutomationStatus();
-                    
+
                     // Force an immediate cycle when toggling (to clear segments when disabling,
                     // or trigger rules when enabling)
                     console.log(`[Automation] Master switch toggled to ${data.result.enabled ? 'ENABLED' : 'DISABLED'} - triggering immediate cycle`);
@@ -11421,7 +11735,7 @@
                             console.log('[Automation] Cycle result:', cycleData.result);
                             // Refresh status to show updated state
                             await loadBackendAutomationStatus();
-                            
+
                             // Update scheduler warning if present
                             if (typeof checkAutomationStatusForScheduler === 'function') {
                                 invalidateAutomationStatusSummaryCache();
@@ -11430,7 +11744,7 @@
                             if (typeof checkQuickControlAutomationWarning === 'function') {
                                 checkQuickControlAutomationWarning({ force: true });
                             }
-                            
+
                             if (data.result.enabled) {
                                 showMessage('success', '✅ Automation enabled', 2000);
                             } else {
@@ -12129,21 +12443,20 @@
             }
         });
 
-        // Re-check automation status when page becomes visible (handles toggle from another tab/page)
-        document.addEventListener('visibilitychange', () => {
-            isPageVisible = !document.hidden;
+        function handleOverviewForegroundResume() {
             if (document.hidden) {
-                stopAutoRefreshTimers();
-                stopLastUpdateTicker();
                 return;
             }
 
+            isPageVisible = true;
             startAutoRefreshTimers();
             startLastUpdateTicker();
             invalidateAutomationStatusSummaryCache();
             if (!shouldRunOverviewForegroundRefresh()) {
                 return;
             }
+
+            refreshOverviewCardsIfStale();
 
             if (typeof checkAutomationStatusForScheduler === 'function') {
                 checkAutomationStatusForScheduler({ force: true });
@@ -12153,5 +12466,36 @@
             }
             if (typeof refreshSelectedEVStatusOnVisibility === 'function') {
                 refreshSelectedEVStatusOnVisibility();
+            }
+        }
+
+        try {
+            if (typeof navigator !== 'undefined' && navigator.webdriver === true) {
+                window.__dashboardTestHooks = window.__dashboardTestHooks || {};
+                window.__dashboardTestHooks.markOverviewForegroundRefresh = markOverviewForegroundRefresh;
+                window.__dashboardTestHooks.refreshOverviewCardsIfStale = refreshOverviewCardsIfStale;
+                window.__dashboardTestHooks.handleOverviewForegroundResume = handleOverviewForegroundResume;
+            }
+        } catch (error) { /* ignore test hook exposure failures */ }
+
+        // Re-check automation status when page becomes visible (handles toggle from another tab/page)
+        document.addEventListener('visibilitychange', () => {
+            isPageVisible = !document.hidden;
+            if (document.hidden) {
+                stopAutoRefreshTimers();
+                stopLastUpdateTicker();
+                return;
+            }
+
+            handleOverviewForegroundResume();
+        });
+
+        window.addEventListener('focus', () => {
+            handleOverviewForegroundResume();
+        });
+
+        window.addEventListener('pageshow', (event) => {
+            if (event?.persisted) {
+                handleOverviewForegroundResume();
             }
         });
