@@ -2137,6 +2137,64 @@
         .price-neutral { color: #8b949e !important; }
         .price-darkgreen { color: #238636 !important; }
 
+        .pricing-current-metrics {
+            display: grid;
+            grid-template-columns: repeat(var(--pricing-current-metric-columns, 2), minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+            align-items: start;
+        }
+        .pricing-current-metric {
+            min-width: 0;
+        }
+        .pricing-current-metric__label {
+            font-size: 11px;
+            line-height: 1.35;
+            color: var(--text-secondary);
+        }
+        .pricing-current-metric__value {
+            margin-top: 4px;
+            font-size: 28px;
+            line-height: 1.05;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            white-space: nowrap;
+        }
+        .pricing-current-metric__value--market {
+            font-size: 24px;
+        }
+        .pricing-current-metric--demand .pricing-current-metric__value {
+            color: var(--accent-blue);
+        }
+        .pricing-current-metric--generation .pricing-current-metric__value {
+            color: var(--color-success);
+        }
+        @media (max-width: 760px) {
+            .pricing-current-metrics {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .pricing-current-metric__value {
+                font-size: 24px;
+            }
+            .pricing-current-metric__value--market {
+                font-size: 20px;
+            }
+        }
+        @media (max-width: 430px) {
+            .pricing-current-metrics {
+                gap: 10px 8px;
+            }
+            .pricing-current-metric__label {
+                font-size: 10px;
+            }
+            .pricing-current-metric__value {
+                font-size: 20px;
+            }
+            .pricing-current-metric__value--market {
+                font-size: 17px;
+            }
+        }
+
         /* Feed-in highlight for very large export prices (bright green tile) */
         .stat-item.feedin-highlight {
             background: linear-gradient(180deg, #e6ffef, #bff6d4);

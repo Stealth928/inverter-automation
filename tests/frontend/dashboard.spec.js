@@ -2710,6 +2710,269 @@ test.describe('Dashboard Page', () => {
     expect(chartData.feed[1]).toBeCloseTo(4.17, 2);
   });
 
+  test('should ignore stale cached AEMO prices without generation and let manual refresh bypass browser cache', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('dashboardLocalMockMode', '0');
+      const staleCachedPrices = [
+        {
+          channelType: 'general',
+          type: 'CurrentInterval',
+          startTime: '2026-03-30T00:00:00.000Z',
+          endTime: '2026-03-30T00:05:00.000Z',
+          perKwh: 1.13,
+          spotPerKwh: 1.13,
+          demand: 5760,
+          spikeStatus: 'none'
+        },
+        {
+          channelType: 'feedIn',
+          type: 'CurrentInterval',
+          startTime: '2026-03-30T00:00:00.000Z',
+          endTime: '2026-03-30T00:05:00.000Z',
+          perKwh: -1.13,
+          spotPerKwh: -1.13,
+          demand: 5760,
+          spikeStatus: 'none'
+        }
+      ];
+
+      localStorage.setItem('cachedPricesFull', JSON.stringify(staleCachedPrices));
+      localStorage.setItem('cachedPrices', JSON.stringify({
+        general: { perKwh: 1.13 },
+        feedIn: { perKwh: 1.13 }
+      }));
+      localStorage.setItem('cacheState', JSON.stringify({
+        amberTime: Date.now(),
+        amberSiteId: 'NSW1',
+        amberProvider: 'aemo',
+        amberUserId: 'guest'
+      }));
+      localStorage.setItem('pricingSelection:aemo:guest', 'NSW1');
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            id: 'NSW1',
+            region: 'NSW1',
+            nmi: 'NSW1',
+            network: 'AEMO',
+            name: 'New South Wales',
+            displayName: 'New South Wales (NSW1)'
+          }
+        ]
+      }, 200));
+    });
+
+    let pricingCurrentRequestCount = 0;
+    await page.route('**/api/pricing/current*', async (route) => {
+      pricingCurrentRequestCount += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T00:05:00.000Z',
+            perKwh: 1.13,
+            spotPerKwh: 1.13,
+            demand: 5760,
+            generation: 6393.37,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T00:05:00.000Z',
+            perKwh: -1.13,
+            spotPerKwh: -1.13,
+            demand: 5760,
+            generation: 6393.37,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T00:30:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: 5.71,
+            spotPerKwh: 5.71,
+            demand: 5800,
+            generation: 6410,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T00:30:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: -5.71,
+            spotPerKwh: -5.71,
+            demand: 5800,
+            generation: 6410,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+
+    const amberCard = page.locator('#amberCard');
+    await expect(amberCard).toContainText('Generation');
+    await expect(amberCard).toContainText('6.39 GW');
+    expect(pricingCurrentRequestCount).toBeGreaterThanOrEqual(1);
+
+    await page.locator('#pricingRefreshBtn').click();
+
+    await expect.poll(() => pricingCurrentRequestCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test('should keep AEMO pricing metrics readable on narrow viewports', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+        localStorage.removeItem('aemoRegion');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            id: 'NSW1',
+            region: 'NSW1',
+            nmi: 'NSW1',
+            network: 'AEMO',
+            name: 'New South Wales',
+            displayName: 'New South Wales (NSW1)'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T00:05:00.000Z',
+            perKwh: 1.13,
+            spotPerKwh: 1.13,
+            demand: 5734.2,
+            generation: 6393.37,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T00:05:00.000Z',
+            perKwh: -1.13,
+            spotPerKwh: -1.13,
+            demand: 5734.2,
+            generation: 6393.37,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T00:30:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: 5.71,
+            spotPerKwh: 5.71,
+            demand: 5800,
+            generation: 6410,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T00:30:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: -5.71,
+            spotPerKwh: -5.71,
+            demand: 5800,
+            generation: 6410,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+    await expect(page.locator('#amberCard')).toContainText('Generation');
+    await expect(page.locator('#amberCard')).toContainText('6.39');
+
+    const metricLayout = await page.evaluate(() => {
+      const metrics = Array.from(document.querySelectorAll('#amberCard .pricing-current-metric')).map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          label: element.querySelector('.pricing-current-metric__label')?.textContent?.trim() || '',
+          top: Math.round(rect.top),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width)
+        };
+      });
+
+      const buyValue = document.querySelector('#amberCard .pricing-current-metric--buy .pricing-current-metric__value');
+      const demandValue = document.querySelector('#amberCard .pricing-current-metric--demand .pricing-current-metric__value');
+      const generationValue = document.querySelector('#amberCard .pricing-current-metric--generation .pricing-current-metric__value');
+      const metricsContainer = document.querySelector('#amberCard .pricing-current-metrics');
+      const metricTops = [...new Set(metrics.map((metric) => metric.top))];
+
+      return {
+        metricCount: metrics.length,
+        metricTops,
+        metrics,
+        containerRight: Math.round(metricsContainer?.getBoundingClientRect().right || 0),
+        buyFontSize: Number.parseFloat(window.getComputedStyle(buyValue).fontSize),
+        demandFontSize: Number.parseFloat(window.getComputedStyle(demandValue).fontSize),
+        generationFontSize: Number.parseFloat(window.getComputedStyle(generationValue).fontSize),
+        demandText: demandValue?.textContent || '',
+        generationText: generationValue?.textContent || ''
+      };
+    });
+
+    expect(metricLayout.metricCount).toBe(4);
+    expect(metricLayout.metricTops.length).toBe(2);
+    expect(metricLayout.demandFontSize).toBeLessThan(metricLayout.buyFontSize);
+    expect(metricLayout.generationFontSize).toBeLessThan(metricLayout.buyFontSize);
+    expect(metricLayout.demandText).toContain('GW');
+    expect(metricLayout.generationText).toContain('GW');
+    metricLayout.metrics.forEach((metric) => {
+      expect(metric.right).toBeLessThanOrEqual(metricLayout.containerRight + 1);
+      expect(metric.width).toBeGreaterThan(120);
+    });
+  });
+
   test('should adapt scheduler, quick control, and rule builder UI for AlphaESS capabilities', async ({ page }) => {
     await mockDashboardConfig(page, { deviceProvider: 'alphaess' });
     await page.goto('about:blank');

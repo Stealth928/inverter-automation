@@ -2795,10 +2795,24 @@
                     .toFixed(decimals)
                     .replace(/\.0$/, '')
                     .replace(/(\.\d)0$/, '$1');
-                return `${gw} GW`;
+                return `${gw}\u00A0GW`;
             }
 
-            return `${numeric.toFixed(0)} MW`;
+            return `${numeric.toFixed(0)}\u00A0MW`;
+        }
+
+        function aemoCachedPricesNeedSnapshotRefresh(intervals = []) {
+            if (!Array.isArray(intervals) || intervals.length === 0) {
+                return false;
+            }
+
+            const hasDemand = intervals.some((interval) => toFinitePricingNumber(interval?.demand) !== null);
+            if (!hasDemand) {
+                return false;
+            }
+
+            const hasGeneration = intervals.some((interval) => toFinitePricingNumber(interval?.generation) !== null);
+            return !hasGeneration;
         }
 
         function getPricingProviderSafe() {
@@ -3060,10 +3074,11 @@
             const cacheOwnerId = String(cacheState.amberUserId || '');
             const currentOwnerId = getAmberUserStorageId();
             
-            // Manual Amber refreshes can bypass backend cache; AEMO stays store-backed.
+            // Amber manual refresh can bypass upstream cache; AEMO manual refresh still
+            // stays scheduler-backed but should bypass the browser cache.
             const mockMode = isDashboardLocalMockEnabled();
             const shouldForceUpstreamRefresh = shouldForcePricingUpstreamRefresh(provider, refreshMode);
-            const shouldBypassLocalCache = shouldForceUpstreamRefresh || refreshMode === 'reload' || mockMode;
+            const shouldBypassLocalCache = shouldForceUpstreamRefresh || refreshMode === 'reload' || mockMode || (provider === 'aemo' && refreshMode === 'manual');
             const localCacheTtlMs = getPricingLocalCacheTtlMs(provider);
             
             if (!shouldBypassLocalCache && cacheState.amberTime && age < localCacheTtlMs && cacheSiteId === String(siteId) && cacheProvider === provider && cacheOwnerId === currentOwnerId) {
@@ -3071,9 +3086,17 @@
                 try {
                     const cachedPricesFull = JSON.parse(localStorage.getItem('cachedPricesFull') || '[]');
                     if (cachedPricesFull.length > 0) {
+                        const staleAemoMarketCache = provider === 'aemo' && aemoCachedPricesNeedSnapshotRefresh(cachedPricesFull);
+                        if (staleAemoMarketCache) {
+                            localStorage.removeItem('cachedPricesFull');
+                            localStorage.removeItem('cachedPrices');
+                            const nextCacheState = { ...cacheState, amberTime: 0 };
+                            localStorage.setItem('cacheState', JSON.stringify(nextCacheState));
+                        } else {
                         renderAmberCard(cachedPricesFull);
                         setLastUpdated('amber');
                         return;
+                        }
                     }
                 } catch (e) { console.error('[Cache] Error loading Amber cache:', e); }
             }
@@ -3467,37 +3490,37 @@
                     currentGenerationMw !== null,
                     !!(currentGen && currentGen.renewables !== undefined)
                 ].filter(Boolean).length || 1;
-                html += `<div style="display:grid;grid-template-columns:repeat(${currentPriceMetricCount}, minmax(0, 1fr));gap:8px;margin-bottom:12px;align-items:start">`;
+                html += `<div class="pricing-current-metrics" style="--pricing-current-metric-columns:${currentPriceMetricCount}">`;
                 if (currentGen) {
                     const p = currentGen.perKwh;
                     const spot = currentGen.spotPerKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
                     const spike = currentGen.spikeStatus && currentGen.spikeStatus !== 'none';
                     const priceStr = formatPricingValue(p);
-                    html += `<div style="min-width:0">
-                        <div style="font-size:11px;color:var(--text-secondary)">Buy Now ${spike ? '<span style="color:var(--color-danger)">⚠️</span>' : ''}</div>
-                        <div class="value ${cls}" style="font-size:28px;font-weight:700">${priceStr}</div>
+                    html += `<div class="pricing-current-metric pricing-current-metric--buy">
+                        <div class="pricing-current-metric__label">Buy Now ${spike ? '<span style="color:var(--color-danger)">⚠️</span>' : ''}</div>
+                        <div class="value ${cls} pricing-current-metric__value">${priceStr}</div>
                     </div>`;
                 }
                 if (currentFeed) {
                     const displayVal = getFeedDisplayPriceCents(currentFeed);
                     const getCls = getFeedPriceClass(displayVal);
                     const feedPriceStr = formatPricingValue(displayVal);
-                    html += `<div style="min-width:0">
-                        <div style="font-size:11px;color:var(--text-secondary)">Feed-In Price</div>
-                        <div class="value ${getCls}" style="font-size:28px;font-weight:700">${feedPriceStr}</div>
+                    html += `<div class="pricing-current-metric pricing-current-metric--feedin">
+                        <div class="pricing-current-metric__label">Feed-In Price</div>
+                        <div class="value ${getCls} pricing-current-metric__value">${feedPriceStr}</div>
                     </div>`;
                 }
                 if (currentDemandMw !== null) {
-                    html += `<div style="min-width:0">
-                        <div style="font-size:11px;color:var(--text-secondary)">Demand</div>
-                        <div class="value" style="font-size:24px;font-weight:700;color:var(--accent-blue)">${formatAemoMarketMetricMw(currentDemandMw)}</div>
+                    html += `<div class="pricing-current-metric pricing-current-metric--demand">
+                        <div class="pricing-current-metric__label">Demand</div>
+                        <div class="value pricing-current-metric__value pricing-current-metric__value--market">${formatAemoMarketMetricMw(currentDemandMw)}</div>
                     </div>`;
                 }
                 if (currentGenerationMw !== null) {
-                    html += `<div style="min-width:0">
-                        <div style="font-size:11px;color:var(--text-secondary)">Generation</div>
-                        <div class="value" style="font-size:24px;font-weight:700;color:var(--color-success)">${formatAemoMarketMetricMw(currentGenerationMw)}</div>
+                    html += `<div class="pricing-current-metric pricing-current-metric--generation">
+                        <div class="pricing-current-metric__label">Generation</div>
+                        <div class="value pricing-current-metric__value pricing-current-metric__value--market">${formatAemoMarketMetricMw(currentGenerationMw)}</div>
                     </div>`;
                 }
                 if (currentGen && currentGen.renewables !== undefined) {
@@ -3506,9 +3529,9 @@
                     const renewDesc = currentGen.descriptor || '';
                     const renewEmoji = { best: '🌱', great: '🌿', ok: '☁️', notGreat: '🏭', worst: '💨' }[renewDesc] || '';
                     const renewColor = renew > 55 ? cssVar('--color-success') : renew > 35 ? '#ffd43b' : cssVar('--color-danger');
-                    html += `<div style="min-width:0">
-                        <div style="font-size:11px;color:var(--text-secondary)">Renewables ${renewEmoji}</div>
-                        <div class="value" style="font-size:28px;font-weight:700;color:${renewColor}">${renew.toFixed(0)}%</div>
+                    html += `<div class="pricing-current-metric pricing-current-metric--renewables">
+                        <div class="pricing-current-metric__label">Renewables ${renewEmoji}</div>
+                        <div class="value pricing-current-metric__value" style="color:${renewColor}">${renew.toFixed(0)}%</div>
                     </div>`;
                 }
                 html += '</div>';
