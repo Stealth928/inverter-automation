@@ -5356,6 +5356,95 @@
             }
         }
 
+        async function loadEVSummarySignal(forceLiveSelected = false) {
+            const currentSelected = String(evDashboardState.selectedVehicleId || '');
+            evDashboardState.loadingVehicles = true;
+            renderOverviewSummary();
+
+            try {
+                if (isDashboardLocalMockEnabled()) {
+                    evDashboardState.vehicles = getMockEVVehicles();
+                    const firstId = String(evDashboardState.vehicles[0]?.vehicleId || '');
+                    evDashboardState.selectedVehicleId = currentSelected && evDashboardState.vehicles.some((vehicle) => String(vehicle.vehicleId) === currentSelected)
+                        ? currentSelected
+                        : firstId;
+
+                    evDashboardState.statusByVehicleId = {};
+                    evDashboardState.statusMetaByVehicleId = {};
+
+                    evDashboardState.vehicles.forEach((vehicle) => {
+                        const vehicleId = String(vehicle.vehicleId || '');
+                        if (!vehicleId) return;
+                        evDashboardState.statusByVehicleId[vehicleId] = getMockEVStatus(vehicleId);
+                        evDashboardState.statusMetaByVehicleId[vehicleId] = {
+                            source: 'mock',
+                            loadedAtMs: Date.now(),
+                            error: ''
+                        };
+                    });
+
+                    setEVOverviewMessage('', '');
+                    return;
+                }
+
+                const response = await authenticatedFetch('/api/ev/vehicles');
+                const data = await response.json();
+
+                if (!response.ok || data?.errno !== 0 || !Array.isArray(data?.result)) {
+                    const errorText = String(data?.error || `Failed to load vehicles (HTTP ${response.status})`);
+                    setEVOverviewMessage('warning', errorText);
+                    evDashboardState.vehicles = [];
+                    evDashboardState.selectedVehicleId = '';
+                    clearStaleEVState();
+                    return;
+                }
+
+                evDashboardState.vehicles = data.result;
+                clearStaleEVState();
+
+                if (evDashboardState.vehicles.length === 0) {
+                    evDashboardState.selectedVehicleId = '';
+                    setEVOverviewMessage('info', 'No Tesla vehicles linked yet. <a href="/settings.html" style="color:var(--accent-blue);text-decoration:none;">Connect one in Settings</a>.', true);
+                    return;
+                }
+
+                const hasPreviousSelection = evDashboardState.vehicles.some((vehicle) => String(vehicle.vehicleId) === currentSelected);
+                evDashboardState.selectedVehicleId = hasPreviousSelection
+                    ? currentSelected
+                    : String(evDashboardState.vehicles[0].vehicleId || '');
+
+                setEVOverviewMessage('', '');
+
+                const selectedVehicle = getSelectedEVVehicle();
+                if (selectedVehicle && !hasEVVehicleCredentialsConfigured(selectedVehicle)) {
+                    const selectedId = String(selectedVehicle.vehicleId || '');
+                    if (selectedId) {
+                        delete evDashboardState.statusByVehicleId[selectedId];
+                        evDashboardState.statusMetaByVehicleId[selectedId] = {
+                            source: 'setup',
+                            loadedAtMs: Date.now(),
+                            error: 'Vehicle credentials not configured. Connect Tesla in Settings to finish setup.'
+                        };
+                    }
+                    return;
+                }
+
+                if (evDashboardState.selectedVehicleId) {
+                    await fetchEVVehicleStatus(evDashboardState.selectedVehicleId, {
+                        live: forceLiveSelected,
+                        silent: true,
+                        deferRender: true
+                    });
+                }
+            } catch (error) {
+                const message = String(error?.message || 'Failed to load EV summary');
+                setEVOverviewMessage('warning', message);
+            } finally {
+                evDashboardState.loadingVehicles = false;
+                renderOverviewSummary();
+            }
+        }
+
         function guardEVCommand(command, status = {}, statusMeta = {}) {
             const chargingState = String(status?.chargingState || '').toLowerCase();
             const isPluggedIn = status?.isPluggedIn;
@@ -5816,6 +5905,7 @@
         
         async function refreshQuickControlStatus(showFeedback = false) {
             const force = showFeedback === true;
+            const includeAutomationWarning = shouldCheckQuickControlAutomationWarning();
             const nowMs = Date.now();
             if (!force && quickControlStatusInflight) {
                 return quickControlStatusInflight;
@@ -5837,7 +5927,9 @@
 
             if (isPreviewMode()) {
                 updateQuickControlUI(getMockQuickControlStatus());
-                checkQuickControlAutomationWarning();
+                if (includeAutomationWarning) {
+                    checkQuickControlAutomationWarning();
+                }
                 if (showFeedback) {
                     const messageEl = document.getElementById('quickControlMessage');
                     if (messageEl) {
@@ -5862,7 +5954,9 @@
                     updateQuickControlUI(data.result);
                     
                     // Check automation status for warning
-                    checkQuickControlAutomationWarning();
+                    if (includeAutomationWarning) {
+                        checkQuickControlAutomationWarning();
+                    }
                 }
                 
                 if (showFeedback) {
@@ -8574,9 +8668,58 @@
             dashboardCardVisibilityState[cardKey] = !!(toggleEl && toggleEl.checked);
             saveDashboardCardVisibilityPreferences();
             applyDashboardCardVisibility();
+            handleDashboardVisibilityPreferenceChange(cardKey);
         }
 
         window.toggleDashboardCardVisibility = toggleDashboardCardVisibility;
+
+        const OVERVIEW_SUMMARY_DEPENDENT_CARD_KEYS = new Set(['inverter', 'prices', 'weather', 'ev', 'quickControls']);
+        let dashboardPageDataInitialized = false;
+
+        function isDashboardCardEnabled(cardKey) {
+            return dashboardCardVisibilityState[cardKey] !== false;
+        }
+
+        function isOverviewSummaryEnabled() {
+            return isDashboardCardEnabled('overviewSummary');
+        }
+
+        function shouldLoadDashboardCardSignal(cardKey) {
+            if (isDashboardCardEnabled(cardKey)) return true;
+            return isOverviewSummaryEnabled() && OVERVIEW_SUMMARY_DEPENDENT_CARD_KEYS.has(cardKey);
+        }
+
+        function shouldLoadInverterSignal() {
+            return shouldLoadDashboardCardSignal('inverter');
+        }
+
+        function shouldLoadPricingSignal() {
+            return shouldLoadDashboardCardSignal('prices');
+        }
+
+        function shouldLoadWeatherSignal() {
+            return shouldLoadDashboardCardSignal('weather');
+        }
+
+        function shouldLoadEVSignal() {
+            return shouldLoadDashboardCardSignal('ev');
+        }
+
+        function shouldLoadQuickControlSignal() {
+            return shouldLoadDashboardCardSignal('quickControls');
+        }
+
+        function shouldLoadMetricsSignal() {
+            return isDashboardCardEnabled('inverter');
+        }
+
+        function shouldCheckSchedulerAutomationWarning() {
+            return isDashboardCardEnabled('scheduler');
+        }
+
+        function shouldCheckQuickControlAutomationWarning() {
+            return isDashboardCardEnabled('quickControls');
+        }
 
         // Timer handles for auto-refresh (kept so we can cancel/replace during dev)
         let amberRefreshTimer = null;
@@ -8696,13 +8839,13 @@
         }
 
         function refreshOverviewCardsIfStale() {
-            if (shouldRefreshPricingOnForeground()) {
+            if (shouldLoadPricingSignal() && shouldRefreshPricingOnForeground()) {
                 refreshPricingCard('auto');
             }
-            if (shouldRefreshInverterOnForeground()) {
+            if (shouldLoadInverterSignal() && shouldRefreshInverterOnForeground()) {
                 callAPI('/api/inverter/real-time', 'Real-time Data');
             }
-            if (shouldRefreshWeatherOnForeground()) {
+            if (shouldLoadWeatherSignal() && shouldRefreshWeatherOnForeground()) {
                 getWeather(false);
             }
         }
@@ -8769,7 +8912,7 @@
             
             // Pricing: use a light UI heartbeat, but only fetch when the
             // active provider's cadence says prices may have changed.
-            if (!amberRefreshTimer) {
+            if (shouldLoadPricingSignal() && !amberRefreshTimer) {
                 const pricingHeartbeatMs = Math.max(
                     10 * 1000,
                     Math.min(Number(REFRESH.amberPricesMs) || (60 * 1000), 60 * 1000)
@@ -8790,14 +8933,14 @@
 
             // Inverter real-time data: auto-refresh via cached path.
             // Manual refresh remains the only cache-bypassing action.
-            if (!inverterRefreshTimer) {
+            if (shouldLoadInverterSignal() && !inverterRefreshTimer) {
                 inverterRefreshTimer = setInterval(() => {
                     callAPI('/api/inverter/real-time', 'Real-time Data');
                 }, REFRESH.inverterMs);
             }
 
             // Weather: every 30 minutes (with cache bypass)
-            if (!weatherRefreshTimer) {
+            if (shouldLoadWeatherSignal() && !weatherRefreshTimer) {
                 weatherRefreshTimer = setInterval(() => {
                     getWeather(true);
                 }, REFRESH.weatherMs);
@@ -8805,7 +8948,7 @@
 
             // EV: refresh selected vehicle status every 90s (cached path only).
             // Live fetches are user-initiated to avoid unnecessary paid API calls.
-            if (!evRefreshTimer) {
+            if (shouldLoadEVSignal() && !evRefreshTimer) {
                 evRefreshTimer = setInterval(() => {
                     const selectedId = String(evDashboardState.selectedVehicleId || '');
                     if (!selectedId) return;
@@ -8814,7 +8957,7 @@
             }
 
             // API call metrics: every 30 seconds
-            if (!window.metricsRefreshTimer) {
+            if (shouldLoadMetricsSignal() && !window.metricsRefreshTimer) {
                 window.metricsRefreshTimer = setInterval(() => {
                     loadApiMetrics(1);
                 }, 30000);
@@ -8832,6 +8975,96 @@
             }
             
             autoRefreshActive = true;
+        }
+
+        function loadPricingSignalForPreferences(forceRefresh = false) {
+            if (!shouldLoadPricingSignal()) return null;
+            if (isDashboardCardEnabled('prices')) {
+                return loadAmberSites(forceRefresh);
+            }
+            return refreshPricingCard(forceRefresh ? 'reload' : 'load');
+        }
+
+        function loadInverterSignalForPreferences(forceRefresh = false) {
+            if (!shouldLoadInverterSignal()) return null;
+            return callAPI('/api/inverter/real-time', 'Real-time Data', false, forceRefresh);
+        }
+
+        function loadWeatherSignalForPreferences(forceRefresh = false) {
+            if (!shouldLoadWeatherSignal()) return null;
+            return getWeather(forceRefresh);
+        }
+
+        function loadEVSignalForPreferences(forceLiveSelected = false) {
+            if (!shouldLoadEVSignal()) return null;
+            if (isDashboardCardEnabled('ev')) {
+                return loadEVOverviewData(forceLiveSelected);
+            }
+            return loadEVSummarySignal(forceLiveSelected);
+        }
+
+        function loadQuickControlSignalForPreferences(showFeedback = false) {
+            if (!shouldLoadQuickControlSignal()) return null;
+            return refreshQuickControlStatus(showFeedback);
+        }
+
+        function refreshSummarySignalsForPreferences() {
+            if (!isOverviewSummaryEnabled()) return;
+            loadInverterSignalForPreferences(false);
+            loadPricingSignalForPreferences(false);
+            loadWeatherSignalForPreferences(false);
+            loadEVSignalForPreferences(false);
+            loadQuickControlSignalForPreferences(false);
+        }
+
+        function handleDashboardVisibilityPreferenceChange(cardKey) {
+            if (!dashboardPageDataInitialized) return;
+
+            const cardEnabled = isDashboardCardEnabled(cardKey);
+
+            stopAutoRefreshTimers();
+            startAutoRefreshTimers();
+
+            if (cardKey === 'overviewSummary') {
+                if (isOverviewSummaryEnabled()) {
+                    refreshSummarySignalsForPreferences();
+                }
+                return;
+            }
+
+            if (cardKey === 'inverter') {
+                if (cardEnabled && shouldLoadInverterSignal()) {
+                    loadInverterSignalForPreferences(false);
+                }
+                if (cardEnabled && shouldLoadMetricsSignal()) {
+                    loadApiMetrics(1);
+                }
+                return;
+            }
+
+            if (cardKey === 'prices' && cardEnabled && shouldLoadPricingSignal()) {
+                loadPricingSignalForPreferences(false);
+                return;
+            }
+
+            if (cardKey === 'weather' && cardEnabled && shouldLoadWeatherSignal()) {
+                loadWeatherSignalForPreferences(false);
+                return;
+            }
+
+            if (cardKey === 'ev' && cardEnabled && shouldLoadEVSignal()) {
+                loadEVSignalForPreferences(false);
+                return;
+            }
+
+            if (cardKey === 'quickControls' && cardEnabled && shouldLoadQuickControlSignal()) {
+                loadQuickControlSignalForPreferences(false);
+                return;
+            }
+
+            if (cardKey === 'scheduler' && cardEnabled && shouldCheckSchedulerAutomationWarning()) {
+                checkAutomationStatusForScheduler({ force: true });
+            }
         }
 
         /**
@@ -9479,6 +9712,12 @@
         // This function is called ONLY after user is authenticated
         // It loads all data that requires Firebase auth tokens
         async function initializePageData() {
+            dashboardPageDataInitialized = false;
+            try {
+                refreshDashboardCardVisibilityPreferencesForCurrentUser();
+            } catch (error) {
+                console.warn('[Dashboard] Failed to refresh visibility preferences before initialization', error);
+            }
             renderPreviewModeBanner();
             installPreviewFetchGuard();
             updateDataSourceBadges();
@@ -9612,11 +9851,11 @@
                 }
             } catch (e) { console.warn('Failed to load backend config', e); }
             
-            // 1) Load Amber sites / prices (bypass cache if page reload)
-            try { loadAmberSites(isPageReload); } catch(e) { console.warn('Failed to load Amber sites:', e); }
+            // 1) Load pricing data (full card when visible, summary signal otherwise)
+            try { loadPricingSignalForPreferences(isPageReload); } catch(e) { console.warn('Failed to load pricing data:', e); }
             
             // 2) Fetch inverter real-time data immediately via the cached path.
-            try { callAPI('/api/inverter/real-time', 'Real-time Data'); } catch(e) { console.warn('Failed to load inverter data:', e); }
+            try { loadInverterSignalForPreferences(false); } catch(e) { console.warn('Failed to load inverter data:', e); }
             
             // 3) Set up weather request (bypass cache if page reload)
             try {
@@ -9647,12 +9886,12 @@
                 }
                 updateWeatherRequestedLabel();
                 document.getElementById('weatherDays')?.addEventListener('input', updateWeatherRequestedLabel);
-                getWeather(isPageReload);  // Bypass cache on page reload
+                loadWeatherSignalForPreferences(isPageReload);  // Bypass cache on page reload
             } catch(e) { console.warn('Failed to initialize weather:', e); }
 
-            // 4) Load EV overview data
+            // 4) Load EV signal (full card when visible, summary signal otherwise)
             try {
-                loadEVOverviewData(false);
+                loadEVSignalForPreferences(false);
             } catch (e) {
                 console.warn('Failed to initialize EV overview:', e);
             }
@@ -9668,7 +9907,27 @@
             } catch(e) { console.warn('Failed to load automation status:', e); }
 
             // 7) Load API call metrics
-            try { loadApiMetrics(1); } catch(e) { console.warn('Failed to load API metrics:', e); }
+            try {
+                if (shouldLoadMetricsSignal()) {
+                    loadApiMetrics(1);
+                }
+            } catch(e) { console.warn('Failed to load API metrics:', e); }
+
+            // 8) Load quick-control signal for the card or summary.
+            try {
+                loadQuickControlSignalForPreferences(false);
+            } catch (e) {
+                console.warn('Failed to initialize quick control status:', e);
+            }
+
+            // 9) Only load scheduler conflict warnings when the scheduler card is visible.
+            try {
+                if (shouldCheckSchedulerAutomationWarning()) {
+                    checkAutomationStatusForScheduler();
+                }
+            } catch (e) {
+                console.warn('Failed to initialize scheduler warning:', e);
+            }
             
             // Now allow user-triggered API calls to open the panel
             window.suppressPanelAutoOpen = false;
@@ -9688,6 +9947,8 @@
 
             // Reconcile floating toggle visibility after all init paths complete.
             try { syncAutomationToggleVisibility(); } catch (e) {}
+
+            dashboardPageDataInitialized = true;
 
             // Allow automated API calls to open the panel
             setTimeout(() => { try { window.suppressPanelAutoOpen = false; } catch(e) {} }, 1200);
@@ -12436,8 +12697,6 @@
                     bindEVOverviewControls();
                     refreshDashboardCardVisibilityPreferencesForCurrentUser();
                     initializePageData(); 
-                    checkAutomationStatusForScheduler(); // Check automation status for scheduler warning
-                    refreshQuickControlStatus(); // Check quick control status
                     markOverviewForegroundRefresh();
                 } catch (err) { console.error('Failed to initialize dashboard', err); }
             }
@@ -12458,13 +12717,13 @@
 
             refreshOverviewCardsIfStale();
 
-            if (typeof checkAutomationStatusForScheduler === 'function') {
+            if (shouldCheckSchedulerAutomationWarning() && typeof checkAutomationStatusForScheduler === 'function') {
                 checkAutomationStatusForScheduler({ force: true });
             }
-            if (typeof refreshQuickControlStatus === 'function') {
+            if (shouldLoadQuickControlSignal() && typeof refreshQuickControlStatus === 'function') {
                 refreshQuickControlStatus();
             }
-            if (typeof refreshSelectedEVStatusOnVisibility === 'function') {
+            if (shouldLoadEVSignal() && typeof refreshSelectedEVStatusOnVisibility === 'function') {
                 refreshSelectedEVStatusOnVisibility();
             }
         }

@@ -2371,6 +2371,330 @@ test.describe('Dashboard Page', () => {
     expect(persistedAfterReload).toBeTruthy();
   });
 
+  test('should skip hidden dashboard card fetches when summary is disabled', async ({ page }) => {
+    const counts = {
+      inverter: 0,
+      pricingSites: 0,
+      pricingCurrent: 0,
+      weather: 0,
+      evVehicles: 0,
+      evStatus: 0,
+      evReadiness: 0,
+      quickControl: 0,
+      metrics: 0,
+      automationSummary: 0,
+      scheduler: 0
+    };
+    const visibilityPayload = {
+      overviewSummary: false,
+      inverter: false,
+      prices: false,
+      weather: false,
+      ev: false,
+      quickControls: false,
+      scheduler: false
+    };
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      counts.inverter += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      counts.pricingSites += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      counts.pricingCurrent += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/weather*', async (route) => {
+      counts.weather += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { current: {}, daily: {}, hourly: {} } }, 200));
+    });
+
+    await page.route('**/api/ev/vehicles', async (route) => {
+      counts.evVehicles += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/ev/vehicles/*/status*', async (route) => {
+      counts.evStatus += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: {} }, 200));
+    });
+
+    await page.route('**/api/ev/vehicles/*/command-readiness', async (route) => {
+      counts.evReadiness += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: {} }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      counts.quickControl += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { active: false } }, 200));
+    });
+
+    await page.route('**/api/metrics/api-calls*', async (route) => {
+      counts.metrics += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: {} }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      counts.automationSummary += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { enabled: false, inBlackout: false } }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      counts.scheduler += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { enabled: false, groups: [] } }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.addInitScript((payload) => {
+      const serialized = JSON.stringify(payload);
+      localStorage.setItem('dashboardCardVisibility:guest', serialized);
+      localStorage.setItem('dashboardCardVisibility:test-user-123', serialized);
+    }, visibilityPayload);
+
+    Object.keys(counts).forEach((key) => {
+      counts[key] = 0;
+    });
+
+    await page.goto('/app.html');
+    await page.waitForTimeout(700);
+
+    expect(counts).toEqual({
+      inverter: 0,
+      pricingSites: 0,
+      pricingCurrent: 0,
+      weather: 0,
+      evVehicles: 0,
+      evStatus: 0,
+      evReadiness: 0,
+      quickControl: 0,
+      metrics: 0,
+      automationSummary: 0,
+      scheduler: 0
+    });
+  });
+
+  test('should keep summary signal loading lightweight when detail cards are hidden', async ({ page }) => {
+    const counts = {
+      inverter: 0,
+      pricingSites: 0,
+      pricingCurrent: 0,
+      weather: 0,
+      evVehicles: 0,
+      evStatus: 0,
+      evReadiness: 0,
+      quickControl: 0,
+      metrics: 0,
+      automationSummary: 0,
+      scheduler: 0
+    };
+    const visibilityPayload = {
+      overviewSummary: true,
+      inverter: false,
+      prices: false,
+      weather: false,
+      ev: false,
+      quickControls: false,
+      scheduler: false
+    };
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'SUMMARY-LITE-001',
+      amberSiteId: 'site-nsw-1',
+      siteIdOrRegion: 'site-nsw-1'
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      counts.inverter += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'SUMMARY-LITE-001',
+            time: '2026-03-30T09:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 64, unit: '%' },
+              { variable: 'pvPower', value: 3.6, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.4, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.2, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.1, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      counts.pricingSites += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      counts.pricingCurrent += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T09:00:00.000Z',
+            perKwh: 11.5,
+            spotPerKwh: 11.5,
+            renewables: 76,
+            descriptor: 'good',
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T09:00:00.000Z',
+            perKwh: -2.5,
+            spotPerKwh: -2.5,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/weather*', async (route) => {
+      counts.weather += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          place: {
+            resolvedName: 'Sydney',
+            country: 'Australia',
+            latitude: -33.8688,
+            longitude: 151.2093,
+            query: 'Sydney, Australia'
+          },
+          current: {
+            time: '2026-03-30T09:00',
+            temperature_2m: 24,
+            weathercode: 1,
+            cloudcover: 20,
+            is_day: 1
+          },
+          daily: {
+            time: ['2026-03-30', '2026-03-31'],
+            weathercode: [1, 2],
+            precipitation_sum: [0, 0.4],
+            temperature_2m_max: [27, 26],
+            temperature_2m_min: [18, 17],
+            sunrise: ['2026-03-30T06:01', '2026-03-31T06:02'],
+            sunset: ['2026-03-30T17:49', '2026-03-31T17:48']
+          },
+          hourly: {
+            time: ['2026-03-30T09:00', '2026-03-30T10:00'],
+            shortwave_radiation: [640, 690],
+            cloudcover: [20, 18],
+            cloud_cover: [20, 18]
+          }
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/ev/vehicles', async (route) => {
+      counts.evVehicles += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { vehicleId: 'tesla-1', displayName: 'Model 3', hasCredentials: true }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/ev/vehicles/*/status*', async (route) => {
+      counts.evStatus += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        source: 'cache',
+        result: {
+          socPct: 58,
+          chargingState: 'stopped',
+          isPluggedIn: true,
+          isHome: true,
+          rangeKm: 300,
+          chargeLimitPct: 80,
+          asOfIso: '2026-03-30T09:00:00.000Z'
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/ev/vehicles/*/command-readiness', async (route) => {
+      counts.evReadiness += 1;
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          state: 'ready_direct',
+          transport: 'direct',
+          source: 'test',
+          vehicleCommandProtocolRequired: false
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      counts.quickControl += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { active: false } }, 200));
+    });
+
+    await page.route('**/api/metrics/api-calls*', async (route) => {
+      counts.metrics += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: {} }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      counts.automationSummary += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { enabled: false, inBlackout: false } }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      counts.scheduler += 1;
+      await route.fulfill(jsonResponse({ errno: 0, result: { enabled: false, groups: [] } }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.addInitScript((payload) => {
+      const serialized = JSON.stringify(payload);
+      localStorage.setItem('dashboardCardVisibility:guest', serialized);
+      localStorage.setItem('dashboardCardVisibility:test-user-123', serialized);
+    }, visibilityPayload);
+
+    Object.keys(counts).forEach((key) => {
+      counts[key] = 0;
+    });
+
+    await page.goto('/app.html');
+    await page.waitForTimeout(700);
+
+    await expect(page.locator('[data-dashboard-card="overviewSummary"]')).toBeVisible();
+    await expect.poll(async () => ((await page.locator('#overviewSummaryBadge').textContent()) || '').trim()).not.toBe('Preparing');
+
+    expect(counts.inverter).toBeGreaterThan(0);
+    expect(counts.pricingSites).toBe(0);
+    expect(counts.pricingCurrent).toBeGreaterThan(0);
+    expect(counts.weather).toBeGreaterThan(0);
+    expect(counts.evVehicles).toBeGreaterThan(0);
+    expect(counts.evStatus).toBeGreaterThan(0);
+    expect(counts.evReadiness).toBe(0);
+    expect(counts.quickControl).toBeGreaterThan(0);
+    expect(counts.metrics).toBe(0);
+    expect(counts.automationSummary).toBe(0);
+    expect(counts.scheduler).toBe(0);
+  });
+
   test('should render EV overview tabs and summary from EV API data', async ({ page }) => {
     await mockEvApis(page, {
       vehicles: [
