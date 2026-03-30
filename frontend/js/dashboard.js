@@ -1843,12 +1843,12 @@
                                     <div class="energy-core__soc value">${escapeHtml(batteryLevelText)}</div>
                                     <div class="energy-core__storage">${escapeHtml(batteryEnergyText)}</div>
                                     <div class="energy-core__status"><span class="${batteryClass}">${batteryDisplay}</span></div>
+                                    ${batteryEtaText ? `<div class="energy-core__eta">${escapeHtml(batteryEtaText)}</div>` : ''}
                                 </div>
                                 <div class="energy-core__visual">
                                     ${batteryIconSvg}
                                 </div>
                             </div>
-                            ${batteryEtaText ? `<div class="energy-core__eta">${escapeHtml(batteryEtaText)}</div>` : ''}
                             <div class="energy-core__temps">
                                 <span class="energy-core__temp ${batTempCls}">Bat ${batTempVal !== null && batTempVal !== undefined ? fmtTemp(batTempVal) : '-'}</span>
                                 <span class="energy-core__temp ${ambTempCls}">Amb ${ambTempVal !== null && ambTempVal !== undefined ? fmtTemp(ambTempVal) : '-'}</span>
