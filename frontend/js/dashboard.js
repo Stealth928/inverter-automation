@@ -3539,14 +3539,8 @@
                         }
                     ].filter((metric) => Number.isFinite(metric.value))
                     : [];
-                const currentPriceMetricCount = [
-                    !!currentGen,
-                    !!currentFeed,
-                    currentDemandMw !== null,
-                    currentGenerationMw !== null,
-                    !!(currentGen && currentGen.renewables !== undefined)
-                ].filter(Boolean).length || 1;
                 const currentMetricParts = [];
+                const showStandaloneMarketMetrics = marketMetrics.length === 0;
                 if (currentGen) {
                     const p = currentGen.perKwh;
                     const cls = p > 30 ? 'price-high' : p > 20 ? 'price-mid' : 'price-low';
@@ -3566,13 +3560,13 @@
                         <div class="value ${getCls} pricing-current-metric__value">${feedPriceStr}</div>
                     </div>`);
                 }
-                if (currentDemandMw !== null) {
+                if (showStandaloneMarketMetrics && currentDemandMw !== null) {
                     currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--demand">
                         <div class="pricing-current-metric__label">Demand</div>
                         <div class="value pricing-current-metric__value pricing-current-metric__value--market">${formatAemoMarketMetricMw(currentDemandMw)}</div>
                     </div>`);
                 }
-                if (currentGenerationMw !== null) {
+                if (showStandaloneMarketMetrics && currentGenerationMw !== null) {
                     currentMetricParts.push(`<div class="pricing-current-metric pricing-current-metric--generation">
                         <div class="pricing-current-metric__label">Generation</div>
                         <div class="value pricing-current-metric__value pricing-current-metric__value--market">${formatAemoMarketMetricMw(currentGenerationMw)}</div>
@@ -3589,7 +3583,7 @@
                     </div>`);
                 }
 
-                const currentMetricsHtml = `<div class="pricing-current-metrics" style="--pricing-current-metric-count:${currentPriceMetricCount}">${currentMetricParts.join('')}</div>`;
+                const currentMetricsHtml = `<div class="pricing-current-metrics" style="--pricing-current-metric-count:${currentMetricParts.length || 1}">${currentMetricParts.join('')}</div>`;
 
                 if (marketMetrics.length > 0) {
                     const maxMarketMetricValue = Math.max(...marketMetrics.map((metric) => Math.abs(metric.value)), 1);

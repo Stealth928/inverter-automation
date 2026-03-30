@@ -2728,7 +2728,7 @@ test.describe('Dashboard Page', () => {
     expect(mobileLayout.barsWidth).toBeGreaterThan(0);
   });
 
-  test('should show AEMO demand and generation beside prices and keep feed chart values precise', async ({ page }) => {
+  test('should show only AEMO market bars beside prices and keep feed chart values precise', async ({ page }) => {
     await page.addInitScript(() => {
       class MockChart {
         constructor(_ctx, config) {
@@ -3118,30 +3118,33 @@ test.describe('Dashboard Page', () => {
       });
 
       const buyValue = document.querySelector('#amberCard .pricing-current-metric--buy .pricing-current-metric__value');
-      const demandValue = document.querySelector('#amberCard .pricing-current-metric--demand .pricing-current-metric__value');
-      const generationValue = document.querySelector('#amberCard .pricing-current-metric--generation .pricing-current-metric__value');
       const metricsContainer = document.querySelector('#amberCard .pricing-current-metrics');
+      const bars = Array.from(document.querySelectorAll('#amberCard .pricing-market-bar')).map((element) => ({
+        label: element.querySelector('.pricing-market-bar__label')?.textContent?.trim() || '',
+        value: element.querySelector('.pricing-market-bar__value')?.textContent?.trim() || ''
+      }));
       const metricTops = [...new Set(metrics.map((metric) => metric.top))];
 
       return {
         metricCount: metrics.length,
         metricTops,
         metrics,
+        metricLabels: metrics.map((metric) => metric.label),
+        barCount: bars.length,
+        bars,
         containerRight: Math.round(metricsContainer?.getBoundingClientRect().right || 0),
-        buyFontSize: Number.parseFloat(window.getComputedStyle(buyValue).fontSize),
-        demandFontSize: Number.parseFloat(window.getComputedStyle(demandValue).fontSize),
-        generationFontSize: Number.parseFloat(window.getComputedStyle(generationValue).fontSize),
-        demandText: demandValue?.textContent || '',
-        generationText: generationValue?.textContent || ''
+        buyFontSize: Number.parseFloat(window.getComputedStyle(buyValue).fontSize)
       };
     });
 
-    expect(metricLayout.metricCount).toBe(4);
-    expect(metricLayout.metricTops.length).toBe(2);
-    expect(metricLayout.demandFontSize).toBeLessThan(metricLayout.buyFontSize);
-    expect(metricLayout.generationFontSize).toBeLessThan(metricLayout.buyFontSize);
-    expect(metricLayout.demandText).toContain('GW');
-    expect(metricLayout.generationText).toContain('GW');
+    expect(metricLayout.metricCount).toBe(2);
+    expect(metricLayout.metricTops.length).toBe(1);
+    expect(metricLayout.metricLabels).toEqual(['Buy Now', 'Feed-In Price']);
+    expect(metricLayout.barCount).toBe(2);
+    expect(metricLayout.bars).toEqual([
+      { label: 'DEMAND', value: '5.73 GW' },
+      { label: 'GENERATION', value: '6.39 GW' }
+    ]);
     metricLayout.metrics.forEach((metric) => {
       expect(metric.right).toBeLessThanOrEqual(metricLayout.containerRight + 1);
       expect(metric.width).toBeGreaterThan(120);

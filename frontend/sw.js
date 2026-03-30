@@ -5,7 +5,7 @@ const SHARED_UTILS_VERSION = '13';
 const APP_SHELL_VERSION = '25';
 const TOUR_VERSION = '33';
 const ADMIN_VERSION = '14';
-const DASHBOARD_VERSION = '9';
+const DASHBOARD_VERSION = '10';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_FALLBACK_PAGE = '/app.html';
 
