@@ -29,6 +29,16 @@ function buildAemoAPI(overrides = {}) {
   };
 }
 
+function buildGermanyMarketAPI(overrides = {}) {
+  return {
+    getActualPriceAtTimestamp: jest.fn(async () => ({ marketId: 'DE', result: null })),
+    getCurrentPriceData: jest.fn(async () => ({ marketId: 'DE', data: [], metadata: {} })),
+    getHistoricalPriceData: jest.fn(async () => ({ marketId: 'DE', data: [] })),
+    listSupportedGermanyMarkets: jest.fn(() => []),
+    ...overrides
+  };
+}
+
 describe('read-only route modules', () => {
   test('pricing routes return safe empty list when unauthenticated', async () => {
     const amberPricesInFlight = new Map();
@@ -45,6 +55,7 @@ describe('read-only route modules', () => {
         aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
+        germanyMarketAPI: buildGermanyMarketAPI(),
         authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
         getUserConfig: jest.fn(),
         incrementApiCount: jest.fn(),
@@ -296,6 +307,7 @@ describe('read-only route modules', () => {
         aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
+        germanyMarketAPI: buildGermanyMarketAPI(),
         authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
         getUserConfig,
         incrementApiCount: jest.fn(),
@@ -342,6 +354,7 @@ describe('read-only route modules', () => {
           aemoAPI: buildAemoAPI(),
           amberAPI,
           amberPricesInFlight,
+          germanyMarketAPI: buildGermanyMarketAPI(),
           authenticateUser: (_req, res, _next) => res.status(401).json({ errno: 401, error: 'Unauthorized' }),
           getUserConfig,
           incrementApiCount: jest.fn(),
@@ -416,6 +429,7 @@ describe('read-only route modules', () => {
         aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
+        germanyMarketAPI: buildGermanyMarketAPI(),
         authenticateUser,
         getUserConfig,
         incrementApiCount: jest.fn(),
@@ -460,6 +474,7 @@ describe('read-only route modules', () => {
         aemoAPI: buildAemoAPI(),
         amberAPI,
         amberPricesInFlight,
+        germanyMarketAPI: buildGermanyMarketAPI(),
         authenticateUser: (_req, _res, next) => next(),
         getUserConfig: jest.fn(),
         incrementApiCount: jest.fn(),
@@ -515,6 +530,7 @@ describe('read-only route modules', () => {
         aemoAPI,
         amberAPI,
         amberPricesInFlight,
+        germanyMarketAPI: buildGermanyMarketAPI(),
         authenticateUser: (_req, _res, next) => next(),
         getUserConfig,
         incrementApiCount: jest.fn(),
@@ -539,6 +555,72 @@ describe('read-only route modules', () => {
         aemoRegion: 'NSW1'
       },
       userId: 'u-aemo'
+    });
+    expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
+  });
+
+  test('pricing current endpoint for Germany returns stored snapshot data and does not touch Amber', async () => {
+    const amberPricesInFlight = new Map();
+    const amberAPI = {
+      callAmberAPI: jest.fn(),
+      cacheAmberPricesCurrent: jest.fn(),
+      cacheAmberSites: jest.fn(),
+      getCachedAmberPricesCurrent: jest.fn(),
+      getCachedAmberSites: jest.fn()
+    };
+    const germanyRows = [
+      {
+        type: 'CurrentInterval',
+        channelType: 'general',
+        perKwh: 12.6,
+        startTime: '2026-04-01T10:00:00.000Z',
+        endTime: '2026-04-01T11:00:00.000Z'
+      }
+    ];
+    const germanyMarketAPI = buildGermanyMarketAPI({
+      getCurrentPriceData: jest.fn(async () => ({
+        marketId: 'DE',
+        data: germanyRows,
+        metadata: { asOf: '2026-04-01T10:00:00.000Z' }
+      }))
+    });
+    const getUserConfig = jest.fn(async () => ({
+      market: 'DE',
+      pricingProvider: 'germany-market-data',
+      siteIdOrRegion: 'DE'
+    }));
+
+    const app = buildApp((instance) => {
+      registerPricingRoutes(instance, {
+        aemoAPI: buildAemoAPI(),
+        amberAPI,
+        amberPricesInFlight,
+        germanyMarketAPI,
+        authenticateUser: (_req, _res, next) => next(),
+        getUserConfig,
+        incrementApiCount: jest.fn(),
+        logger: { debug: jest.fn(), warn: jest.fn() },
+        tryAttachUser: jest.fn(async (req) => {
+          req.user = { uid: 'u-de' };
+          return req.user;
+        })
+      });
+    });
+
+    const response = await request(app)
+      .get('/api/pricing/current')
+      .query({ provider: 'germany-market-data', forceRefresh: 'true' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: germanyRows });
+    expect(germanyMarketAPI.getCurrentPriceData).toHaveBeenCalledWith({
+      marketId: 'DE',
+      userConfig: {
+        market: 'DE',
+        pricingProvider: 'germany-market-data',
+        siteIdOrRegion: 'DE'
+      },
+      userId: 'u-de'
     });
     expect(amberAPI.callAmberAPI).not.toHaveBeenCalled();
   });

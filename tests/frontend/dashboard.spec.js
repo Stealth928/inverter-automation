@@ -28,8 +28,13 @@ async function mockDashboardConfig(page, overrides = {}) {
     siteIdOrRegion: siteIdOrRegionOverride = ''
   } = overrides;
   const normalizedPricingProvider = String(pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+  const normalizedMarket = normalizedPricingProvider === 'germany-market-data' ? 'DE' : 'AU';
   const resolvedSiteIdOrRegion = String(
-    siteIdOrRegionOverride || (normalizedPricingProvider === 'aemo' ? aemoRegion : amberSiteId) || ''
+    siteIdOrRegionOverride
+      || (normalizedPricingProvider === 'aemo'
+        ? aemoRegion
+        : (normalizedPricingProvider === 'germany-market-data' ? 'DE' : amberSiteId))
+      || ''
   ).trim();
 
   await page.route('**/api/config', async (route) => {
@@ -40,6 +45,7 @@ async function mockDashboardConfig(page, overrides = {}) {
         deviceSn,
         inverterCapacityW,
         batteryCapacityKWh,
+        market: normalizedMarket,
         pricingProvider: normalizedPricingProvider,
         amberSiteId,
         aemoRegion,
@@ -4498,6 +4504,115 @@ test.describe('Dashboard Page', () => {
     });
 
     expect(tickLabel).toBe('0.10¢');
+  });
+
+  test('should treat Germany pricing as a snapshot-backed market feed without AEMO-only metrics', async ({ page }) => {
+    await page.addInitScript(() => {
+      class MockChart {
+        constructor(_ctx, config) {
+          this.config = config;
+          this.data = config.data;
+          this.options = config.options;
+          window.__lastAmberChartConfig = config;
+        }
+
+        destroy() {}
+      }
+
+      window.Chart = MockChart;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+        localStorage.removeItem('aemoRegion');
+        localStorage.removeItem('pricingSelection:germany-market-data:guest');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'germany-market-data',
+      siteIdOrRegion: 'DE'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            id: 'DE',
+            nmi: 'Germany Market Data',
+            network: 'ENTSO-E Day-Ahead',
+            name: 'Germany',
+            displayName: 'Germany Market Data'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: 8.45,
+            spotPerKwh: 8.45,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-30T00:00:00.000Z',
+            endTime: '2026-03-30T01:00:00.000Z',
+            perKwh: -8.45,
+            spotPerKwh: -8.45,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T01:00:00.000Z',
+            endTime: '2026-03-30T02:00:00.000Z',
+            perKwh: 6.2,
+            spotPerKwh: 6.2,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-30T01:00:00.000Z',
+            endTime: '2026-03-30T02:00:00.000Z',
+            perKwh: -6.2,
+            spotPerKwh: -6.2,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+
+    const amberCard = page.locator('#amberCard');
+    await expect(page.locator('#amberSourceBadge')).toHaveText('Germany');
+    await expect(page.locator('#pricingHeaderNote')).toContainText('Germany wholesale reference');
+    await expect(page.locator('#pricingRefreshBtn')).toHaveAttribute('title', /stored Germany market snapshot/i);
+    await expect(page.locator('#amberSiteId')).toHaveValue('DE');
+    await expect(page.locator('#amberSiteId')).toContainText('Germany Market Data');
+    await expect(amberCard).not.toContainText('Demand');
+    await expect(amberCard).not.toContainText('Generation');
+
+    await expect.poll(async () => page.evaluate(() => {
+      const feedDataset = window.__lastAmberChartConfig?.data?.datasets?.find((dataset) => dataset.label === 'Feed-in Spot (¢)');
+      return Array.isArray(feedDataset?.data) ? feedDataset.data[0] : null;
+    })).toBe(6.2);
   });
 
   test('should ignore stale cached AEMO prices without generation and let manual refresh bypass browser cache', async ({ page }) => {

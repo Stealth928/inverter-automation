@@ -2740,6 +2740,9 @@
         let amberConfiguredSiteId = '';
         let amberLastPersistedSiteId = '';
         const AEMO_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+        const PRICING_PROVIDER_AMBER = 'amber';
+        const PRICING_PROVIDER_AEMO = 'aemo';
+        const PRICING_PROVIDER_GERMANY_MARKET_DATA = 'germany-market-data';
 
         function toFinitePricingNumber(value) {
             const numeric = Number(value);
@@ -2829,6 +2832,60 @@
             return String(pricingProvider || 'amber').trim().toLowerCase() || 'amber';
         }
 
+        function isSnapshotBackedPricingProvider(provider = getPricingProviderSafe()) {
+            return provider === PRICING_PROVIDER_AEMO || provider === PRICING_PROVIDER_GERMANY_MARKET_DATA;
+        }
+
+        function getPricingProviderLabel(provider = getPricingProviderSafe(), variant = 'full') {
+            if (provider === PRICING_PROVIDER_AEMO) {
+                return 'AEMO';
+            }
+            if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+                return variant === 'badge' ? 'Germany' : 'Germany Market Data';
+            }
+            return 'Amber';
+        }
+
+        function getPricingSelectionNoun(provider = getPricingProviderSafe(), plural = false) {
+            if (provider === PRICING_PROVIDER_AEMO) {
+                return plural ? 'regions' : 'region';
+            }
+            if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+                return plural ? 'markets' : 'market';
+            }
+            return plural ? 'sites' : 'site';
+        }
+
+        function getPricingSelectionOptionValue(site, provider = getPricingProviderSafe()) {
+            if (provider === PRICING_PROVIDER_AEMO) {
+                return site.region || site.id;
+            }
+            return site.id || site.region || '';
+        }
+
+        function getPricingSelectionLabel(site, provider = getPricingProviderSafe()) {
+            if (provider === PRICING_PROVIDER_AEMO) {
+                return site.displayName || site.name || site.region || site.id;
+            }
+            if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+                return site.displayName || site.name || site.nmi || site.id;
+            }
+
+            const siteName = site.nmi || site.id || 'Unknown site';
+            const siteNetwork = site.network || 'Unknown network';
+            return `${siteName} (${siteNetwork})`;
+        }
+
+        function buildPricingSelectionConfigPayload(provider, selectionValue) {
+            if (provider === PRICING_PROVIDER_AEMO) {
+                return { pricingProvider: PRICING_PROVIDER_AEMO, aemoRegion: selectionValue, siteIdOrRegion: selectionValue };
+            }
+            if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+                return { market: 'DE', pricingProvider: PRICING_PROVIDER_GERMANY_MARKET_DATA, siteIdOrRegion: selectionValue };
+            }
+            return { pricingProvider: PRICING_PROVIDER_AMBER, amberSiteId: selectionValue, siteIdOrRegion: selectionValue };
+        }
+
         function normalizePricingRefreshMode(value) {
             if (value && typeof value === 'object' && typeof value.mode === 'string') {
                 return value.mode;
@@ -2841,20 +2898,20 @@
 
         function getPricingLocalCacheTtlMs(provider = getPricingProviderSafe()) {
             const configuredTtlMs = Math.max(10 * 1000, Number(CONFIG.cache.amber) || (60 * 1000));
-            return provider === 'aemo'
+            return isSnapshotBackedPricingProvider(provider)
                 ? Math.max(AEMO_SNAPSHOT_INTERVAL_MS, configuredTtlMs)
                 : configuredTtlMs;
         }
 
         function getPricingAutoRefreshCadenceMs(provider = getPricingProviderSafe()) {
             const configuredRefreshMs = Math.max(10 * 1000, Number(CONFIG.refresh.amberPricesMs) || (60 * 1000));
-            return provider === 'aemo'
+            return isSnapshotBackedPricingProvider(provider)
                 ? AEMO_SNAPSHOT_INTERVAL_MS
                 : configuredRefreshMs;
         }
 
         function shouldForcePricingUpstreamRefresh(provider = getPricingProviderSafe(), refreshMode = 'auto') {
-            return provider === 'amber' && refreshMode === 'manual';
+            return provider === PRICING_PROVIDER_AMBER && refreshMode === 'manual';
         }
 
         function updatePricingRefreshControl() {
@@ -2862,17 +2919,26 @@
             if (!refreshButton) return;
 
             const provider = getPricingProviderSafe();
-            refreshButton.title = provider === 'aemo'
-                ? 'Refresh displayed prices from the latest stored AEMO snapshot'
-                : 'Force refresh Amber prices from API (bypasses cache)';
+            if (isSnapshotBackedPricingProvider(provider)) {
+                refreshButton.title = provider === PRICING_PROVIDER_AEMO
+                    ? 'Refresh displayed prices from the latest stored AEMO snapshot'
+                    : 'Refresh displayed prices from the latest stored Germany market snapshot';
+                return;
+            }
+
+            refreshButton.title = 'Force refresh Amber prices from API (bypasses cache)';
         }
 
         function updatePricingHeaderNote() {
             const note = document.getElementById('pricingHeaderNote');
             if (!note) return;
 
-            if (getPricingProviderSafe() === 'aemo') {
+            const provider = getPricingProviderSafe();
+            if (provider === PRICING_PROVIDER_AEMO) {
                 note.textContent = 'AEMO reference only. Your retail import and feed-in rates may differ.';
+                note.style.display = 'block';
+            } else if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+                note.textContent = 'Germany wholesale reference only. Supplier import tariffs and export credits may differ.';
                 note.style.display = 'block';
             } else {
                 note.textContent = '';
@@ -2922,9 +2988,7 @@
 
             const hasMatchingOption = Array.from(select.options || []).some((option) => String(option.value || '').trim() === normalizedSiteId);
             if (!hasMatchingOption) {
-                const fallbackLabel = provider === 'aemo'
-                    ? `${normalizedSiteId} (saved region)`
-                    : `${normalizedSiteId} (saved site)`;
+                const fallbackLabel = `${normalizedSiteId} (saved ${getPricingSelectionNoun(provider)})`;
                 select.innerHTML = `<option value="${escapeHtml(normalizedSiteId)}">${escapeHtml(fallbackLabel)}</option>`;
             }
 
@@ -2940,7 +3004,11 @@
                 }
             } catch (e) { /* ignore and fallback */ }
             try {
-                const legacyKey = getPricingProviderSafe() === 'aemo' ? 'aemoRegion' : 'amberSiteId';
+                const provider = getPricingProviderSafe();
+                const legacyKey = provider === PRICING_PROVIDER_AEMO
+                    ? 'aemoRegion'
+                    : (provider === PRICING_PROVIDER_AMBER ? 'amberSiteId' : '');
+                if (!legacyKey) return '';
                 return String(localStorage.getItem(legacyKey) || '').trim();
             } catch (e) {
                 return '';
@@ -2959,8 +3027,13 @@
             } catch (e) { /* ignore and fallback */ }
 
             try {
-                const legacyKey = getPricingProviderSafe() === 'aemo' ? 'aemoRegion' : 'amberSiteId';
-                localStorage.setItem(legacyKey, normalized);
+                const provider = getPricingProviderSafe();
+                const legacyKey = provider === PRICING_PROVIDER_AEMO
+                    ? 'aemoRegion'
+                    : (provider === PRICING_PROVIDER_AMBER ? 'amberSiteId' : '');
+                if (legacyKey) {
+                    localStorage.setItem(legacyKey, normalized);
+                }
             } catch (e) { /* ignore */ }
         }
 
@@ -2973,12 +3046,11 @@
             amberConfiguredSiteId = normalized;
 
             try {
+                const provider = getPricingProviderSafe();
                 const resp = await authenticatedFetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(getPricingProviderSafe() === 'aemo'
-                        ? { pricingProvider: 'aemo', aemoRegion: normalized, siteIdOrRegion: normalized }
-                        : { pricingProvider: 'amber', amberSiteId: normalized, siteIdOrRegion: normalized })
+                    body: JSON.stringify(buildPricingSelectionConfigPayload(provider, normalized))
                 });
                 if (!resp.ok) {
                     throw new Error(`HTTP ${resp.status}`);
@@ -2989,7 +3061,7 @@
                     throw new Error(payload.msg || payload.error || 'Config save failed');
                 }
             } catch (e) {
-                console.warn('[Amber] Failed to persist selected site:', e && e.message ? e.message : e);
+                console.warn('[Pricing] Failed to persist selected location:', e && e.message ? e.message : e);
                 if (amberLastPersistedSiteId === normalized) {
                     amberLastPersistedSiteId = '';
                 }
@@ -3014,13 +3086,15 @@
             }
 
             if (isDashboardLocalMockEnabled()) {
-                const sites = getMockAmberSites();
+                const sites = provider === PRICING_PROVIDER_GERMANY_MARKET_DATA
+                    ? [{ id: 'DE', nmi: 'Germany Market Data', network: 'ENTSO-E Day-Ahead', displayName: 'Germany Market Data' }]
+                    : getMockAmberSites();
                 amberSites = sites;
-                select.innerHTML = sites.map(s => `<option value="${s.id}">${s.nmi} (${s.network})</option>`).join('');
+                select.innerHTML = sites.map((site) => `<option value="${escapeHtml(getPricingSelectionOptionValue(site, provider))}">${escapeHtml(getPricingSelectionLabel(site, provider))}</option>`).join('');
                 const storedSiteId = getStoredAmberSiteIdSafe();
                 // localStorage (user's last manual pick) takes priority over backend config
                 const preferredSiteId = storedSiteId || amberConfiguredSiteId;
-                const preferredExists = preferredSiteId && sites.some(s => String(s.id) === String(preferredSiteId));
+                const preferredExists = preferredSiteId && sites.some((site) => String(getPricingSelectionOptionValue(site, provider)) === String(preferredSiteId));
                 if (preferredExists) {
                     select.value = String(preferredSiteId);
                 } else if (select.options.length > 0) {
@@ -3056,16 +3130,14 @@
                 if (sites.length > 0) {
                     amberSites = sites;
                     select.innerHTML = sites.map((s) => {
-                        const value = provider === 'aemo' ? (s.region || s.id) : s.id;
-                        const label = provider === 'aemo'
-                            ? (s.displayName || s.name || s.region || s.id)
-                            : `${s.nmi} (${s.network})`;
+                        const value = getPricingSelectionOptionValue(s, provider);
+                        const label = getPricingSelectionLabel(s, provider);
                         return `<option value="${value}">${label}</option>`;
                     }).join('');
                     const storedSiteId = getStoredAmberSiteIdSafe();
                     // localStorage (user's last manual pick) takes priority over backend config
                     const preferredSiteId = storedSiteId || amberConfiguredSiteId;
-                    const preferredExists = preferredSiteId && sites.some(s => String((provider === 'aemo' ? (s.region || s.id) : s.id)) === String(preferredSiteId));
+                    const preferredExists = preferredSiteId && sites.some((site) => String(getPricingSelectionOptionValue(site, provider)) === String(preferredSiteId));
                     if (preferredExists) {
                         select.value = String(preferredSiteId);
                     } else if (select.options.length > 0) {
@@ -3088,25 +3160,25 @@
                         // If preferredSiteId existed but wasn't found in the list, do NOT overwrite —
                         // keep the server-saved preference intact and just temporarily show the first site
                     }
-                    card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} ${provider === 'aemo' ? 'region(s)' : 'site(s)'} found</div>`;
+                    card.innerHTML = `<div style="color:var(--color-success)">✓ ${sites.length} ${getPricingSelectionNoun(provider, true)} found</div>`;
                     // Auto-fetch current prices
                     setTimeout(() => refreshPricingCard(forceRefresh ? 'reload' : 'load'), 500);
                 } else {
                     const fallbackSiteId = resolvePricingSiteId(select, provider);
                     if (fallbackSiteId) {
                         applyPricingSiteFallback(select, fallbackSiteId, provider);
-                        card.innerHTML = `<div style="color:var(--color-warning)">Saved ${provider === 'aemo' ? 'region' : 'site'} retained while the ${provider === 'aemo' ? 'region' : 'site'} list is unavailable</div>`;
+                        card.innerHTML = `<div style="color:var(--color-warning)">Saved ${getPricingSelectionNoun(provider)} retained while the ${getPricingSelectionNoun(provider)} list is unavailable</div>`;
                     } else {
-                        select.innerHTML = `<option value="">No ${provider === 'aemo' ? 'regions' : 'sites'}</option>`;
-                        card.innerHTML = `<div style="color:var(--color-warning)">No ${provider === 'aemo' ? 'regions' : 'sites'} found</div>`;
+                        select.innerHTML = `<option value="">No ${getPricingSelectionNoun(provider, true)}</option>`;
+                        card.innerHTML = `<div style="color:var(--color-warning)">No ${getPricingSelectionNoun(provider, true)} found</div>`;
                     }
                 }
             } catch (e) {
-                console.error('[Amber] Error loading sites:', e);
+                console.error('[Pricing] Error loading locations:', e);
                 const fallbackSiteId = resolvePricingSiteId(select, provider);
                 if (fallbackSiteId) {
                     applyPricingSiteFallback(select, fallbackSiteId, provider);
-                    card.innerHTML = `<div style="color:var(--color-danger)">Error loading ${provider === 'aemo' ? 'regions' : 'sites'}: ${escapeHtml(e.message)}</div>`;
+                    card.innerHTML = `<div style="color:var(--color-danger)">Error loading ${getPricingSelectionNoun(provider, true)}: ${escapeHtml(e.message)}</div>`;
                 } else {
                     select.innerHTML = '<option value="">Error</option>';
                     card.innerHTML = `<div style="color:var(--color-danger)">Error: ${escapeHtml(e.message)}</div>`;
@@ -3131,7 +3203,7 @@
                     select.value = siteId;
                 }
             }
-            if (!siteId) { document.getElementById('amberCard').innerHTML = '<div style="color:var(--color-warning)">Select a site</div>'; return; }
+            if (!siteId) { document.getElementById('amberCard').innerHTML = `<div style="color:var(--color-warning)">Select a ${getPricingSelectionNoun(provider)}</div>`; return; }
             setStoredAmberSiteIdSafe(siteId);
             
             // Check if cached data is still fresh (TTL from backend config)
@@ -3146,7 +3218,7 @@
             // stays scheduler-backed but should bypass the browser cache.
             const mockMode = isDashboardLocalMockEnabled();
             const shouldForceUpstreamRefresh = shouldForcePricingUpstreamRefresh(provider, refreshMode);
-            const shouldBypassLocalCache = shouldForceUpstreamRefresh || refreshMode === 'reload' || mockMode || (provider === 'aemo' && refreshMode === 'manual');
+            const shouldBypassLocalCache = shouldForceUpstreamRefresh || refreshMode === 'reload' || mockMode || (isSnapshotBackedPricingProvider(provider) && refreshMode === 'manual');
             const localCacheTtlMs = getPricingLocalCacheTtlMs(provider);
             
             if (!shouldBypassLocalCache && cacheState.amberTime && age < localCacheTtlMs && cacheSiteId === String(siteId) && cacheProvider === provider && cacheOwnerId === currentOwnerId) {
@@ -3234,7 +3306,7 @@
                 
                 document.getElementById('result').textContent = JSON.stringify(data, null, 2);
                 document.getElementById('status-bar').style.display = 'flex';
-                document.getElementById('status-bar').querySelector('.endpoint').textContent = `${provider === 'aemo' ? 'AEMO' : 'Amber'} Prices`;
+                document.getElementById('status-bar').querySelector('.endpoint').textContent = `${getPricingProviderLabel(provider)} Prices`;
             } catch (e) {
                 card.innerHTML = `<div style="color:var(--color-danger)">Error: ${e.message}</div>`;
             }
@@ -6836,7 +6908,7 @@
                 inverterBadge.style.color = mock ? 'var(--color-warning)' : '';
             }
             if (amberBadge) {
-                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : (getPricingProviderSafe() === 'aemo' ? 'AEMO' : 'Amber'));
+                amberBadge.textContent = preview ? 'Preview' : (mock ? 'Mock' : getPricingProviderLabel(getPricingProviderSafe(), 'badge'));
                 amberBadge.style.background = mock ? 'color-mix(in srgb, var(--color-warning) 22%, transparent)' : '';
                 amberBadge.style.color = mock ? 'var(--color-warning)' : '';
             }

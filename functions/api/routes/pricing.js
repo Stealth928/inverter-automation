@@ -1,15 +1,25 @@
 'use strict';
 
-const DEFAULT_PRICING_PROVIDER = 'amber';
-const SUPPORTED_PRICING_PROVIDERS = new Set(['amber', 'aemo']);
+const {
+  DEFAULT_GERMANY_MARKET_ID,
+  PRICING_PROVIDER_AEMO,
+  PRICING_PROVIDER_AMBER,
+  PRICING_PROVIDER_GERMANY_MARKET_DATA,
+  normalizePricingProvider
+} = require('../../lib/pricing-market');
 
-function normalizeProvider(value) {
-  const normalized = String(value || DEFAULT_PRICING_PROVIDER).trim().toLowerCase();
-  return normalized || DEFAULT_PRICING_PROVIDER;
-}
+const SUPPORTED_PRICING_PROVIDERS = new Set([
+  PRICING_PROVIDER_AMBER,
+  PRICING_PROVIDER_AEMO,
+  PRICING_PROVIDER_GERMANY_MARKET_DATA
+]);
 
 function resolveProvider(req, userConfig = null) {
-  return normalizeProvider(req?.query?.provider || userConfig?.pricingProvider);
+  const explicitProvider = String(req?.query?.provider || '').trim().toLowerCase();
+  if (explicitProvider) {
+    return explicitProvider;
+  }
+  return normalizePricingProvider(userConfig?.pricingProvider, userConfig?.market);
 }
 
 function isAmberConfigured(userConfig) {
@@ -23,6 +33,13 @@ function resolveAemoRegionId(req, userConfig = null) {
     || userConfig?.aemoRegion
     || userConfig?.siteIdOrRegion
     || null;
+}
+
+function resolveGermanyMarketId(req, userConfig = null) {
+  return req?.query?.siteId
+    || req?.query?.siteIdOrRegion
+    || userConfig?.siteIdOrRegion
+    || DEFAULT_GERMANY_MARKET_ID;
 }
 
 function rejectUnsupportedProvider(provider, res) {
@@ -41,6 +58,7 @@ function registerPricingRoutes(app, deps = {}) {
   const amberAPI = deps.amberAPI;
   const amberPricesInFlight = deps.amberPricesInFlight;
   const aemoAPI = deps.aemoAPI;
+  const germanyMarketAPI = deps.germanyMarketAPI;
   const authenticateUser = deps.authenticateUser;
   const getUserConfig = deps.getUserConfig;
   const incrementApiCount = deps.incrementApiCount;
@@ -63,6 +81,15 @@ function registerPricingRoutes(app, deps = {}) {
     || typeof aemoAPI.listSupportedAemoRegions !== 'function'
   ) {
     throw new Error('registerPricingRoutes requires aemoAPI');
+  }
+  if (
+    !germanyMarketAPI
+    || typeof germanyMarketAPI.getActualPriceAtTimestamp !== 'function'
+    || typeof germanyMarketAPI.getCurrentPriceData !== 'function'
+    || typeof germanyMarketAPI.getHistoricalPriceData !== 'function'
+    || typeof germanyMarketAPI.listSupportedGermanyMarkets !== 'function'
+  ) {
+    throw new Error('registerPricingRoutes requires germanyMarketAPI');
   }
   if (typeof authenticateUser !== 'function') {
     throw new Error('registerPricingRoutes requires authenticateUser middleware');
@@ -88,8 +115,12 @@ function registerPricingRoutes(app, deps = {}) {
 
       if (rejectUnsupportedProvider(provider, res)) return;
 
-      if (provider === 'aemo') {
+      if (provider === PRICING_PROVIDER_AEMO) {
         return res.json({ errno: 0, result: aemoAPI.listSupportedAemoRegions() });
+      }
+
+      if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+        return res.json({ errno: 0, result: germanyMarketAPI.listSupportedGermanyMarkets() });
       }
 
       if (!userId) {
@@ -163,9 +194,18 @@ function registerPricingRoutes(app, deps = {}) {
 
       if (rejectUnsupportedProvider(provider, res)) return;
 
-      if (provider === 'aemo') {
+      if (provider === PRICING_PROVIDER_AEMO) {
         const result = await aemoAPI.getCurrentPriceData({
           regionId: resolveAemoRegionId(req, userConfig),
+          userConfig,
+          userId
+        });
+        return res.json({ errno: 0, result: Array.isArray(result?.data) ? result.data : [] });
+      }
+
+      if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+        const result = await germanyMarketAPI.getCurrentPriceData({
+          marketId: resolveGermanyMarketId(req, userConfig),
           userConfig,
           userId
         });
@@ -258,7 +298,7 @@ function registerPricingRoutes(app, deps = {}) {
 
       if (rejectUnsupportedProvider(provider, res)) return;
 
-      if (provider === 'aemo') {
+      if (provider === PRICING_PROVIDER_AEMO) {
         const startDate = req.query.startDate;
         const endDate = req.query.endDate;
         const regionId = resolveAemoRegionId(req, userConfig);
@@ -273,6 +313,24 @@ function registerPricingRoutes(app, deps = {}) {
         }
 
         const current = await aemoAPI.getCurrentPriceData({ regionId, userConfig, userId });
+        return res.json({ errno: 0, result: Array.isArray(current?.data) ? current.data : [] });
+      }
+
+      if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        const marketId = resolveGermanyMarketId(req, userConfig);
+
+        if (startDate || endDate) {
+          const history = await germanyMarketAPI.getHistoricalPriceData(
+            { marketId, userConfig, userId },
+            `${startDate}T00:00:00.000Z`,
+            `${endDate}T23:59:59.999Z`
+          );
+          return res.json({ errno: 0, result: Array.isArray(history?.data) ? history.data : [] });
+        }
+
+        const current = await germanyMarketAPI.getCurrentPriceData({ marketId, userConfig, userId });
         return res.json({ errno: 0, result: Array.isArray(current?.data) ? current.data : [] });
       }
 
@@ -348,7 +406,7 @@ function registerPricingRoutes(app, deps = {}) {
 
       if (rejectUnsupportedProvider(provider, res)) return;
 
-      if (provider === 'aemo') {
+      if (provider === PRICING_PROVIDER_AEMO) {
         const timestamp = req.query.timestamp;
         if (!timestamp) {
           return res.status(400).json({ errno: 400, error: 'Timestamp is required' });
@@ -361,6 +419,18 @@ function registerPricingRoutes(app, deps = {}) {
             userId
           },
           timestamp
+        );
+        return res.json({ errno: 0, result: result?.result || null });
+      }
+
+      if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+        const result = await germanyMarketAPI.getActualPriceAtTimestamp(
+          {
+            marketId: resolveGermanyMarketId(req, userConfig),
+            userConfig,
+            userId
+          },
+          req.query.timestamp
         );
         return res.json({ errno: 0, result: result?.result || null });
       }

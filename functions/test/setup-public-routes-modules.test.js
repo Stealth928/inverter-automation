@@ -191,9 +191,38 @@ describe('setup public route module', () => {
     expect(deps.__sharedDoc.set).toHaveBeenCalledWith(expect.objectContaining({
       deviceSn: 'SN-AEMO-001',
       foxessToken: 'emu-token',
+      market: 'AU',
       pricingProvider: 'aemo',
       aemoRegion: 'VIC1',
       siteIdOrRegion: 'VIC1',
+      amberApiKey: ''
+    }), { merge: true });
+  });
+
+  test('validate-keys persists Germany pricing selection during setup', async () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+
+    const deps = buildDeps();
+    const app = buildApp(deps);
+
+    const response = await request(app)
+      .post('/api/config/validate-keys')
+      .send({
+        device_sn: 'SN-DE-001',
+        foxess_token: 'emu-token',
+        market: 'DE',
+        pricing_provider: 'germany-market-data',
+        amber_api_key: 'ignored-amber-key'
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(deps.__sharedDoc.set).toHaveBeenCalledWith(expect.objectContaining({
+      deviceSn: 'SN-DE-001',
+      foxessToken: 'emu-token',
+      market: 'DE',
+      pricingProvider: 'germany-market-data',
+      aemoRegion: '',
+      siteIdOrRegion: 'DE',
       amberApiKey: ''
     }), { merge: true });
   });

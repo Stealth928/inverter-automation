@@ -1,11 +1,15 @@
 'use strict';
 
+const {
+  DEFAULT_PRICING_PROVIDER,
+  PRICING_PROVIDER_AEMO,
+  PRICING_PROVIDER_AMBER,
+  normalizePricingSelectionInput
+} = require('../../lib/pricing-market');
+
 const TESLA_STATUS_CACHE_MIN_MS = 120000;
 const TESLA_STATUS_CACHE_MAX_MS = 10000000;
 const TESLA_STATUS_CACHE_DEFAULT_MS = 600000;
-const DEFAULT_PRICING_PROVIDER = 'amber';
-const DEFAULT_AEMO_REGION = 'NSW1';
-const SUPPORTED_AEMO_REGIONS = new Set(['NSW1', 'QLD1', 'VIC1', 'SA1', 'TAS1']);
 
 function resolveTeslaStatusCacheMs(userConfig, serverConfig) {
   const serverDefaultRaw = Number(serverConfig?.automation?.cacheTtl?.teslaStatus);
@@ -19,31 +23,34 @@ function resolveTeslaStatusCacheMs(userConfig, serverConfig) {
   return Math.min(TESLA_STATUS_CACHE_MAX_MS, Math.max(TESLA_STATUS_CACHE_MIN_MS, rounded));
 }
 
-function normalizePricingProvider(value) {
-  const normalized = String(value || DEFAULT_PRICING_PROVIDER).trim().toLowerCase();
-  return normalized === 'aemo' ? 'aemo' : DEFAULT_PRICING_PROVIDER;
-}
-
-function normalizeAemoRegion(value) {
-  const normalized = String(value || DEFAULT_AEMO_REGION).trim().toUpperCase();
-  return SUPPORTED_AEMO_REGIONS.has(normalized) ? normalized : DEFAULT_AEMO_REGION;
-}
-
 function buildSetupPricingConfig(payload = {}) {
-  const pricingProvider = normalizePricingProvider(payload.pricing_provider || payload.pricingProvider);
+  const normalizedSelection = normalizePricingSelectionInput(payload);
+  const pricingProvider = normalizedSelection.pricingProvider;
 
-  if (pricingProvider === 'aemo') {
-    const aemoRegion = normalizeAemoRegion(payload.aemo_region || payload.aemoRegion || payload.siteIdOrRegion);
+  if (pricingProvider === PRICING_PROVIDER_AEMO) {
     return {
+      market: normalizedSelection.market,
       pricingProvider,
       amberApiKey: '',
       amberSiteId: '',
-      aemoRegion,
-      siteIdOrRegion: aemoRegion
+      aemoRegion: normalizedSelection.aemoRegion,
+      siteIdOrRegion: normalizedSelection.siteIdOrRegion
+    };
+  }
+
+  if (pricingProvider !== PRICING_PROVIDER_AMBER) {
+    return {
+      market: normalizedSelection.market,
+      pricingProvider,
+      amberApiKey: '',
+      amberSiteId: '',
+      aemoRegion: '',
+      siteIdOrRegion: normalizedSelection.siteIdOrRegion || ''
     };
   }
 
   return {
+    market: normalizedSelection.market,
     pricingProvider: DEFAULT_PRICING_PROVIDER,
     amberApiKey: String(payload.amber_api_key || '').trim(),
     amberSiteId: '',

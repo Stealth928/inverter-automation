@@ -59,6 +59,7 @@ test.describe('Setup Page', () => {
 
     await expect(page).toHaveTitle(/Setup/i);
     await expect(page.locator('#providerFoxess')).toBeChecked();
+    await expect(page.locator('#pricingMarket')).toHaveValue('AU');
     await expect(page.locator('#pricingProvider')).toHaveValue('amber');
     await expect(page.locator('#deviceSn')).toBeVisible();
     await expect(page.locator('#foxessToken')).toBeVisible();
@@ -141,6 +142,7 @@ test.describe('Setup Page', () => {
     expect(validateCalls[0]).toMatchObject({
       device_sn: 'TEST-SN-002',
       foxess_token: 'foxess-token-2',
+      market: 'AU',
       pricing_provider: 'aemo',
       aemo_region: 'SA1',
       amber_api_key: null,
@@ -148,6 +150,37 @@ test.describe('Setup Page', () => {
       inverter_capacity_w: 10000,
       battery_capacity_kwh: 13.5
     });
+  });
+
+  test('posts Germany market data selection when Germany is chosen', async ({ page }) => {
+    const { validateCalls } = await mountSetupPage(page);
+
+    await page.locator('#pricingMarket').selectOption('DE');
+    await expect(page.locator('#pricingProvider')).toHaveValue('germany-market-data');
+    await expect(page.locator('#pricingGermanyInfoGroup')).toBeVisible();
+    await expect(page.locator('#amberApiKeyGroup')).toBeHidden();
+    await expect(page.locator('#pricingAemoRegionGroup')).toBeHidden();
+
+    await page.locator('#deviceSn').fill(' TEST-SN-DE-1 ');
+    await page.locator('#foxessToken').fill(' foxess-token-de ');
+    await page.locator('#weatherPlace').fill('Berlin,Germany');
+    await page.locator('#inverterCapacityKw').fill('10');
+    await page.locator('#batteryCapacityKwh').fill('13.5');
+
+    await page.locator('#submitBtn').click();
+
+    await expect.poll(() => validateCalls.length).toBe(1);
+    expect(validateCalls[0]).toMatchObject({
+      device_sn: 'TEST-SN-DE-1',
+      foxess_token: 'foxess-token-de',
+      market: 'DE',
+      pricing_provider: 'germany-market-data',
+      amber_api_key: null,
+      weather_place: 'Berlin, Germany',
+      inverter_capacity_w: 10000,
+      battery_capacity_kwh: 13.5
+    });
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('setup_pricing_market'))).toBe('DE');
   });
 
   test('surfaces validate-keys errors on the mapped field and restores the submit button', async ({ page }) => {

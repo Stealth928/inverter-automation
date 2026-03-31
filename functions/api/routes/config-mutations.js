@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizeTelemetryMappings } = require('../../lib/telemetry-mappings');
+const { normalizePricingSelectionInput } = require('../../lib/pricing-market');
 
 const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
   'alphaessAppSecret',
@@ -228,6 +229,8 @@ function registerConfigMutationRoutes(app, deps = {}) {
 
       // Get existing config to check if location changed
       const existingConfig = await getUserConfig(userId);
+
+      Object.assign(newConfig, normalizePricingSelectionInput(newConfig, existingConfig));
 
       // Normalize location fields: ensure location and preferences.weatherPlace stay in sync
       // Priority: use whichever field was provided, and sync to both

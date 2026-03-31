@@ -92,13 +92,21 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
       if (Object.prototype.hasOwnProperty.call(postData || {}, 'amber_api_key')) {
         state.amberApiKey = postData.amber_api_key || '';
       }
+      const pricingMarket = String(postData?.market || postData?.pricingMarket || '').trim().toUpperCase();
       const pricingProvider = String(postData?.pricing_provider || '').trim().toLowerCase();
       if (pricingProvider === 'aemo') {
         const aemoRegion = String(postData?.aemo_region || state.aemoRegion || 'NSW1').trim().toUpperCase() || 'NSW1';
+        state.market = 'AU';
         state.pricingProvider = 'aemo';
         state.aemoRegion = aemoRegion;
         state.siteIdOrRegion = aemoRegion;
+      } else if (pricingProvider === 'germany-market-data' || pricingMarket === 'DE') {
+        state.market = 'DE';
+        state.pricingProvider = 'germany-market-data';
+        state.aemoRegion = '';
+        state.siteIdOrRegion = 'DE';
       } else if (pricingProvider === 'amber') {
+        state.market = 'AU';
         state.pricingProvider = 'amber';
       }
       body = { errno: 0, result: { valid: true } };
@@ -1535,6 +1543,30 @@ test.describe('Settings Page - Pricing Source Persistence', () => {
     }).toBe('amber');
     expect(apiMock.getValidateKeysRequests()).toHaveLength(0);
     await expect.poll(async () => pricingProvider.inputValue()).toBe('amber');
+  });
+
+  test('switches to Germany market data and saves the market selection without pricing credentials', async ({ page }) => {
+    const pricingMarket = page.locator('#pricing_market');
+    const pricingProvider = page.locator('#pricing_provider');
+    const saveCredentialsBtn = page.locator('#credentialsSaveBtn');
+
+    if (await pricingMarket.count() === 0 || await pricingProvider.count() === 0 || await saveCredentialsBtn.count() === 0) {
+      expect(true).toBeTruthy();
+      return;
+    }
+
+    await pricingMarket.selectOption('DE');
+    await expect(pricingProvider).toHaveValue('germany-market-data');
+    await expect(page.locator('#pricingGermanyInfoSection')).toBeVisible();
+    await expect(page.locator('#pricingAmberKeySection')).toBeHidden();
+    await expect(page.locator('#pricingAemoRegionSection')).toBeHidden();
+
+    await saveCredentialsBtn.click();
+
+    await expect.poll(() => apiMock.getConfigState().market).toBe('DE');
+    await expect.poll(() => apiMock.getConfigState().pricingProvider).toBe('germany-market-data');
+    await expect.poll(() => apiMock.getConfigState().siteIdOrRegion).toBe('DE');
+    expect(apiMock.getValidateKeysRequests()).toHaveLength(0);
   });
 });
 

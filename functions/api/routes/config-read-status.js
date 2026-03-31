@@ -1,6 +1,7 @@
 'use strict';
 
 const { getTelemetryMappings } = require('../../lib/telemetry-mappings');
+const { normalizePricingSelectionInput } = require('../../lib/pricing-market');
 
 const WRITE_ONLY_SECRET_FIELDS = Object.freeze([
   'alphaessAppSecret',
@@ -305,7 +306,10 @@ function registerConfigReadStatusRoutes(app, deps = {}) {
       const serverConfig = getConfig();
       const config = buildResponseConfig(userConfig, serverConfig);
 
-      const configResponse = sanitizeConfigForClient(userConfig);
+      const configResponse = {
+        ...sanitizeConfigForClient(userConfig),
+        ...normalizePricingSelectionInput(userConfig, userConfig)
+      };
 
       // Set cache headers: revalidate on every request but allow 304 Not Modified responses
       // This means browser will check with server each time, but gets instant 304 if unchanged

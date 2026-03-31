@@ -87,6 +87,7 @@ const {
 const { resolveProviderDeviceId } = require('./lib/provider-device-id');
 const amberModule = require('./api/amber');
 const aemoModule = require('./api/aemo');
+const germanyMarketModule = require('./api/germany-market-data');
 let googleApis = null;
 try {
   ({ google: googleApis } = require('googleapis'));
@@ -169,6 +170,14 @@ const aemoAPI = aemoModule.init({
   serverTimestamp
 });
 
+const germanyMarketAPI = germanyMarketModule.init({
+  db,
+  logger: null, // Will be defined below
+  getConfig: null, // Will be defined below
+  incrementApiCount: null, // Will be defined below
+  serverTimestamp
+});
+
 // Import shared state from amber module (used for concurrency control)
 const { amberPricesInFlight } = amberModule;
 
@@ -207,6 +216,7 @@ const alphaEssAPI = alphaEssModule.init({
 const { createAdapterRegistry } = require('./lib/adapters/adapter-registry');
 const { createAmberTariffAdapter } = require('./lib/adapters/amber-adapter');
 const { createAemoTariffAdapter } = require('./lib/adapters/aemo-adapter');
+const { createGermanyMarketDataTariffAdapter } = require('./lib/adapters/germany-market-data-adapter');
 const { createFoxessDeviceAdapter } = require('./lib/adapters/foxess-adapter');
 const { createSungrowDeviceAdapter } = require('./lib/adapters/sungrow-adapter');
 const { createSigenEnergyDeviceAdapter } = require('./lib/adapters/sigenergy-adapter');
@@ -238,6 +248,7 @@ const _secretSungrowAppSecret = defineSecret('SUNGROW_APP_SECRET');
 const _secretTeslaProxyUrl    = defineSecret('TESLA_SIGNED_COMMAND_PROXY_URL');
 const _secretTeslaProxyToken  = defineSecret('TESLA_SIGNED_COMMAND_PROXY_TOKEN');
 const _secretGithubDataworksToken = defineSecret('GITHUB_DATAWORKS_TOKEN');
+const _secretEntsoeSecurityToken = defineSecret('ENTSOE_SECURITY_TOKEN');
 const _secretWebPushVapidPublicKey = defineSecret('WEB_PUSH_VAPID_PUBLIC_KEY');
 const _secretWebPushVapidPrivateKey = defineSecret('WEB_PUSH_VAPID_PRIVATE_KEY');
 const _secretWebPushVapidSubject = defineSecret('WEB_PUSH_VAPID_SUBJECT');
@@ -254,6 +265,10 @@ const getConfig = () => {
     amber: {
       apiKey:  process.env.AMBER_API_KEY  || '',
       baseUrl: process.env.AMBER_BASE_URL || 'https://api.amber.com.au/v1'
+    },
+    entsoe: {
+      securityToken: process.env.ENTSOE_SECURITY_TOKEN || '',
+      baseUrl: process.env.ENTSOE_BASE_URL || 'https://web-api.tp.entsoe.eu/api'
     },
     sungrow: {
       appKey:    process.env.SUNGROW_APP_KEY    || '',
@@ -274,6 +289,7 @@ const getConfig = () => {
       cacheTtl: {
         aemo: 60000,       // 60 seconds
         amber: 60000,      // 60 seconds
+        germanyMarketData: 60000, // 60 seconds
         inverter: 300000,  // 5 minutes
         weather: 1800000,  // 30 minutes
         teslaStatus: 600000 // 10 minutes
@@ -306,6 +322,7 @@ const logger = createStructuredLogger({
 });
 const amberTariffAdapter = createAmberTariffAdapter({ amberAPI, amberPricesInFlight, logger });
 const aemoTariffAdapter = createAemoTariffAdapter({ aemoAPI });
+const germanyMarketTariffAdapter = createGermanyMarketDataTariffAdapter({ germanyMarketAPI });
 const cacheMetrics = createCacheMetricsService();
 const apiRateLimiter = createApiRateLimiter({
   windowMs: 60 * 1000,
@@ -1237,6 +1254,7 @@ registerPricingRoutes(app, {
   amberAPI,
   amberPricesInFlight,
   aemoAPI,
+  germanyMarketAPI,
   authenticateUser,
   getUserConfig,
   incrementApiCount,
@@ -1555,6 +1573,14 @@ Object.assign(aemoAPI, aemoModule.init({
   incrementApiCount
 }));
 
+Object.assign(germanyMarketAPI, germanyMarketModule.init({
+  db,
+  logger,
+  getConfig,
+  incrementApiCount,
+  serverTimestamp
+}));
+
 Object.assign(foxessAPI, foxessModule.init({
   db,
   logger,
@@ -1586,6 +1612,7 @@ Object.assign(alphaEssAPI, alphaEssModule.init({
 // Register adapters now that provider APIs are fully initialised.
 adapterRegistry.registerTariffProvider('amber', amberTariffAdapter);
 adapterRegistry.registerTariffProvider('aemo', aemoTariffAdapter);
+adapterRegistry.registerTariffProvider('germany-market-data', germanyMarketTariffAdapter);
 adapterRegistry.registerDeviceProvider('foxess', createFoxessDeviceAdapter({ foxessAPI, logger }));
 adapterRegistry.registerDeviceProvider('sungrow', createSungrowDeviceAdapter({ sungrowAPI, logger }));
 adapterRegistry.registerDeviceProvider('sigenergy', createSigenEnergyDeviceAdapter({ sigenEnergyAPI, logger }));
@@ -1616,6 +1643,7 @@ exports.api = onRequest(
       _secretTeslaProxyUrl,
       _secretTeslaProxyToken,
       _secretGithubDataworksToken,
+      _secretEntsoeSecurityToken,
       _secretWebPushVapidPublicKey,
       _secretWebPushVapidPrivateKey,
       _secretWebPushVapidSubject
@@ -1725,6 +1753,43 @@ async function refreshAemoLiveSnapshotsHandler(_context) {
   }
 }
 
+async function refreshGermanyLiveSnapshotsHandler(_context) {
+  const results = await germanyMarketAPI.refreshAllCurrentPriceData({});
+  const failures = results.filter((result) => !!result?.error);
+  const updated = results.filter((result) => result && result.updated === true);
+  const skipped = results.filter((result) => result && result.updated === false && !result.error);
+
+  console.log(
+    '[GermanyMarket] Live snapshot refresh completed: updated=%s skipped=%s failed=%s',
+    updated.length,
+    skipped.length,
+    failures.length
+  );
+
+  results.forEach((result) => {
+    if (!result) return;
+    if (result.error) {
+      console.error(
+        '[GermanyMarket] Snapshot refresh failed for %s: %s',
+        result.marketId || 'unknown',
+        result.error
+      );
+      return;
+    }
+    console.log(
+      '[GermanyMarket] Snapshot refresh %s market=%s previousAsOf=%s currentAsOf=%s',
+      result.updated ? 'stored' : 'skipped',
+      result.marketId || 'unknown',
+      result.previousAsOf || '-',
+      result.currentAsOf || '-'
+    );
+  });
+
+  if (failures.length > 0) {
+    throw new Error(`Germany market live snapshot refresh failed for ${failures.length} market(s)`);
+  }
+}
+
 async function runAdminOperationalAlertsHandler(_context) {
   const schedulerAlertSnapshot = await db
     .collection('metrics')
@@ -1811,6 +1876,16 @@ exports.refreshAemoLiveSnapshots = onSchedule(
     memory: '512MiB'
   },
   refreshAemoLiveSnapshotsHandler
+);
+
+exports.refreshGermanyLiveSnapshots = onSchedule(
+  {
+    schedule: '3-59/15 * * * *',
+    timeZone: 'UTC',
+    memory: '256MiB',
+    secrets: [_secretEntsoeSecurityToken]
+  },
+  refreshGermanyLiveSnapshotsHandler
 );
 
 exports.runAdminOperationalAlerts = onSchedule(

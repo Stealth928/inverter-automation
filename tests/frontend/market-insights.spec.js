@@ -2,6 +2,53 @@ const { test, expect } = require('@playwright/test');
 
 test.use({ serviceWorkers: 'block' });
 
+function jsonResponse(payload, status = 200) {
+  return {
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(payload)
+  };
+}
+
+async function mockMarketInsightsConfig(page, overrides = {}) {
+  const {
+    pricingProvider = 'aemo',
+    market = pricingProvider === 'germany-market-data' ? 'DE' : 'AU'
+  } = overrides;
+
+  await page.route('**/api/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+
+    if (pathname === '/api/config') {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          market,
+          pricingProvider
+        }
+      }));
+      return;
+    }
+
+    if (pathname === '/api/config/setup-status') {
+      await route.fulfill(jsonResponse({ errno: 0, result: { setupComplete: true } }));
+      return;
+    }
+
+    if (pathname === '/api/user/init-profile') {
+      await route.fulfill(jsonResponse({ errno: 0, result: { initialized: true } }));
+      return;
+    }
+
+    if (pathname === '/api/admin/check') {
+      await route.fulfill(jsonResponse({ errno: 0, result: { isAdmin: false } }));
+      return;
+    }
+
+    await route.fulfill(jsonResponse({ errno: 0, result: {} }));
+  });
+}
+
 function makeDailyRow(date, meanRRP, maxRRP) {
   const period = Number(date.slice(0, 7).replace('-', ''));
   const minRRP = Math.max(meanRRP - 25, -50);
@@ -126,6 +173,29 @@ test.describe('Market Insights Page', () => {
     await expect(page.locator('.mi-kpi')).toHaveCount(6);
     await expect(page.locator('#trendChart')).toBeVisible();
     await expect(page.locator('#monthlyChart')).toBeVisible();
+  });
+
+  test('shows a Germany placeholder instead of AEMO analytics when Germany pricing is configured', async ({ page }) => {
+    await mockMarketInsightsConfig(page, {
+      pricingProvider: 'germany-market-data',
+      market: 'DE'
+    });
+
+    let aemoDataRequestCount = 0;
+    await page.route('**/data/aemo-market-insights/**', async (route) => {
+      aemoDataRequestCount += 1;
+      await route.abort();
+    });
+
+    await page.goto('/market-insights.html');
+
+    await expect(page.getByRole('heading', { name: /Germany Market Insights/i })).toBeVisible();
+    await expect(page.locator('#freshnessBadge')).toHaveText(/Germany beta/i);
+    await expect(page.locator('#summaryBanner')).toContainText(/Germany beta/i);
+    await expect(page.locator('#marketInsightsUnavailable')).toBeVisible();
+    await expect(page.locator('#marketInsightsUnavailable')).toContainText(/Historical Germany Market Insights are coming soon/i);
+    await expect(page.locator('#kpiSection')).toBeHidden();
+    await expect.poll(() => aemoDataRequestCount).toBe(0);
   });
 
   test('renders the Market Insights tour step with the correct highlight target', async ({ page }) => {

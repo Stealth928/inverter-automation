@@ -31,9 +31,92 @@
             }
         }
 
+        const PRICING_MARKET_AU = 'AU';
+        const PRICING_MARKET_DE = 'DE';
+        const PRICING_PROVIDER_AMBER = 'amber';
+        const PRICING_PROVIDER_AEMO = 'aemo';
+        const PRICING_PROVIDER_GERMANY_MARKET_DATA = 'germany-market-data';
+        const DEFAULT_GERMANY_MARKET_ID = 'DE';
+        const PRICING_PROVIDER_OPTIONS = Object.freeze({
+            AU: [
+                { value: PRICING_PROVIDER_AMBER, label: '🇦🇺 Amber Electric' },
+                { value: PRICING_PROVIDER_AEMO, label: '🇦🇺 AEMO' }
+            ],
+            DE: [
+                { value: PRICING_PROVIDER_GERMANY_MARKET_DATA, label: '🇩🇪 Germany Market Data' }
+            ]
+        });
+
+        function normalizePricingMarket(value, fallback = PRICING_MARKET_AU) {
+            const normalized = String(value || fallback).trim().toUpperCase();
+            return normalized === PRICING_MARKET_DE ? PRICING_MARKET_DE : PRICING_MARKET_AU;
+        }
+
+        function inferPricingMarketFromProvider(provider) {
+            return String(provider || '').trim().toLowerCase() === PRICING_PROVIDER_GERMANY_MARKET_DATA
+                ? PRICING_MARKET_DE
+                : PRICING_MARKET_AU;
+        }
+
+        function normalizePricingProviderForMarket(provider, market = PRICING_MARKET_AU) {
+            const normalizedMarket = normalizePricingMarket(market);
+            const normalizedProvider = String(provider || PRICING_PROVIDER_AMBER).trim().toLowerCase() || PRICING_PROVIDER_AMBER;
+
+            if (normalizedMarket === PRICING_MARKET_DE) {
+                return PRICING_PROVIDER_GERMANY_MARKET_DATA;
+            }
+
+            return normalizedProvider === PRICING_PROVIDER_AEMO ? PRICING_PROVIDER_AEMO : PRICING_PROVIDER_AMBER;
+        }
+
+        function isPublicPricingProvider(provider = getSelectedPricingProvider()) {
+            const normalizedProvider = String(provider || '').trim().toLowerCase();
+            return normalizedProvider === PRICING_PROVIDER_AEMO || normalizedProvider === PRICING_PROVIDER_GERMANY_MARKET_DATA;
+        }
+
+        function getSelectedPricingMarket() {
+            const marketInput = document.getElementById('pricing_market');
+            return normalizePricingMarket(
+                marketInput?.value || currentConfig?.market || originalConfig?.market,
+                inferPricingMarketFromProvider(currentConfig?.pricingProvider || originalConfig?.pricingProvider)
+            );
+        }
+
+        function updatePricingProviderOptions(market = getSelectedPricingMarket(), preferredProvider = null) {
+            const providerInput = document.getElementById('pricing_provider');
+            if (!providerInput) return;
+
+            const normalizedMarket = normalizePricingMarket(market);
+            const normalizedProvider = normalizePricingProviderForMarket(
+                preferredProvider || providerInput.value || currentConfig?.pricingProvider,
+                normalizedMarket
+            );
+            const nextOptions = PRICING_PROVIDER_OPTIONS[normalizedMarket] || PRICING_PROVIDER_OPTIONS[PRICING_MARKET_AU];
+            const currentSignature = Array.from(providerInput.options || [])
+                .map((option) => `${option.value}:${option.textContent}`)
+                .join('|');
+            const nextSignature = nextOptions
+                .map((option) => `${option.value}:${option.label}`)
+                .join('|');
+
+            if (currentSignature !== nextSignature) {
+                providerInput.innerHTML = nextOptions
+                    .map((option) => `<option value="${option.value}">${option.label}</option>`)
+                    .join('');
+            }
+
+            const resolvedProvider = nextOptions.some((option) => option.value === normalizedProvider)
+                ? normalizedProvider
+                : nextOptions[0].value;
+            providerInput.value = resolvedProvider;
+        }
+
         function getSelectedPricingProvider() {
             const providerInput = document.getElementById('pricing_provider');
-            return String(providerInput?.value || currentConfig?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+            return normalizePricingProviderForMarket(
+                providerInput?.value || currentConfig?.pricingProvider || PRICING_PROVIDER_AMBER,
+                getSelectedPricingMarket()
+            );
         }
 
         function getSelectedAemoRegion() {
@@ -46,34 +129,56 @@
         }
 
         function buildSelectedPricingConfigPayload() {
+            const pricingMarket = getSelectedPricingMarket();
             const pricingProvider = getSelectedPricingProvider();
-            if (pricingProvider === 'aemo') {
+            if (pricingProvider === PRICING_PROVIDER_AEMO) {
                 const aemoRegion = getSelectedAemoRegion();
                 return {
-                    pricingProvider: 'aemo',
+                    market: PRICING_MARKET_AU,
+                    pricingProvider: PRICING_PROVIDER_AEMO,
                     aemoRegion,
                     siteIdOrRegion: aemoRegion
                 };
             }
 
+            if (pricingProvider === PRICING_PROVIDER_GERMANY_MARKET_DATA || pricingMarket === PRICING_MARKET_DE) {
+                return {
+                    market: PRICING_MARKET_DE,
+                    pricingProvider: PRICING_PROVIDER_GERMANY_MARKET_DATA,
+                    siteIdOrRegion: DEFAULT_GERMANY_MARKET_ID
+                };
+            }
+
             return {
-                pricingProvider: 'amber'
+                market: PRICING_MARKET_AU,
+                pricingProvider: PRICING_PROVIDER_AMBER
             };
         }
 
         function buildSelectedPricingValidationPayload(payload = {}) {
+            const pricingMarket = getSelectedPricingMarket();
             const pricingProvider = getSelectedPricingProvider();
-            if (pricingProvider === 'aemo') {
+            if (pricingProvider === PRICING_PROVIDER_AEMO) {
                 return {
                     ...payload,
-                    pricing_provider: 'aemo',
+                    market: PRICING_MARKET_AU,
+                    pricing_provider: PRICING_PROVIDER_AEMO,
                     aemo_region: getSelectedAemoRegion()
+                };
+            }
+
+            if (pricingProvider === PRICING_PROVIDER_GERMANY_MARKET_DATA || pricingMarket === PRICING_MARKET_DE) {
+                return {
+                    ...payload,
+                    market: PRICING_MARKET_DE,
+                    pricing_provider: PRICING_PROVIDER_GERMANY_MARKET_DATA
                 };
             }
 
             return {
                 ...payload,
-                pricing_provider: 'amber'
+                market: PRICING_MARKET_AU,
+                pricing_provider: PRICING_PROVIDER_AMBER
             };
         }
 
@@ -85,11 +190,24 @@
         }
 
         function togglePricingProviderFields(provider = getSelectedPricingProvider()) {
-            const normalizedProvider = String(provider || 'amber').trim().toLowerCase() || 'amber';
+            const pricingMarket = getSelectedPricingMarket();
+            updatePricingProviderOptions(pricingMarket, provider);
+            const normalizedProvider = getSelectedPricingProvider();
             const amberSection = document.getElementById('pricingAmberKeySection');
             const aemoSection = document.getElementById('pricingAemoRegionSection');
-            if (amberSection) amberSection.style.display = normalizedProvider === 'amber' ? '' : 'none';
-            if (aemoSection) aemoSection.style.display = normalizedProvider === 'aemo' ? '' : 'none';
+            const germanySection = document.getElementById('pricingGermanyInfoSection');
+            const pricingSourceHint = document.getElementById('pricingSourceHint');
+            const useAmber = pricingMarket === PRICING_MARKET_AU && normalizedProvider === PRICING_PROVIDER_AMBER;
+            const useAemo = pricingMarket === PRICING_MARKET_AU && normalizedProvider === PRICING_PROVIDER_AEMO;
+            const useGermanyMarket = pricingMarket === PRICING_MARKET_DE;
+            if (amberSection) amberSection.style.display = useAmber ? '' : 'none';
+            if (aemoSection) aemoSection.style.display = useAemo ? '' : 'none';
+            if (germanySection) germanySection.style.display = useGermanyMarket ? '' : 'none';
+            if (pricingSourceHint) {
+                pricingSourceHint.textContent = useGermanyMarket
+                    ? 'Germany uses official wholesale market and system data normalized into SoCrates pricing channels.'
+                    : 'Select where SoCrates gets price signals for automation, reporting, and market views.';
+            }
         }
 
         function updatePricingCredentialStatus(hasPricingKey = false) {
@@ -97,9 +215,14 @@
             const credStatusEl = document.getElementById('credentialsStatus');
             if (!credStatusEl) return;
 
-            if (provider === 'aemo') {
+            if (provider === PRICING_PROVIDER_AEMO) {
                 const region = document.getElementById('pricing_aemoRegion')?.value || currentConfig?.aemoRegion || 'NSW1';
                 credStatusEl.textContent = `AEMO public pricing active · region ${region}`;
+                return;
+            }
+
+            if (provider === PRICING_PROVIDER_GERMANY_MARKET_DATA) {
+                credStatusEl.textContent = 'Germany market data active · official wholesale/system data';
                 return;
             }
 
@@ -2574,11 +2697,21 @@
                 setInput('cache_inverter', cacheInverterMs);
                 setInput('cache_weather', cacheWeatherMs);
                 setInput('cache_teslaStatus', cacheTeslaStatusMs);
-                setInput('pricing_provider', currentConfig.pricingProvider || 'amber');
+                const pricingMarket = normalizePricingMarket(currentConfig.market, inferPricingMarketFromProvider(currentConfig.pricingProvider));
+                const pricingProvider = normalizePricingProviderForMarket(currentConfig.pricingProvider || PRICING_PROVIDER_AMBER, pricingMarket);
+                setInput('pricing_market', pricingMarket);
+                updatePricingProviderOptions(pricingMarket, pricingProvider);
+                setInput('pricing_provider', pricingProvider);
                 setInput('pricing_aemoRegion', currentConfig.aemoRegion || currentConfig.siteIdOrRegion || 'NSW1');
                 setInput('credentials_sigenenergyRegion', currentConfig.sigenRegion || 'apac');
-                togglePricingProviderFields(currentConfig.pricingProvider || 'amber');
-                originalCredentials.pricingProvider = currentConfig.pricingProvider || 'amber';
+                currentConfig.market = pricingMarket;
+                currentConfig.pricingProvider = pricingProvider;
+                if (pricingProvider === PRICING_PROVIDER_GERMANY_MARKET_DATA && !currentConfig.siteIdOrRegion) {
+                    currentConfig.siteIdOrRegion = DEFAULT_GERMANY_MARKET_ID;
+                }
+                togglePricingProviderFields(pricingProvider);
+                originalCredentials.market = pricingMarket;
+                originalCredentials.pricingProvider = pricingProvider;
                 originalCredentials.aemoRegion = currentConfig.aemoRegion || currentConfig.siteIdOrRegion || 'NSW1';
                 originalCredentials.sigenenergyRegion = currentConfig.sigenRegion || 'apac';
                 
@@ -2693,7 +2826,7 @@
                             }
                         }
                         
-                        if (getSelectedPricingProvider() === 'aemo') {
+                        if (isPublicPricingProvider()) {
                             if (badge) { badge.textContent = 'Synced'; badge.className = 'badge badge-sync'; }
                             updatePricingCredentialStatus(false);
                         } else if (hasFoxess && hasAmber) {
@@ -3149,11 +3282,7 @@
                     },
                     // Also save location at root level for backward compatibility
                     location: document.getElementById('preferences_weatherPlace')?.value || 'Sydney, Australia',
-                    pricingProvider: getSelectedPricingProvider(),
-                    aemoRegion: document.getElementById('pricing_aemoRegion')?.value || currentConfig.aemoRegion || 'NSW1',
-                    siteIdOrRegion: getSelectedPricingProvider() === 'aemo'
-                        ? (document.getElementById('pricing_aemoRegion')?.value || currentConfig.aemoRegion || 'NSW1')
-                        : (currentConfig.siteIdOrRegion || currentConfig.amberSiteId || ''),
+                    ...buildSelectedPricingConfigPayload(),
                     // Hardware configuration (per-user inverter/battery specs, stored flat at config root)
                     inverterCapacityW: Math.round(parseFloat(document.getElementById('hardware_inverterCapacityKw')?.value || '10') * 1000),
                     batteryCapacityKWh: parseFloat(document.getElementById('hardware_batteryCapacityKwh')?.value || '41.93')
@@ -3525,6 +3654,16 @@
                 select.addEventListener('change', updateStatus);
             });
 
+            const pricingMarketSelect = document.getElementById('pricing_market');
+            if (pricingMarketSelect) {
+                pricingMarketSelect.addEventListener('change', () => {
+                    updatePricingProviderOptions(pricingMarketSelect.value, getSelectedPricingProvider());
+                    togglePricingProviderFields(getSelectedPricingProvider());
+                    updatePricingCredentialStatus(document.getElementById('credentials_amberKey')?.dataset.hasSavedCredential === '1');
+                    updateStatus();
+                });
+            }
+
             const pricingProviderSelect = document.getElementById('pricing_provider');
             if (pricingProviderSelect) {
                 pricingProviderSelect.addEventListener('change', () => {
@@ -3630,7 +3769,12 @@
             const isAlphaEss = document.getElementById('alphaessCredentialsSection')?.style.display !== 'none';
             const isSungrow = document.getElementById('sungrowCredentialsSection')?.style.display !== 'none';
             const isSigenEnergy = document.getElementById('sigenenergyCredentialsSection')?.style.display !== 'none';
+            const pricingMarket = getSelectedPricingMarket();
             const pricingProvider = getSelectedPricingProvider();
+            const originalPricingMarket = normalizePricingMarket(
+                originalCredentials.market || originalConfig?.market || currentConfig?.market,
+                inferPricingMarketFromProvider(originalCredentials.pricingProvider || originalConfig?.pricingProvider || currentConfig?.pricingProvider)
+            );
             const originalPricingProvider = String(
                 originalCredentials.pricingProvider ||
                 originalConfig?.pricingProvider ||
@@ -3646,8 +3790,9 @@
                 currentConfig?.siteIdOrRegion ||
                 'NSW1'
             ).trim() || 'NSW1';
-            const pricingChanged = pricingProvider !== originalPricingProvider ||
-                (pricingProvider === 'aemo' && selectedAemoRegion !== originalAemoRegion);
+            const pricingChanged = pricingMarket !== originalPricingMarket ||
+                pricingProvider !== originalPricingProvider ||
+                (pricingProvider === PRICING_PROVIDER_AEMO && selectedAemoRegion !== originalAemoRegion);
             const amberInput = document.getElementById('credentials_amberKey');
             const amberMatchesOriginal = isCredentialInputUnchanged(amberInput, originalCredentials.amberKey || '');
 
@@ -3748,21 +3893,28 @@
                 if (curtailmentSec) curtailmentSec.style.display = isFoxess ? '' : 'none';
 
                 if (data.errno === 0 && data.result) {
-                    const pricingProvider = String(data.result.pricingProvider || currentConfig?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
+                    const pricingProvider = String(data.result.pricingProvider || currentConfig?.pricingProvider || PRICING_PROVIDER_AMBER).trim().toLowerCase() || PRICING_PROVIDER_AMBER;
+                    const pricingMarket = normalizePricingMarket(data.result.market || currentConfig?.market, inferPricingMarketFromProvider(pricingProvider));
                     const aemoRegion = String(data.result.aemoRegion || data.result.siteIdOrRegion || currentConfig?.aemoRegion || 'NSW1').trim() || 'NSW1';
+                    const pricingMarketInput = document.getElementById('pricing_market');
                     const pricingProviderInput = document.getElementById('pricing_provider');
                     const aemoRegionInput = document.getElementById('pricing_aemoRegion');
-                    if (pricingProviderInput) pricingProviderInput.value = pricingProvider;
+                    if (pricingMarketInput) pricingMarketInput.value = pricingMarket;
+                    updatePricingProviderOptions(pricingMarket, pricingProvider);
+                    if (pricingProviderInput) pricingProviderInput.value = normalizePricingProviderForMarket(pricingProvider, pricingMarket);
                     if (aemoRegionInput) aemoRegionInput.value = aemoRegion;
                     togglePricingProviderFields(pricingProvider);
-                    originalCredentials.pricingProvider = pricingProvider;
+                    originalCredentials.market = pricingMarket;
+                    originalCredentials.pricingProvider = normalizePricingProviderForMarket(pricingProvider, pricingMarket);
                     originalCredentials.aemoRegion = aemoRegion;
-                    currentConfig.pricingProvider = pricingProvider;
+                    currentConfig.market = pricingMarket;
+                    currentConfig.pricingProvider = normalizePricingProviderForMarket(pricingProvider, pricingMarket);
                     currentConfig.aemoRegion = aemoRegion;
-                    currentConfig.siteIdOrRegion = data.result.siteIdOrRegion || aemoRegion;
-                    originalConfig.pricingProvider = pricingProvider;
+                    currentConfig.siteIdOrRegion = data.result.siteIdOrRegion || (currentConfig.pricingProvider === PRICING_PROVIDER_GERMANY_MARKET_DATA ? DEFAULT_GERMANY_MARKET_ID : aemoRegion);
+                    originalConfig.market = pricingMarket;
+                    originalConfig.pricingProvider = currentConfig.pricingProvider;
                     originalConfig.aemoRegion = aemoRegion;
-                    originalConfig.siteIdOrRegion = data.result.siteIdOrRegion || aemoRegion;
+                    originalConfig.siteIdOrRegion = currentConfig.siteIdOrRegion;
 
                     if (isSigenEnergy) {
                         const sgRegionInput = document.getElementById('credentials_sigenenergyRegion');
@@ -3970,7 +4122,7 @@
                     if (amberPresent) {
                         credStatusEl.textContent += ' · pricing API key present';
                     }
-                } else if (getSelectedPricingProvider() === 'aemo') {
+                } else if (isPublicPricingProvider()) {
                     updatePricingCredentialStatus(false);
                 } else if (foxessPresent && amberPresent) {
                     credStatusEl.textContent = 'Inverter token and pricing API key are present (hidden)';
@@ -4014,7 +4166,7 @@
                 : amberDisplayed;
             const amberToSend = amberUnchanged ? null : (amberKey || null);
 
-            if (pricingProvider === 'aemo') {
+            if (isPublicPricingProvider(pricingProvider)) {
                 const saveBtn = document.getElementById('credentialsSaveBtn');
                 const prevText = saveBtn.innerHTML;
                 saveBtn.disabled = true;
@@ -4032,7 +4184,9 @@
                         throw new Error(patchData?.msg || patchData?.error || `HTTP ${patchResp.status}`);
                     }
                     await loadCredentials();
-                    showMessage('success', 'AEMO pricing source saved. No pricing API key is required.');
+                    showMessage('success', pricingProvider === PRICING_PROVIDER_AEMO
+                        ? 'AEMO pricing source saved. No pricing API key is required.'
+                        : 'Germany market data saved. No pricing API key is required.');
                 } catch (e) {
                     console.error('saveCredentials error', e);
                     showMessage('warning', 'Failed to save credentials: ' + (e.message || e));

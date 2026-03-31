@@ -1535,18 +1535,32 @@
                             <span class="form-section-title">Electricity Pricing</span>
                             <span class="form-section-badge">Optional</span>
                         </div>
-                        <div class="form-section-subtitle">Optional. Choose Amber or AEMO to enable price-aware automation with the same in-app pricing surfaces.</div>
+                        <div class="form-section-subtitle">Optional. Choose your market and source to enable price-aware automation with the same in-app pricing surfaces.</div>
+                    </div>
+
+                    <div class="form-group" id="pricingMarketGroup">
+                        <label for="pricingMarket">
+                            <span>Market Data Region</span>
+                        </label>
+                        <div class="hint">Choose the country-level market SoCrates should use for pricing context, Market Insights, and automation signals.</div>
+                        <div class="input-wrapper">
+                            <select id="pricingMarket" name="pricingMarket">
+                                <option value="AU" selected>🇦🇺 Australia</option>
+                                <option value="DE">🇩🇪 Germany</option>
+                            </select>
+                            <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg></span>
+                        </div>
                     </div>
 
                     <div class="form-group" id="pricingProviderGroup">
                         <label for="pricingProvider">
-                            <span>Pricing Source</span>
+                            <span>Source</span>
                         </label>
-                        <div class="hint">Amber uses your retail site pricing. AEMO uses public regional market pricing.</div>
+                        <div class="hint" id="pricingProviderHint">Select where SoCrates gets price signals for automation, reporting, and market views.</div>
                         <div class="input-wrapper">
                             <select id="pricingProvider" name="pricingProvider">
-                                <option value="amber" selected>Amber</option>
-                                <option value="aemo">AEMO</option>
+                                <option value="amber" selected>🇦🇺 Amber Electric</option>
+                                <option value="aemo">🇦🇺 AEMO</option>
                             </select>
                             <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4-4 4 3 6-7"/></svg></span>
                         </div>
@@ -1567,6 +1581,14 @@
                             </select>
                             <span class="input-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg></span>
                         </div>
+                    </div>
+
+                    <div class="form-group" id="pricingGermanyInfoGroup" style="display:none">
+                        <label>
+                            <span>Germany Market Data</span>
+                        </label>
+                        <div class="hint">Use official German market and system data for live pricing context, Market Insights, and automation signals.</div>
+                        <div class="hint">Germany support uses market-price signals normalized for SoCrates automation. It is not customer-specific retailer pricing.</div>
                     </div>
 
                     <!-- Amber API Key (Optional) -->

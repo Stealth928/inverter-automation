@@ -3,6 +3,9 @@
     'use strict';
 
     const marketData = window.AemoMarketData;
+    const MARKET_AU = 'AU';
+    const MARKET_DE = 'DE';
+    const PRICING_PROVIDER_GERMANY_MARKET_DATA = 'germany-market-data';
     const DAY_MS = 86400000;
     const COLORS = ['#58a6ff', '#7ee787', '#ffc56d', '#ff7b72', '#d2a8ff'];
     const SPIKE_THRESHOLD = 300; // $/MWh — industry convention for "spike"
@@ -20,15 +23,110 @@
         endDate: null,
         trendMetric: 'meanRRP',
         detail: null,
-        monthlySpikeByKey: new Map()
+        monthlySpikeByKey: new Map(),
+        market: MARKET_AU,
+        pricingProvider: ''
     };
 
-    if (!marketData) {
-        console.warn('[MarketInsights] Shared AEMO market data loader unavailable');
-        return;
+    const $ = (id) => document.getElementById(id);
+
+    function normalizeMarket(value) {
+        return String(value || '').trim().toUpperCase() === MARKET_DE ? MARKET_DE : MARKET_AU;
     }
 
-    const $ = (id) => document.getElementById(id);
+    function inferMarketFromProvider(provider) {
+        return String(provider || '').trim().toLowerCase() === PRICING_PROVIDER_GERMANY_MARKET_DATA
+            ? MARKET_DE
+            : MARKET_AU;
+    }
+
+    function setText(id, value) {
+        const el = $(id);
+        if (el) el.textContent = value;
+    }
+
+    function setHeadingLabel(value) {
+        const labelEl = $('marketInsightsTitle') || document.querySelector('.page-header h1 .page-title__label');
+        if (labelEl) {
+            labelEl.textContent = value;
+            return;
+        }
+
+        const heading = document.querySelector('.page-header h1');
+        if (heading) {
+            heading.textContent = value;
+        }
+    }
+
+    async function loadMarketContext() {
+        let detectedMarket = MARKET_AU;
+        let detectedProvider = '';
+
+        try {
+            const savedMarket = localStorage.getItem('setup_pricing_market');
+            if (savedMarket) {
+                detectedMarket = normalizeMarket(savedMarket);
+            }
+        } catch (e) { /* ignore storage issues */ }
+
+        if (typeof authenticatedFetch !== 'function') {
+            S.market = detectedMarket;
+            S.pricingProvider = detectedProvider;
+            return;
+        }
+
+        try {
+            const response = await authenticatedFetch('/api/config');
+            if (!response.ok) {
+                S.market = detectedMarket;
+                S.pricingProvider = detectedProvider;
+                return;
+            }
+
+            const payload = await response.json();
+            const result = payload?.result || {};
+            detectedProvider = String(result.pricingProvider || '').trim().toLowerCase();
+            detectedMarket = normalizeMarket(result.market || inferMarketFromProvider(detectedProvider) || detectedMarket);
+        } catch (e) {
+            console.warn('[MarketInsights] Failed to load pricing market context', e);
+        }
+
+        S.market = detectedMarket;
+        S.pricingProvider = detectedProvider;
+    }
+
+    function renderGermanyPlaceholder() {
+        document.querySelectorAll('.mi-controls, #kpiSection, .mi-split, .mi-card').forEach((el) => {
+            if (el && el.id !== 'marketInsightsUnavailable') {
+                el.hidden = true;
+                el.style.display = 'none';
+            }
+        });
+
+        setHeadingLabel('Germany Market Insights');
+        setText('marketInsightsSubtitle', 'Live day-ahead pricing is available on the dashboard while historical Germany market insights are still being rolled out.');
+        setText('freshnessBadge', 'Germany beta');
+        setText('marketInsightsUnavailableTitle', 'Historical Germany Market Insights are coming soon.');
+        setText('marketInsightsUnavailableBody', 'Use the dashboard for current and upcoming Germany day-ahead pricing. This page will expand to historical Germany trends once the public dataset pipeline is in place.');
+
+        const summary = $('summaryBanner');
+        if (summary) {
+            summary.hidden = false;
+            summary.innerHTML = '<div class="mi-summary__body"><div class="mi-summary__signal mi-summary__signal--normal">Germany beta</div><div class="mi-summary__text">Live Germany day-ahead pricing is available on the dashboard. Historical Market Insights views will arrive in a later release.</div></div>';
+        }
+
+        const unavailable = $('marketInsightsUnavailable');
+        if (unavailable) {
+            unavailable.hidden = false;
+            unavailable.style.display = '';
+        }
+
+        const warn = $('selWarn');
+        if (warn) {
+            warn.hidden = true;
+            warn.textContent = '';
+        }
+    }
 
     // ── Formatting ──
     function fmtDollar(v) {
@@ -114,6 +212,9 @@
 
     // ── Data Loading ──
     async function loadIndex() {
+        if (!marketData) {
+            throw new Error('Shared AEMO market data loader unavailable');
+        }
         S.index = await marketData.loadIndex();
     }
 
@@ -1203,6 +1304,12 @@
 
     // ── Init ──
     async function init() {
+        await loadMarketContext();
+        if (S.market === MARKET_DE) {
+            renderGermanyPlaceholder();
+            return;
+        }
+
         await loadIndex();
         renderFreshness();
 

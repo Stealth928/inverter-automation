@@ -77,20 +77,6 @@
             }
         }
 
-        updateProgress();
-        applyPricingProviderSelection(getSelectedPricingProvider());
-
-        AppShell.init({
-            pageName: 'setup',
-            checkSetup: false,
-            onReady: () => {
-                restorePreviewSetupDraft();
-                clearPreviewModeOnSetupEntry();
-                bindPreviewLaunchButton();
-                ensureSetupStillRequired();
-            }
-        });
-
         // Password toggle functionality
         document.querySelectorAll('.password-toggle').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -157,17 +143,100 @@
         }
 
         function getSelectedPricingProvider() {
+            const pricingMarket = getSelectedPricingMarket();
             const select = document.getElementById('pricingProvider');
-            return select ? String(select.value || 'amber').trim().toLowerCase() || 'amber' : 'amber';
+            return normalizePricingProviderForMarket(select ? select.value : 'amber', pricingMarket);
+        }
+
+        const PRICING_MARKET_AU = 'AU';
+        const PRICING_MARKET_DE = 'DE';
+        const PRICING_PROVIDER_AMBER = 'amber';
+        const PRICING_PROVIDER_AEMO = 'aemo';
+        const PRICING_PROVIDER_GERMANY_MARKET_DATA = 'germany-market-data';
+        const PRICING_PROVIDER_OPTIONS = Object.freeze({
+            AU: [
+                { value: PRICING_PROVIDER_AMBER, label: '🇦🇺 Amber Electric' },
+                { value: PRICING_PROVIDER_AEMO, label: '🇦🇺 AEMO' }
+            ],
+            DE: [
+                { value: PRICING_PROVIDER_GERMANY_MARKET_DATA, label: '🇩🇪 Germany Market Data' }
+            ]
+        });
+
+        function normalizePricingMarket(value) {
+            return String(value || PRICING_MARKET_AU).trim().toUpperCase() === PRICING_MARKET_DE
+                ? PRICING_MARKET_DE
+                : PRICING_MARKET_AU;
+        }
+
+        function inferPricingMarketFromProvider(provider) {
+            return String(provider || '').trim().toLowerCase() === PRICING_PROVIDER_GERMANY_MARKET_DATA
+                ? PRICING_MARKET_DE
+                : PRICING_MARKET_AU;
+        }
+
+        function normalizePricingProviderForMarket(provider, market) {
+            const normalizedMarket = normalizePricingMarket(market);
+            const normalizedProvider = String(provider || PRICING_PROVIDER_AMBER).trim().toLowerCase() || PRICING_PROVIDER_AMBER;
+            if (normalizedMarket === PRICING_MARKET_DE) {
+                return PRICING_PROVIDER_GERMANY_MARKET_DATA;
+            }
+            return normalizedProvider === PRICING_PROVIDER_AEMO ? PRICING_PROVIDER_AEMO : PRICING_PROVIDER_AMBER;
+        }
+
+        function getSelectedPricingMarket() {
+            const select = document.getElementById('pricingMarket');
+            return normalizePricingMarket(select ? select.value : inferPricingMarketFromProvider(getSelectedPricingProvider()));
+        }
+
+        function updatePricingProviderOptions(market, preferredProvider) {
+            const select = document.getElementById('pricingProvider');
+            if (!select) return;
+
+            const normalizedMarket = normalizePricingMarket(market);
+            const normalizedProvider = normalizePricingProviderForMarket(preferredProvider || select.value, normalizedMarket);
+            const nextOptions = PRICING_PROVIDER_OPTIONS[normalizedMarket] || PRICING_PROVIDER_OPTIONS[PRICING_MARKET_AU];
+            const currentSignature = Array.from(select.options || [])
+                .map((option) => `${option.value}:${option.textContent}`)
+                .join('|');
+            const nextSignature = nextOptions
+                .map((option) => `${option.value}:${option.label}`)
+                .join('|');
+
+            if (currentSignature !== nextSignature) {
+                select.innerHTML = nextOptions
+                    .map((option) => `<option value="${option.value}">${option.label}</option>`)
+                    .join('');
+            }
+
+            const resolvedProvider = nextOptions.some((option) => option.value === normalizedProvider)
+                ? normalizedProvider
+                : nextOptions[0].value;
+            select.value = resolvedProvider;
         }
 
         function applyPricingProviderSelection(pricingProvider) {
+            const pricingMarket = getSelectedPricingMarket();
             const amberGroup = document.getElementById('amberApiKeyGroup');
             const aemoRegionGroup = document.getElementById('pricingAemoRegionGroup');
-            const useAemo = pricingProvider === 'aemo';
+            const germanyInfoGroup = document.getElementById('pricingGermanyInfoGroup');
+            const pricingProviderHint = document.getElementById('pricingProviderHint');
 
-            if (amberGroup) amberGroup.style.display = useAemo ? 'none' : '';
+            updatePricingProviderOptions(pricingMarket, pricingProvider);
+
+            const normalizedProvider = getSelectedPricingProvider();
+            const useAmber = pricingMarket === PRICING_MARKET_AU && normalizedProvider === PRICING_PROVIDER_AMBER;
+            const useAemo = pricingMarket === PRICING_MARKET_AU && normalizedProvider === PRICING_PROVIDER_AEMO;
+            const useGermanyMarket = pricingMarket === PRICING_MARKET_DE;
+
+            if (amberGroup) amberGroup.style.display = useAmber ? '' : 'none';
             if (aemoRegionGroup) aemoRegionGroup.style.display = useAemo ? '' : 'none';
+            if (germanyInfoGroup) germanyInfoGroup.style.display = useGermanyMarket ? '' : 'none';
+            if (pricingProviderHint) {
+                pricingProviderHint.textContent = useGermanyMarket
+                    ? 'Germany uses official wholesale market and system data normalized into SoCrates pricing channels.'
+                    : 'Select where SoCrates gets price signals for automation, reporting, and market views.';
+            }
         }
 
         document.querySelectorAll('input[name="provider"]').forEach(radio => {
@@ -178,6 +247,25 @@
         if (pricingProviderSelect) {
             pricingProviderSelect.addEventListener('change', () => applyPricingProviderSelection(getSelectedPricingProvider()));
         }
+
+        const pricingMarketSelect = document.getElementById('pricingMarket');
+        if (pricingMarketSelect) {
+            pricingMarketSelect.addEventListener('change', () => applyPricingProviderSelection(getSelectedPricingProvider()));
+        }
+
+        updateProgress();
+        applyPricingProviderSelection(getSelectedPricingProvider());
+
+        AppShell.init({
+            pageName: 'setup',
+            checkSetup: false,
+            onReady: () => {
+                restorePreviewSetupDraft();
+                clearPreviewModeOnSetupEntry();
+                bindPreviewLaunchButton();
+                ensureSetupStillRequired();
+            }
+        });
 
         // Sign out link
         document.getElementById('signOutLink').addEventListener('click', async (e) => {
@@ -198,8 +286,9 @@
             e.preventDefault();
 
             const provider = getSelectedProvider();
+            const pricingMarket = getSelectedPricingMarket();
             const pricingProvider = getSelectedPricingProvider();
-            const amberApiKey = pricingProvider === 'amber'
+            const amberApiKey = pricingProvider === PRICING_PROVIDER_AMBER
                 ? sanitizeInput(document.getElementById('amberApiKey').value)
                 : '';
             const aemoRegion = document.getElementById('pricingAemoRegion')?.value || 'NSW1';
@@ -310,8 +399,9 @@
             }
 
             Object.assign(requestBody, {
+                market:              pricingMarket,
                 pricing_provider:    pricingProvider,
-                aemo_region:         pricingProvider === 'aemo' ? aemoRegion : undefined,
+                aemo_region:         pricingProvider === PRICING_PROVIDER_AEMO ? aemoRegion : undefined,
                 amber_api_key:       amberApiKey || null,
                 weather_place:       weatherPlace,
                 inverter_capacity_w: Math.round(inverterCapacityKw * 1000),
@@ -384,7 +474,7 @@
                     setFieldSuccess('deviceSn');
                     setFieldSuccess('foxessToken');
                 }
-                if (pricingProvider === 'amber' && amberApiKey) setFieldSuccess('amberApiKey');
+                if (pricingProvider === PRICING_PROVIDER_AMBER && amberApiKey) setFieldSuccess('amberApiKey');
 
                 // Update button to show success
                 submitBtn.innerHTML = '<span>✓</span><span>Success! Redirecting...</span>';
@@ -404,13 +494,14 @@
                     const sn = sanitizeInput(document.getElementById('deviceSn').value);
                     localStorage.setItem('foxess_setup_device_sn', sn);
                 }
+                localStorage.setItem('setup_pricing_market', pricingMarket);
                 localStorage.setItem('setup_pricing_provider', pricingProvider);
-                if (pricingProvider === 'aemo') {
+                if (pricingProvider === PRICING_PROVIDER_AEMO) {
                     localStorage.setItem('setup_pricing_region', aemoRegion);
                 } else {
                     localStorage.removeItem('setup_pricing_region');
                 }
-                if (pricingProvider === 'amber' && amberApiKey) {
+                if (pricingProvider === PRICING_PROVIDER_AMBER && amberApiKey) {
                     localStorage.setItem('foxess_setup_amber_api_key', amberApiKey);
                 } else {
                     localStorage.removeItem('foxess_setup_amber_api_key');

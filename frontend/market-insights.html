@@ -70,9 +70,9 @@
                     <span class="page-title__icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" focusable="false"><path d="M3 17l4-4 4 4 4-8 6 6"></path><circle cx="21" cy="15" r="1.4"></circle><path d="M3 21h18"></path></svg>
                     </span>
-                    <span class="page-title__label">AEMO Market Insights</span>
+                    <span class="page-title__label" id="marketInsightsTitle">AEMO Market Insights</span>
                 </h1>
-                <p class="page-subtitle">Electricity price trends, volatility, and regional insights across the National Electricity Market.</p>
+                <p class="page-subtitle" id="marketInsightsSubtitle">Electricity price trends, volatility, and regional insights across the National Electricity Market.</p>
             </div>
             <div class="page-header__right">
                 <span class="mi-freshness" id="freshnessBadge">Loading…</span>
@@ -81,6 +81,13 @@
 
         <!-- Smart summary -->
         <div class="mi-summary" id="summaryBanner" hidden></div>
+
+        <section class="mi-card mi-card--wide" id="marketInsightsUnavailable" hidden>
+            <div class="mi-empty">
+                <strong id="marketInsightsUnavailableTitle">Market Insights are not available for this pricing market yet.</strong>
+                <p id="marketInsightsUnavailableBody">Live market pricing remains available on the dashboard while this page expands to additional countries.</p>
+            </div>
+        </section>
 
         <!-- Controls -->
         <section class="mi-controls" aria-label="Filters">
