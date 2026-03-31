@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'socrates-v67';
+const CACHE_VERSION = 'socrates-v68';
 const CACHE_PREFIX = 'socrates-';
 const API_CLIENT_VERSION = '5';
 const SHARED_UTILS_VERSION = '13';
@@ -266,6 +266,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   const isCriticalShellAsset =
+    requestUrl.pathname === '/js/firebase-auth.js' ||
     requestUrl.pathname === '/js/tour.js' ||
     requestUrl.pathname === '/js/app-shell.js' ||
     requestUrl.pathname === '/js/admin.js' ||

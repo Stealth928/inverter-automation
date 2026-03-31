@@ -1,12 +1,16 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect, devices } = require('@playwright/test');
 
-const FAKE_FIREBASE_SDK = `
+function buildFakeFirebaseSdk(options = {}) {
+  const initialAuthDelayMs = Math.max(0, Number(options.initialAuthDelayMs) || 0);
+
+  return `
 (() => {
   if (window.__playwrightFakeFirebaseLoaded) return;
   window.__playwrightFakeFirebaseLoaded = true;
 
   const USER_KEY = 'mockAuthUser';
   const TOKEN_KEY = 'mockAuthToken';
+  const INITIAL_AUTH_DELAY_MS = ${initialAuthDelayMs};
   const state = { callbacks: [], currentUser: null, lastRedirectResult: null, popupCalls: 0, redirectCalls: 0 };
 
   function attachGetIdToken(user) {
@@ -77,7 +81,7 @@ const FAKE_FIREBASE_SDK = `
     async setPersistence() {},
     onAuthStateChanged(callback) {
       state.callbacks.push(callback);
-      setTimeout(() => callback(state.currentUser), 0);
+      setTimeout(() => callback(state.currentUser), INITIAL_AUTH_DELAY_MS);
       return () => {
         const idx = state.callbacks.indexOf(callback);
         if (idx >= 0) state.callbacks.splice(idx, 1);
@@ -167,13 +171,14 @@ const FAKE_FIREBASE_SDK = `
   window.__fakeFirebaseAuthState = state;
 })();
 `;
+}
 
-async function stubFirebaseSdk(page) {
+async function stubFirebaseSdk(page, options = {}) {
   await page.route('https://www.gstatic.com/firebasejs/**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/javascript',
-      body: FAKE_FIREBASE_SDK
+      body: buildFakeFirebaseSdk(options)
     });
   });
 }
@@ -202,6 +207,14 @@ async function stubSetupApi(page) {
       body: JSON.stringify({ errno: 0, result: { isAdmin: false } })
     });
   });
+
+  await page.route('**/api/config/announcement*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ errno: 0, result: { announcement: null } })
+    });
+  });
 }
 
 async function seedAuthUser(page, user) {
@@ -223,6 +236,108 @@ async function seedAuthUser(page, user) {
       // ignore in test setup
     }
   }, user || null);
+}
+
+const AUTH_STARTUP_HARNESS_HTML = [
+  '<!DOCTYPE html>',
+  '<html lang="en">',
+  '<head>',
+  '  <meta charset="UTF-8">',
+  '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+  '  <title>Auth Startup Harness</title>',
+  '  <script>window.__DISABLE_SERVICE_WORKER__ = true; window.firebaseConfig = { apiKey: "test-api-key", projectId: "test-project" };</script>',
+  '  <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>',
+  '  <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>',
+  '  <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>',
+  '  <script defer src="/js/firebase-auth.js"></script>',
+  '  <script defer src="/js/api-client.js?v=5"></script>',
+  '  <script defer src="/js/shared-utils.js?v=13"></script>',
+  '  <script defer src="/js/app-shell.js?v=25"></script>',
+  '</head>',
+  '<body>',
+  '  <div id="status" data-ready="0">booting</div>',
+  '  <script>',
+  '    document.addEventListener("DOMContentLoaded", () => {',
+  '      AppShell.init({',
+  '        pageName: "auth-harness",',
+  '        requireAuth: true,',
+  '        checkSetup: true,',
+  '        autoMetrics: false,',
+  '        onReady: () => {',
+  '          const status = document.getElementById("status");',
+  '          status.dataset.ready = "1";',
+  '          status.textContent = "ready";',
+  '        }',
+  '      });',
+  '    });',
+  '  </script>',
+  '</body>',
+  '</html>'
+].join('\n');
+
+async function stubAuthStartupHarness(page) {
+  await page.route('**/__auth-startup-harness.html', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: AUTH_STARTUP_HARNESS_HTML
+    });
+  });
+}
+
+async function emulateStandaloneLaunch(page, platform) {
+  if (platform !== 'android-pwa' && platform !== 'iphone-pwa') {
+    return;
+  }
+
+  await page.addInitScript((mode) => {
+    const originalMatchMedia = typeof window.matchMedia === 'function'
+      ? window.matchMedia.bind(window)
+      : null;
+
+    const createMediaQueryList = (query, matches) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() { return false; }
+    });
+
+    window.matchMedia = (query) => {
+      const normalized = String(query || '').trim();
+      if (normalized === '(display-mode: standalone)') {
+        return createMediaQueryList(normalized, true);
+      }
+      if (originalMatchMedia) {
+        return originalMatchMedia(query);
+      }
+      return createMediaQueryList(normalized, false);
+    };
+
+    if (mode === 'iphone-pwa') {
+      Object.defineProperty(window.navigator, 'standalone', {
+        configurable: true,
+        get: () => true
+      });
+    }
+  }, platform);
+}
+
+async function createPlatformPage(browser, platform) {
+  const contextOptions = { serviceWorkers: 'block' };
+  if (platform === 'android-pwa') {
+    Object.assign(contextOptions, devices['Pixel 7']);
+  } else if (platform === 'iphone-pwa') {
+    Object.assign(contextOptions, devices['iPhone SE']);
+  }
+
+  const context = await browser.newContext(contextOptions);
+  const page = await context.newPage();
+  await emulateStandaloneLaunch(page, platform);
+  return { context, page };
 }
 
 test.describe('Auth Redirect Rules', () => {
@@ -296,5 +411,35 @@ test.describe('Auth Redirect Rules', () => {
     await page.click('#googleSigninBtn');
 
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 7000 }).toBe('/app.html');
+  });
+
+  [
+    { name: 'desktop browser', platform: 'desktop-browser' },
+    { name: 'Android PWA launch', platform: 'android-pwa' },
+    { name: 'iPhone PWA launch', platform: 'iphone-pwa' }
+  ].forEach(({ name, platform }) => {
+    test(`protected startup waits for delayed auth restore on ${name}`, async ({ browser }) => {
+      const { context, page } = await createPlatformPage(browser, platform);
+      try {
+        await stubAuthStartupHarness(page);
+        await stubFirebaseSdk(page, { initialAuthDelayMs: 900 });
+        await stubSetupApi(page);
+        await seedAuthUser(page, {
+          uid: `persisted-${platform}`,
+          email: `${platform}@example.com`,
+          displayName: 'Persisted User'
+        });
+
+        await page.goto('/__auth-startup-harness.html');
+
+        await page.waitForTimeout(650);
+        expect(new URL(page.url()).pathname).toBe('/__auth-startup-harness.html');
+
+        await expect(page.locator('#status')).toHaveAttribute('data-ready', '1', { timeout: 5000 });
+        expect(new URL(page.url()).pathname).toBe('/__auth-startup-harness.html');
+      } finally {
+        await context.close();
+      }
+    });
   });
 });

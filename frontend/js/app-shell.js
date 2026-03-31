@@ -1,8 +1,8 @@
 (function (window, document) {
-    const APP_RELEASE_ID = '2026-03-30-dashboard-hotfix-v1';
+    const APP_RELEASE_ID = '2026-03-31-auth-restore-fix-v1';
     const APP_RELEASE_STORAGE_KEY = 'socratesAppReleaseId';
     const APP_RELEASE_RELOAD_SESSION_KEY = `socratesAppReleaseReload:${APP_RELEASE_ID}`;
-    const SERVICE_WORKER_VERSION = '58';
+    const SERVICE_WORKER_VERSION = '59';
     const NOTIFICATION_POLL_INTERVAL_MS = 60000;
     const NOTIFICATION_PAGE_LIMIT = 20;
     const SOCRATES_CACHE_PREFIX = 'socrates-';

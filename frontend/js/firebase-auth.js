@@ -20,11 +20,29 @@ class FirebaseAuth {
     this.idToken = null;
     this.onAuthStateChangedCallbacks = [];
     this.initialized = false;
+    this.initialAuthStateResolved = false;
     
     // Idle session timeout (120 minutes / 2 hours - relaxed for better user experience)
     this.IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
     this.lastActivityTime = Date.now();
     this.idleTimeoutCheckInterval = null;
+  }
+
+  markInitialAuthStateResolved() {
+    if (this.initialAuthStateResolved) {
+      return;
+    }
+    this.initialAuthStateResolved = true;
+  }
+
+  notifyAuthStateChanged(user = this.user) {
+    this.onAuthStateChangedCallbacks.forEach(cb => {
+      try {
+        cb(user);
+      } catch (callbackError) {
+        console.error('[FirebaseAuth] Auth state callback error:', callbackError);
+      }
+    });
   }
 
   /**
@@ -71,8 +89,9 @@ class FirebaseAuth {
           this.idToken = null;
         }
         this.initialized = true;
+        this.markInitialAuthStateResolved();
         console.warn('[FirebaseAuth] Running in forced MOCK auth mode for localhost/test session');
-        setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+        setTimeout(() => this.notifyAuthStateChanged(this.user), 0);
         return;
       }
 
@@ -82,7 +101,8 @@ class FirebaseAuth {
         // Enable mock mode as fallback
         this.mock = true;
         this.initialized = true;
-        setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+        this.markInitialAuthStateResolved();
+        setTimeout(() => this.notifyAuthStateChanged(this.user), 0);
         return;
       }
 
@@ -112,8 +132,9 @@ class FirebaseAuth {
             this.idToken = null;
           }
           this.initialized = true;
+          this.markInitialAuthStateResolved();
           console.warn('[FirebaseAuth] Running in MOCK auth mode (no Firebase config provided)');
-          setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+          setTimeout(() => this.notifyAuthStateChanged(this.user), 0);
           return;
         }
 
@@ -122,7 +143,8 @@ class FirebaseAuth {
         console.error('[FirebaseAuth] Firebase config missing or placeholder. Populate `js/firebase-config.js` with your project config for production.');
         // Still mark initialized so callers aren't blocked, but user remains signed out.
         this.initialized = true;
-        setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => cb(this.user)), 0);
+        this.markInitialAuthStateResolved();
+        setTimeout(() => this.notifyAuthStateChanged(this.user), 0);
         return;
       }
 
@@ -195,14 +217,8 @@ class FirebaseAuth {
           this.idToken = null;
         }
 
-        // Notify all callbacks
-        this.onAuthStateChangedCallbacks.forEach(cb => {
-          try {
-            cb(user);
-          } catch (callbackError) {
-            console.error('[FirebaseAuth] Auth state callback error:', callbackError);
-          }
-        });
+        this.markInitialAuthStateResolved();
+        this.notifyAuthStateChanged(user);
       });
 
       // Refresh token periodically (every 50 minutes)
@@ -226,13 +242,8 @@ class FirebaseAuth {
       this.initialized = true;
       // Fallback to mock auth
       this.mock = true;
-      setTimeout(() => this.onAuthStateChangedCallbacks.forEach(cb => {
-        try {
-          cb(null);
-        } catch (e) {
-          console.error('[FirebaseAuth] Callback error in fallback:', e);
-        }
-      }), 0);
+      this.markInitialAuthStateResolved();
+      setTimeout(() => this.notifyAuthStateChanged(null), 0);
     }
   }
 
@@ -242,8 +253,12 @@ class FirebaseAuth {
   onAuthStateChanged(callback) {
     this.onAuthStateChangedCallbacks.push(callback);
     // Call immediately with current state
-    if (this.initialized) {
-      callback(this.user);
+    if (this.initialized && this.initialAuthStateResolved) {
+      try {
+        callback(this.user);
+      } catch (callbackError) {
+        console.error('[FirebaseAuth] Auth state callback error:', callbackError);
+      }
     }
   }
 
