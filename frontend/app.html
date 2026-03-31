@@ -3239,6 +3239,223 @@
         .action-tag.charge { background: color-mix(in srgb, var(--accent-blue) 15%, transparent); border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent); color: var(--accent-blue); }
         .action-tag.discharge { background: color-mix(in srgb, var(--color-orange) 15%, transparent); border-color: color-mix(in srgb, var(--color-orange) 30%, transparent); color: var(--color-orange); }
         .action-tag.feedin { background: color-mix(in srgb, var(--color-warning) 15%, transparent); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); color: var(--color-warning); }
+
+        .automation-debug-box {
+            margin-top: 12px;
+            padding: 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-primary);
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .automation-debug-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .automation-debug-label {
+            color: var(--accent-blue);
+            font-weight: 600;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .automation-debug-timestamp {
+            color: var(--text-muted);
+            font-size: 11px;
+            white-space: nowrap;
+            background: var(--bg-primary);
+            padding: 4px 8px;
+            border-radius: 999px;
+        }
+        .automation-debug-content {
+            color: var(--text-primary);
+            font-size: 11px;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .automation-debug-empty {
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+        .automation-cycle-summary {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-secondary);
+            background: var(--bg-primary);
+        }
+        .automation-cycle-summary--success {
+            border-color: color-mix(in srgb, var(--color-success) 45%, var(--border-secondary));
+            background: color-mix(in srgb, var(--color-success) 10%, var(--bg-primary));
+        }
+        .automation-cycle-summary--info {
+            border-color: color-mix(in srgb, var(--accent-blue) 45%, var(--border-secondary));
+            background: color-mix(in srgb, var(--accent-blue) 10%, var(--bg-primary));
+        }
+        .automation-cycle-summary--warning {
+            border-color: color-mix(in srgb, var(--color-orange) 45%, var(--border-secondary));
+            background: color-mix(in srgb, var(--color-orange) 10%, var(--bg-primary));
+        }
+        .automation-cycle-summary--danger {
+            border-color: color-mix(in srgb, var(--color-danger) 45%, var(--border-secondary));
+            background: color-mix(in srgb, var(--color-danger) 10%, var(--bg-primary));
+        }
+        .automation-cycle-summary-copy {
+            min-width: 0;
+            flex: 1 1 220px;
+        }
+        .automation-cycle-summary-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+        .automation-cycle-summary-meta {
+            margin-top: 4px;
+            font-size: 10px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+        .automation-cycle-summary-pill {
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--bg-overlay) 82%, transparent);
+            border: 1px solid var(--border-primary);
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .automation-cycle-alert {
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--color-danger);
+            background: rgba(248, 81, 73, 0.12);
+            color: var(--color-danger);
+            font-size: 10px;
+            line-height: 1.5;
+        }
+        .automation-cycle-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+            align-items: stretch;
+        }
+        .automation-cycle-card {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-secondary);
+            background: var(--bg-primary);
+        }
+        .automation-cycle-card--success {
+            border-color: color-mix(in srgb, var(--color-success) 40%, var(--border-secondary));
+            background: color-mix(in srgb, var(--color-success) 8%, var(--bg-primary));
+        }
+        .automation-cycle-card--info {
+            border-color: color-mix(in srgb, var(--accent-blue) 40%, var(--border-secondary));
+            background: color-mix(in srgb, var(--accent-blue) 8%, var(--bg-primary));
+        }
+        .automation-cycle-card--warning {
+            border-color: color-mix(in srgb, var(--color-orange) 40%, var(--border-secondary));
+            background: color-mix(in srgb, var(--color-orange) 8%, var(--bg-primary));
+        }
+        .automation-cycle-card--danger {
+            border-color: color-mix(in srgb, var(--color-danger) 40%, var(--border-secondary));
+            background: color-mix(in srgb, var(--color-danger) 8%, var(--bg-primary));
+        }
+        .automation-cycle-card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .automation-cycle-card-title {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            min-width: 0;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+        .automation-cycle-card-title-text {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+        .automation-cycle-card-state {
+            padding: 3px 6px;
+            border-radius: 999px;
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-overlay) 82%, transparent);
+            color: var(--text-secondary);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .automation-cycle-facts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 6px;
+        }
+        .automation-cycle-fact {
+            min-width: 0;
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-primary);
+            background: color-mix(in srgb, var(--bg-overlay) 75%, transparent);
+        }
+        .automation-cycle-fact--ok {
+            border-color: color-mix(in srgb, var(--color-success) 30%, var(--border-primary));
+        }
+        .automation-cycle-fact--miss {
+            border-color: color-mix(in srgb, var(--color-danger) 32%, var(--border-primary));
+            background: color-mix(in srgb, var(--color-danger) 8%, var(--bg-primary));
+        }
+        .automation-cycle-fact-name {
+            display: block;
+            font-size: 9px;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .automation-cycle-fact-value {
+            display: block;
+            margin-top: 4px;
+            font-size: 11px;
+            color: var(--text-primary);
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+        .automation-cycle-card-note {
+            font-size: 10px;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+        .automation-cycle-footer {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
         
         /* Rule Builder Modal */
         .modal-overlay {

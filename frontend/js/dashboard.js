@@ -9256,13 +9256,191 @@
             
             return `${dayOfWeek} - ${dd}/${mm}/${yyyy}`;
         }
+
+        function humanizeCycleToken(token) {
+            const raw = String(token || '').trim();
+            if (!raw) return 'Condition';
+            const spaced = raw
+                .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+                .replace(/[_-]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+        }
+
+        function getCycleResultTone(resultType) {
+            if (resultType === 'triggered') return 'success';
+            if (resultType === 'continuing') return 'info';
+            if (resultType === 'cooldown') return 'warning';
+            if (resultType === 'not_met') return 'danger';
+            return 'neutral';
+        }
+
+        function getCycleResultLabel(resultType) {
+            if (resultType === 'triggered') return 'Triggered';
+            if (resultType === 'continuing') return 'Continuing';
+            if (resultType === 'cooldown') return 'Cooldown';
+            if (resultType === 'not_met') return 'Not met';
+            return 'Checked';
+        }
+
+        function getCycleResultIcon(resultType) {
+            if (resultType === 'triggered') return '✅';
+            if (resultType === 'continuing') return '⏱️';
+            if (resultType === 'cooldown') return '⏳';
+            if (resultType === 'not_met') return '❌';
+            return 'ℹ️';
+        }
+
+        function formatCycleConditionFact(condition) {
+            const rawActual = condition?.actual;
+            const numericActual = Number(rawActual);
+            const hasNumericActual = Number.isFinite(numericActual);
+            const unavailableLabel = condition?.reason || 'Unavailable';
+            const conditionType = String(condition?.condition || '').trim();
+
+            if (conditionType === 'soc') {
+                return {
+                    label: 'SoC',
+                    value: hasNumericActual ? `${Math.round(numericActual)}%` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'price') {
+                return {
+                    label: condition?.type === 'buy' ? 'Buy' : 'Feed-in',
+                    value: hasNumericActual ? `${numericActual.toFixed(1)}c` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'feedInPrice') {
+                return {
+                    label: 'Feed-in',
+                    value: hasNumericActual ? `${numericActual.toFixed(1)}c` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'buyPrice') {
+                return {
+                    label: 'Buy',
+                    value: hasNumericActual ? `${numericActual.toFixed(1)}c` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'forecastPrice') {
+                const horizon = condition?.lookAhead ? ` · ${condition.lookAhead}` : '';
+                return {
+                    label: condition?.type === 'buy' ? 'Buy fcst' : 'FI fcst',
+                    value: hasNumericActual ? `${numericActual.toFixed(1)}c${horizon}` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'temperature') {
+                const tempType = String(condition?.type || 'temperature').trim().toLowerCase();
+                let label = 'Temp';
+                if (tempType === 'battery') label = 'Battery temp';
+                else if (tempType === 'ambient') label = 'Ambient temp';
+                else if (tempType === 'forecastmax') label = 'Forecast max';
+                else if (tempType === 'forecastmin') label = 'Forecast min';
+                else if (tempType && tempType !== 'temperature') label = humanizeCycleToken(tempType);
+                return {
+                    label,
+                    value: hasNumericActual ? `${numericActual.toFixed(1)}°C` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'time') {
+                return {
+                    label: 'Time',
+                    value: rawActual != null && rawActual !== ''
+                        ? String(rawActual)
+                        : (condition?.window ? `Outside ${condition.window}` : unavailableLabel)
+                };
+            }
+
+            if (conditionType === 'solarRadiation') {
+                return {
+                    label: 'Solar',
+                    value: hasNumericActual ? `${Math.round(numericActual)} W/m²` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'cloudCover') {
+                return {
+                    label: 'Cloud',
+                    value: hasNumericActual ? `${Math.round(numericActual)}%` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'weather') {
+                if (condition?.type === 'radiation') {
+                    return {
+                        label: 'Solar',
+                        value: hasNumericActual ? `${Math.round(numericActual)} W/m²` : unavailableLabel
+                    };
+                }
+                if (condition?.type === 'cloudcover') {
+                    return {
+                        label: 'Cloud',
+                        value: hasNumericActual ? `${Math.round(numericActual)}%` : unavailableLabel
+                    };
+                }
+                return {
+                    label: 'Weather',
+                    value: rawActual != null && rawActual !== '' ? String(rawActual) : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'evVehicleSoC') {
+                return {
+                    label: 'EV SoC',
+                    value: hasNumericActual ? `${Math.round(numericActual)}%` : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'evVehicleLocation') {
+                return {
+                    label: 'EV location',
+                    value: rawActual != null && rawActual !== '' ? String(rawActual) : unavailableLabel
+                };
+            }
+
+            if (conditionType === 'evChargingState') {
+                return {
+                    label: 'EV state',
+                    value: rawActual != null && rawActual !== '' ? String(rawActual) : unavailableLabel
+                };
+            }
+
+            return {
+                label: humanizeCycleToken(conditionType),
+                value: rawActual != null && rawActual !== '' ? String(rawActual) : unavailableLabel
+            };
+        }
+
+        function formatCycleRuleNote(evaluationResult) {
+            const remainingSeconds = Number(evaluationResult?.cooldownRemaining ?? evaluationResult?.remaining);
+            if ((evaluationResult?.result === 'continuing' || evaluationResult?.result === 'cooldown') && Number.isFinite(remainingSeconds)) {
+                const prefix = evaluationResult.result === 'continuing' ? 'Cooldown remaining' : 'Available again in';
+                return `${prefix} ${formatMsToReadable(remainingSeconds * 1000)}`;
+            }
+
+            if (!Array.isArray(evaluationResult?.details?.results) || evaluationResult.details.results.length === 0) {
+                if (evaluationResult?.result === 'triggered') {
+                    return 'Matched this cycle.';
+                }
+                return 'No condition detail recorded.';
+            }
+
+            return '';
+        }
         
         // Format automation cycle result for debug display
         function formatCycleResult(result) {
-            if (!result) return '<span style="color:var(--text-muted);font-size:11px">No data</span>';
-            
+            if (!result) return '<span class="automation-debug-empty">No data</span>';
+
             let html = '';
-            
+
             if (result.skipped) {
                 const reason = String(result.reason || 'Unknown');
                 let reasonText = reason;
@@ -9277,102 +9455,108 @@
                     const ageLabel = Number.isFinite(ageMs) ? formatMsToReadable(ageMs) : 'unknown age';
                     reasonText = `Inverter telemetry frozen (${ageLabel})`;
                 }
-                html += `<span style="color:var(--color-orange);font-size:11px">⏭️ Skipped: ${reasonText}</span>`;
-                return html;
+
+                return `
+                    <div class="automation-cycle-summary automation-cycle-summary--warning">
+                        <div class="automation-cycle-summary-copy">
+                            <div class="automation-cycle-summary-title">Skipped cycle</div>
+                            <div class="automation-cycle-summary-meta">${escapeHtml(reasonText)}</div>
+                        </div>
+                        <span class="automation-cycle-summary-pill">Skipped</span>
+                    </div>
+                `;
             }
-            
-            // Main result section - triggered or not
-            if (result.triggered && result.rule) {
-                // Support both old format (no status) and new format (with status field)
-                const statusIndicator = result.status === 'continuing' ? '⏱️ Continuing'
-                                      : result.status === 'new_trigger' ? '✅ New Trigger'
-                                      : '?';
-                const statusColor = result.status === 'continuing' ? 'var(--accent-blue-hover)'
-                                  : result.status === 'new_trigger' ? 'var(--color-success)'
-                                  : 'var(--text-secondary)';
-                
-                html += `<span style="color:${statusColor};font-weight:600;font-size:11px">${statusIndicator} <strong>${result.rule.name || 'Unknown'}</strong>`;
-                
-                if (result.rule.actionResult) {
-                    const ar = result.rule.actionResult;
-                    if (ar.errno === 0) {
-                        html += ` <span style="color:var(--color-success)">✓ API Continuing</span>`;
-                    } else {
-                        // API FAILED - show prominent error
-                        html += `</span><div style="margin-top:6px;padding:8px;background:rgba(248,81,73,0.15);border:1px solid var(--color-danger);border-radius:4px">`;
-                        html += `<span style="color:var(--color-danger);font-weight:600">❌ API FAILED</span>`;
-                        html += `<span style="color:var(--color-danger);font-size:10px"> • errno=${ar.errno}</span>`;
-                        if (ar.msg) html += `<br><span style="color:var(--color-danger);font-size:10px">${ar.msg}</span>`;
-                        html += `</div><span>`;
-                    }
+
+            const hasTriggeredRule = !!(result.triggered && result.rule);
+            const summaryTone = hasTriggeredRule
+                ? (result.status === 'continuing' ? 'info' : 'success')
+                : 'neutral';
+            const summaryTitle = hasTriggeredRule
+                ? `${result.status === 'continuing' ? 'Continuing' : 'Triggered'} ${result.rule.name || 'Unknown'}`
+                : 'No rules triggered';
+            let summaryMeta = hasTriggeredRule
+                ? 'A rule matched this cycle and stayed eligible.'
+                : 'All enabled rules were checked against the current signals.';
+            let summaryPill = hasTriggeredRule
+                ? (result.status === 'continuing' ? 'Active rule' : 'Triggered')
+                : `${result.rulesEvaluated || 0}/${result.totalRules || 0} rules`;
+            let alertHtml = '';
+
+            if (result.rule?.actionResult) {
+                const actionResult = result.rule.actionResult;
+                if (actionResult.errno === 0) {
+                    summaryMeta = result.status === 'continuing'
+                        ? 'The active segment is still aligned with this rule.'
+                        : 'The inverter action call succeeded for this cycle.';
+                } else {
+                    const failureLabel = actionResult.msg
+                        ? `${actionResult.msg} (errno ${actionResult.errno})`
+                        : `errno ${actionResult.errno}`;
+                    summaryMeta = 'The rule matched, but applying the action failed.';
+                    summaryPill = 'API failed';
+                    alertHtml = `<div class="automation-cycle-alert">${escapeHtml(failureLabel)}</div>`;
                 }
-                html += `</span>`;
-            } else {
-                html += `<span style="color:var(--text-secondary);font-size:11px">ℹ️ No rules triggered</span>`;
             }
-            
-            // Show evaluation summary with condition details - inline
-            if (result.evaluationResults && result.evaluationResults.length > 0) {
-                html += `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">`;
-                
-                result.evaluationResults.forEach(er => {
-                    const icon = er.result === 'triggered' ? '✅' : er.result === 'continuing' ? '⏱️' : er.result === 'cooldown' ? '⏳' : '❌';
-                    const bgColor = er.result === 'triggered' ? 'rgba(126,231,135,0.1)' 
-                                  : er.result === 'continuing' ? 'rgba(121,192,255,0.1)'
-                                  : er.result === 'cooldown' ? 'rgba(240,136,62,0.1)' 
-                                  : 'rgba(248,81,73,0.1)';
-                    const borderColor = er.result === 'triggered' ? 'var(--color-success)'
-                                      : er.result === 'continuing' ? 'var(--accent-blue-hover)'
-                                      : er.result === 'cooldown' ? 'var(--color-orange)'
-                                      : 'var(--color-danger)';
-                    const textColor = er.result === 'triggered' ? 'var(--color-success)'
-                                    : er.result === 'continuing' ? 'var(--accent-blue-hover)'
-                                    : er.result === 'cooldown' ? 'var(--color-orange)'
-                                    : 'var(--color-danger)';
-                    
-                    html += `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:3px;padding:4px 6px;display:inline-flex;align-items:center;gap:3px;font-size:10px">`;
-                    html += `<span style="color:${textColor};font-weight:600">${icon} ${er.rule}</span>`;
-                    
-                    // Show cooldown info for continuing rules
-                    if (er.result === 'continuing' && er.cooldownRemaining != null) {
-                        html += `<span style="color:var(--accent-blue-hover);font-size:9px"> • ${Math.ceil(er.cooldownRemaining)}s cooldown</span>`;
+
+            html += `
+                <div class="automation-cycle-summary automation-cycle-summary--${summaryTone}">
+                    <div class="automation-cycle-summary-copy">
+                        <div class="automation-cycle-summary-title">${escapeHtml(summaryTitle)}</div>
+                        <div class="automation-cycle-summary-meta">${escapeHtml(summaryMeta)}</div>
+                    </div>
+                    <span class="automation-cycle-summary-pill">${escapeHtml(summaryPill)}</span>
+                </div>
+            `;
+            html += alertHtml;
+
+            if (Array.isArray(result.evaluationResults) && result.evaluationResults.length > 0) {
+                html += '<div class="automation-cycle-grid" data-automation-last-cycle-grid="true">';
+
+                result.evaluationResults.forEach((evaluationResult) => {
+                    const cardTone = getCycleResultTone(evaluationResult.result);
+                    const cardLabel = getCycleResultLabel(evaluationResult.result);
+                    const cardIcon = getCycleResultIcon(evaluationResult.result);
+                    const conditionResults = Array.isArray(evaluationResult?.details?.results)
+                        ? evaluationResult.details.results
+                        : [];
+                    const note = formatCycleRuleNote(evaluationResult);
+
+                    html += `
+                        <section class="automation-cycle-card automation-cycle-card--${cardTone}" data-automation-last-cycle-card="true">
+                            <div class="automation-cycle-card-head">
+                                <div class="automation-cycle-card-title">
+                                    <span>${cardIcon}</span>
+                                    <span class="automation-cycle-card-title-text">${escapeHtml(evaluationResult.rule || 'Unnamed rule')}</span>
+                                </div>
+                                <span class="automation-cycle-card-state">${escapeHtml(cardLabel)}</span>
+                            </div>
+                    `;
+
+                    if (conditionResults.length > 0) {
+                        html += '<div class="automation-cycle-facts">';
+                        conditionResults.forEach((condition) => {
+                            const fact = formatCycleConditionFact(condition);
+                            html += `
+                                <div class="automation-cycle-fact automation-cycle-fact--${condition.met ? 'ok' : 'miss'}">
+                                    <span class="automation-cycle-fact-name">${escapeHtml(fact.label)}</span>
+                                    <span class="automation-cycle-fact-value">${escapeHtml(fact.value)}</span>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
                     }
-                    
-                    // Show individual condition details inline if available
-                    if (er.details?.results && er.details.results.length > 0) {
-                        const condSummary = er.details.results.map(cond => {
-                            const condIcon = cond.met ? '✓' : '✗';
-                            const condColor = cond.met ? 'var(--color-success)' : 'var(--color-danger)';
-                            let short = '';
-                            if (cond.condition === 'soc') {
-                                short = `SoC: ${cond.actual != null ? cond.actual + '%' : '—'}${cond.reason ? ' (N/A)' : ''}`;
-                            } else if (cond.condition === 'feedInPrice') {
-                                short = `FI: ${cond.actual?.toFixed(1)}¢`;
-                            } else if (cond.condition === 'buyPrice') {
-                                short = `Buy: ${cond.actual?.toFixed(1)}¢`;
-                            } else if (cond.condition === 'temperature') {
-                                short = `${cond.type || 'T'}: ${cond.actual}°C`;
-                            } else if (cond.condition === 'time') {
-                                short = `Time: ${cond.actual}`;
-                            } else if (cond.condition === 'solarRadiation') {
-                                short = `☀️ ${cond.actual || '—'}W/m²`;
-                            } else if (cond.condition === 'cloudCover') {
-                                short = `☁️ ${cond.actual || '—'}%`;
-                            } else {
-                                short = `${cond.condition}: ${cond.actual}`;
-                            }
-                            return `<span style="color:${condColor}">${condIcon} ${short}</span>`;
-                        }).join(' • ');
-                        html += `<span style="color:var(--text-muted);font-size:9px"> | ${condSummary}</span>`;
+
+                    if (note) {
+                        html += `<div class="automation-cycle-card-note">${escapeHtml(note)}</div>`;
                     }
-                    html += `</div>`;
+
+                    html += '</section>';
                 });
-                html += `</div>`;
+
+                html += '</div>';
             }
-            
-            // Footer summary inline
-            html += `<div style="margin-top:6px;color:var(--text-muted);font-size:10px">📊 ${result.rulesEvaluated || 0}/${result.totalRules || 0} rules</div>`;
-            
+
+            html += `<div class="automation-cycle-footer">📊 ${result.rulesEvaluated || 0}/${result.totalRules || 0} rules evaluated</div>`;
             return html;
         }
 
@@ -10349,13 +10533,13 @@
             const debugTimestamp = status.lastCheck ? formatDate(status.lastCheck, true, false, status.userTimezone) : 'N/A';
             const tzLabel = status.userTimezone ? ` (${status.userTimezone})` : '';
             html += `
-                <div id="automationDebugBox" style="margin-top:12px;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border-primary);border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.1)">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-                        <span style="color:var(--accent-blue);font-weight:600;font-size:11px;white-space:nowrap">📊 Last Cycle</span>
-                        <div id="debugContent" style="color:var(--text-primary);font-size:11px;flex:1;min-width:250px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-                            <div style="flex:1">${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span style="color:var(--text-muted);font-size:10px">⏳ Waiting...</span>'}</div>
-                            <div id="debugTimestamp" style="color:var(--text-muted);font-size:11px;white-space:nowrap;background:var(--bg-primary);padding:2px 6px;border-radius:3px;margin-left:6px" title="User timezone: ${status.userTimezone || 'unknown'}">${debugTimestamp}${tzLabel}</div>
-                        </div>
+                <div id="automationDebugBox" class="automation-debug-box">
+                    <div class="automation-debug-head">
+                        <span class="automation-debug-label">📊 Last Cycle</span>
+                        <div id="debugTimestamp" class="automation-debug-timestamp" title="User timezone: ${status.userTimezone || 'unknown'}">${debugTimestamp}${tzLabel}</div>
+                    </div>
+                    <div id="debugContent" class="automation-debug-content">
+                        ${window.lastCycleResult ? formatCycleResult(window.lastCycleResult) : '<span class="automation-debug-empty">⏳ Waiting...</span>'}
                     </div>
                 </div>
             `;

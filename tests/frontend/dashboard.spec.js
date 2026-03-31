@@ -1442,6 +1442,136 @@ test.describe('Dashboard Page', () => {
     expect(afterWidth).toBeGreaterThan(beforeWidth + 80);
   });
 
+  test('should lay out last cycle rule cards across the automation panel width', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem('automationPanelCollapsed', 'false');
+      localStorage.removeItem('automationPanelWidth');
+      if (typeof window.toggleAutomationPanel === 'function') {
+        window.toggleAutomationPanel(false);
+      }
+
+      window.lastCycleResult = {
+        triggered: false,
+        rulesEvaluated: 6,
+        totalRules: 6,
+        evaluationResults: [
+          {
+            rule: 'Feed In Spike',
+            result: 'not_met',
+            details: {
+              results: [
+                { condition: 'price', type: 'feedIn', met: false, actual: 6.0 },
+                { condition: 'soc', met: true, actual: 59 }
+              ]
+            }
+          },
+          {
+            rule: 'Very High Feed In',
+            result: 'not_met',
+            details: {
+              results: [
+                { condition: 'price', type: 'feedIn', met: false, actual: 6.0 },
+                { condition: 'soc', met: true, actual: 59 }
+              ]
+            }
+          },
+          {
+            rule: 'High Feed In',
+            result: 'not_met',
+            details: {
+              results: [
+                { condition: 'price', type: 'feedIn', met: false, actual: 6.0 },
+                { condition: 'soc', met: true, actual: 59 }
+              ]
+            }
+          },
+          {
+            rule: 'Good Feed In - Semi Full Battery',
+            result: 'not_met',
+            details: {
+              results: [
+                { condition: 'soc', met: false, actual: 59 },
+                { condition: 'price', type: 'feedIn', met: false, actual: 6.0 },
+                { condition: 'time', met: true, actual: '21:55' },
+                { condition: 'solarRadiation', met: true, actual: 230 },
+                { condition: 'forecastPrice', type: 'feedIn', met: true, actual: 8.1, lookAhead: '30m' }
+              ]
+            }
+          },
+          {
+            rule: 'Battery Full - Needs Emptying',
+            result: 'not_met',
+            details: {
+              results: [
+                { condition: 'soc', met: false, actual: 59 },
+                { condition: 'price', type: 'feedIn', met: false, actual: 6.0 },
+                { condition: 'time', met: true, actual: '21:55' },
+                { condition: 'solarRadiation', met: true, actual: 230 },
+                { condition: 'forecastPrice', type: 'feedIn', met: true, actual: 8.1, lookAhead: '30m' }
+              ]
+            }
+          },
+          {
+            rule: 'Charge if Buy Price is negative',
+            result: 'not_met',
+            details: {
+              results: [
+                { condition: 'soc', met: true, actual: 59 },
+                { condition: 'buyPrice', met: false, actual: 15.8 }
+              ]
+            }
+          }
+        ]
+      };
+
+      if (typeof window.updateBackendAutomationUI === 'function') {
+        window.updateBackendAutomationUI({
+          enabled: true,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          lastCheck: Date.now() - 10000,
+          userTimezone: 'Australia/Sydney',
+          rules: {}
+        });
+      }
+    });
+
+    const debugBox = page.locator('#automationDebugBox');
+    await expect(debugBox).toBeVisible();
+
+    const layout = await page.evaluate(() => {
+      const content = document.getElementById('debugContent');
+      const grid = document.querySelector('[data-automation-last-cycle-grid="true"]');
+      const cards = Array.from(document.querySelectorAll('[data-automation-last-cycle-card="true"]'));
+      if (!content || !grid || !cards.length) {
+        return null;
+      }
+
+      const gridStyle = window.getComputedStyle(grid);
+      const gridColumns = gridStyle.gridTemplateColumns.split(' ').filter(Boolean).length;
+      const firstCardWidth = cards[0].getBoundingClientRect().width;
+      const gridWidth = grid.getBoundingClientRect().width;
+      const contentWidth = content.getBoundingClientRect().width;
+
+      return {
+        cardCount: cards.length,
+        gridColumns,
+        firstCardWidth,
+        gridWidth,
+        contentWidth
+      };
+    });
+
+    expect(layout).not.toBeNull();
+    expect(layout.cardCount).toBe(6);
+    expect(layout.gridColumns).toBeGreaterThanOrEqual(2);
+    expect(layout.contentWidth).toBeGreaterThan(420);
+    expect(layout.gridWidth).toBeGreaterThan(420);
+    expect(layout.firstCardWidth).toBeGreaterThan(180);
+  });
+
   test('should render a plain-English overview summary from live dashboard signals', async ({ page }) => {
     await page.addInitScript(({ nowIso, weatherData }) => {
       const RealDate = Date;
