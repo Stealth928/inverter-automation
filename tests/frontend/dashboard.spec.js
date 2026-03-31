@@ -1405,6 +1405,43 @@ test.describe('Dashboard Page', () => {
     await expect(summaryCard).toBeVisible();
   });
 
+  test('should keep the automation panel resizable while the overview summary is visible', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 });
+
+    await page.evaluate(() => {
+      localStorage.removeItem('automationPanelWidth');
+      localStorage.setItem('automationPanelCollapsed', 'false');
+      if (typeof window.toggleAutomationPanel === 'function') {
+        window.toggleAutomationPanel(false);
+      }
+    });
+
+    const summaryCard = page.locator('[data-dashboard-card="overviewSummary"]');
+    const automationPanel = page.locator('#automationPanel');
+    const resizer = page.locator('#automationResizer');
+
+    await expect(summaryCard).toBeVisible();
+    await expect(automationPanel).toBeVisible();
+    await expect(resizer).toBeVisible();
+
+    const beforeWidth = await automationPanel.evaluate((panel) => panel.getBoundingClientRect().width);
+    const resizerBox = await resizer.boundingBox();
+
+    expect(resizerBox).not.toBeNull();
+
+    const startX = resizerBox.x + (resizerBox.width / 2);
+    const dragY = resizerBox.y + Math.min(120, resizerBox.height / 2);
+
+    await page.mouse.move(startX, dragY);
+    await page.mouse.down();
+    await page.mouse.move(Math.max(8, startX - 180), dragY, { steps: 16 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    const afterWidth = await automationPanel.evaluate((panel) => panel.getBoundingClientRect().width);
+    expect(afterWidth).toBeGreaterThan(beforeWidth + 80);
+  });
+
   test('should render a plain-English overview summary from live dashboard signals', async ({ page }) => {
     await page.addInitScript(({ nowIso, weatherData }) => {
       const RealDate = Date;
@@ -3734,7 +3771,133 @@ test.describe('Dashboard Page', () => {
     await expect(amberCard.locator('.pricing-market-bars')).toHaveCount(0);
   });
 
-  test('should keep AEMO demand and generation bars inline on wide cards and safe on mobile', async ({ page }) => {
+  test('should keep Amber current pricing metrics on one row on narrow viewports', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+        localStorage.removeItem('aemoRegion');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'amber',
+      amberSiteId: 'amber-site-1'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            id: 'amber-site-1',
+            nmi: 'amber-site-1',
+            network: 'Amber Electric',
+            displayName: 'Home'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-31T08:00:00.000Z',
+            endTime: '2026-03-31T08:30:00.000Z',
+            perKwh: 49.3,
+            spotPerKwh: 49.3,
+            renewables: 42,
+            descriptor: 'ok',
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-31T08:00:00.000Z',
+            endTime: '2026-03-31T08:30:00.000Z',
+            perKwh: -8.93,
+            spotPerKwh: -8.93,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-31T08:30:00.000Z',
+            endTime: '2026-03-31T09:00:00.000Z',
+            perKwh: 53.5,
+            spotPerKwh: 53.5,
+            renewables: 39,
+            descriptor: 'ok',
+            spikeStatus: 'forecast'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-31T08:30:00.000Z',
+            endTime: '2026-03-31T09:00:00.000Z',
+            perKwh: -9.4,
+            spotPerKwh: -9.4,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload();
+    await expect(page.locator('#amberCard')).toContainText('Renewables');
+    await expect(page.locator('#amberCard')).toContainText('42%');
+
+    const metricLayout = await page.evaluate(() => {
+      const card = document.getElementById('amberCard');
+      const metricsContainer = card?.querySelector('.pricing-current-metrics');
+      const metrics = Array.from(card?.querySelectorAll('.pricing-current-metric') || []).map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          label: element.querySelector('.pricing-current-metric__label')?.textContent?.trim() || '',
+          top: Math.round(rect.top),
+          width: Math.round(rect.width)
+        };
+      });
+
+      return {
+        viewportWidth: window.innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        amberCardClientWidth: card?.clientWidth || 0,
+        amberCardScrollWidth: card?.scrollWidth || 0,
+        metricsContainerClientWidth: metricsContainer?.clientWidth || 0,
+        metricsContainerScrollWidth: metricsContainer?.scrollWidth || 0,
+        metricCount: metrics.length,
+        metricLabels: metrics.map((metric) => metric.label),
+        metricTops: [...new Set(metrics.map((metric) => metric.top))],
+        metricWidths: metrics.map((metric) => metric.width)
+      };
+    });
+
+    expect(metricLayout.metricCount).toBe(3);
+    expect(metricLayout.metricLabels.some((label) => label.startsWith('Buy Now'))).toBe(true);
+    expect(metricLayout.metricLabels).toContain('Feed-In Price');
+    expect(metricLayout.metricLabels.some((label) => label.startsWith('Renewables'))).toBe(true);
+    expect(metricLayout.metricTops.length).toBe(1);
+    metricLayout.metricWidths.forEach((width) => {
+      expect(width).toBeGreaterThan(65);
+    });
+    expect(metricLayout.pageScrollWidth).toBeLessThanOrEqual(metricLayout.viewportWidth + 1);
+    expect(metricLayout.amberCardScrollWidth).toBeLessThanOrEqual(metricLayout.amberCardClientWidth + 1);
+    expect(metricLayout.metricsContainerScrollWidth).toBeLessThanOrEqual(metricLayout.metricsContainerClientWidth + 1);
+  });
+
+  test('should keep AEMO market bars readable on constrained desktop cards and safe on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.addInitScript(() => {
       try {
@@ -3863,9 +4026,7 @@ test.describe('Dashboard Page', () => {
       };
     });
 
-    expect(wideLayout.barsLeft).toBeGreaterThanOrEqual(wideLayout.metricsRight - 1);
-    expect(Math.abs(wideLayout.barsTop - wideLayout.metricsTop)).toBeLessThan(32);
-    expect(wideLayout.barsHeight).toBeLessThanOrEqual(wideLayout.metricsHeight + 4);
+    expect(wideLayout.barsTop).toBeGreaterThanOrEqual(wideLayout.metricsBottom - 1);
     expect(wideLayout.demand.fillPercent).toBeCloseTo(100, 2);
     expect(wideLayout.generation.fillPercent).toBeCloseTo((542 / 894) * 100, 1);
     expect(Math.abs(wideLayout.demand.trackLeft - wideLayout.generation.trackLeft)).toBeLessThanOrEqual(1);
@@ -3905,6 +4066,151 @@ test.describe('Dashboard Page', () => {
     expect(mobileLayout.pageScrollWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
     expect(mobileLayout.amberCardScrollWidth).toBeLessThanOrEqual(mobileLayout.amberCardClientWidth + 1);
     expect(mobileLayout.barsWidth).toBeGreaterThan(0);
+  });
+
+  test('should keep AEMO pricing readable when the automation panel squeezes the desktop layout', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 });
+
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+        localStorage.removeItem('aemoRegion');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      pricingProvider: 'aemo',
+      aemoRegion: 'NSW1'
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            id: 'NSW1',
+            region: 'NSW1',
+            nmi: 'NSW1',
+            network: 'AEMO',
+            displayName: 'New South Wales (NSW1)'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            channelType: 'general',
+            type: 'CurrentInterval',
+            startTime: '2026-03-31T11:00:00.000Z',
+            endTime: '2026-03-31T11:05:00.000Z',
+            perKwh: 86.4,
+            spotPerKwh: 86.4,
+            demand: 8420,
+            generation: 5990,
+            supply: 5990,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'CurrentInterval',
+            startTime: '2026-03-31T11:00:00.000Z',
+            endTime: '2026-03-31T11:05:00.000Z',
+            perKwh: -18.7,
+            spotPerKwh: -18.7,
+            demand: 8420,
+            generation: 5990,
+            supply: 5990,
+            spikeStatus: 'none'
+          },
+          {
+            channelType: 'general',
+            type: 'ForecastInterval',
+            startTime: '2026-03-31T11:05:00.000Z',
+            endTime: '2026-03-31T11:10:00.000Z',
+            perKwh: 88.8,
+            spotPerKwh: 88.8,
+            spikeStatus: 'forecast'
+          },
+          {
+            channelType: 'feedIn',
+            type: 'ForecastInterval',
+            startTime: '2026-03-31T11:05:00.000Z',
+            endTime: '2026-03-31T11:10:00.000Z',
+            perKwh: -17.2,
+            spotPerKwh: -17.2,
+            spikeStatus: 'none'
+          }
+        ]
+      }, 200));
+    });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#amberCard')).toContainText('8.42 GW');
+    await expect(page.locator('#amberCard')).toContainText('5.99 GW');
+
+    await page.evaluate(() => {
+      try {
+        localStorage.setItem('automationPanelCollapsed', 'false');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+
+      const panel = document.getElementById('automationPanel');
+      const resizer = document.getElementById('automationResizer');
+      if (panel) {
+        panel.classList.remove('collapsed');
+        panel.style.width = '400px';
+      }
+      if (resizer) {
+        resizer.style.display = '';
+      }
+      window.dispatchEvent(new Event('resize'));
+    });
+    await page.waitForTimeout(150);
+
+    const squeezedLayout = await page.evaluate(() => {
+      const card = document.getElementById('amberCard');
+      const overview = card?.querySelector('.pricing-current-overview--market');
+      const metrics = overview?.querySelector('.pricing-current-metrics');
+      const bars = overview?.querySelector('.pricing-market-bars');
+      const metricsRect = metrics?.getBoundingClientRect();
+      const barsRect = bars?.getBoundingClientRect();
+      const metricTops = [...new Set(Array.from(metrics?.querySelectorAll('.pricing-current-metric') || []).map((element) => Math.round(element.getBoundingClientRect().top)))];
+
+      return {
+        viewportWidth: window.innerWidth,
+        amberCardWidth: Math.round(card?.getBoundingClientRect().width || 0),
+        pageScrollWidth: document.documentElement.scrollWidth,
+        amberCardClientWidth: card?.clientWidth || 0,
+        amberCardScrollWidth: card?.scrollWidth || 0,
+        metricsBottom: Math.round(metricsRect?.bottom || 0),
+        barsTop: Math.round(barsRect?.top || 0),
+        barsWidth: Math.round(barsRect?.width || 0),
+        metricTops,
+        metricWidths: Array.from(metrics?.querySelectorAll('.pricing-current-metric') || []).map((element) => Math.round(element.getBoundingClientRect().width))
+      };
+    });
+
+    expect(squeezedLayout.viewportWidth).toBeGreaterThan(760);
+    expect(squeezedLayout.amberCardWidth).toBeLessThanOrEqual(560);
+    expect(squeezedLayout.barsTop).toBeGreaterThanOrEqual(squeezedLayout.metricsBottom - 1);
+    expect(squeezedLayout.metricTops.length).toBe(2);
+    squeezedLayout.metricWidths.forEach((width) => {
+      expect(width).toBeGreaterThan(120);
+    });
+    expect(squeezedLayout.pageScrollWidth).toBeLessThanOrEqual(squeezedLayout.viewportWidth + 1);
+    expect(squeezedLayout.amberCardScrollWidth).toBeLessThanOrEqual(squeezedLayout.amberCardClientWidth + 1);
+    expect(squeezedLayout.barsWidth).toBeGreaterThan(0);
   });
 
   test('should show only AEMO market bars beside prices and keep feed chart values precise', async ({ page }) => {
@@ -4485,8 +4791,8 @@ test.describe('Dashboard Page', () => {
     expect(metricLayout.metricLabels).toEqual(['Buy Now', 'Feed-In Price']);
     expect(metricLayout.barCount).toBe(2);
     expect(metricLayout.bars).toEqual([
-      { label: 'DEMAND', value: '5.73 GW' },
-      { label: 'GENERATION', value: '6.39 GW' }
+      { label: 'Demand', value: '5.73 GW' },
+      { label: 'Generation', value: '6.39 GW' }
     ]);
     metricLayout.metrics.forEach((metric) => {
       expect(metric.right).toBeLessThanOrEqual(metricLayout.containerRight + 1);

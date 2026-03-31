@@ -3651,7 +3651,8 @@
                     </div>`);
                 }
 
-                const currentMetricsHtml = `<div class="pricing-current-metrics" style="--pricing-current-metric-count:${currentMetricParts.length || 1}">${currentMetricParts.join('')}</div>`;
+                const currentMetricCount = currentMetricParts.length || 1;
+                const currentMetricsHtml = `<div class="pricing-current-metrics" data-pricing-metric-count="${currentMetricCount}" style="--pricing-current-metric-count:${currentMetricCount}">${currentMetricParts.join('')}</div>`;
 
                 if (marketMetrics.length > 0) {
                     const maxMarketMetricValue = Math.max(...marketMetrics.map((metric) => Math.abs(metric.value)), 1);
