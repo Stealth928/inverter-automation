@@ -1504,6 +1504,210 @@ describe('admin route module', () => {
     });
   });
 
+  test('behavior-metrics chunks main-page reports to stay within the GA4 batch limit', async () => {
+    process.env.GA4_PROPERTY_ID = '123456789';
+
+    const runReport = jest.fn()
+      .mockResolvedValueOnce({
+        data: {
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [
+            {
+              metricValues: [
+                { value: '24' },
+                { value: '210' },
+                { value: '280' },
+                { value: '1260' }
+              ]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'date' }],
+          metricHeaders: [
+            { name: 'activeUsers' },
+            { name: 'screenPageViews' },
+            { name: 'eventCount' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '20260320' }],
+              metricValues: [{ value: '24' }, { value: '210' }, { value: '280' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          rowCount: 6,
+          dimensionHeaders: [{ name: 'pagePath' }, { name: 'pageTitle' }],
+          metricHeaders: [
+            { name: 'screenPageViews' },
+            { name: 'activeUsers' },
+            { name: 'userEngagementDuration' }
+          ],
+          rows: [
+            {
+              dimensionValues: [{ value: '/page-1.html' }, { value: 'Page 1' }],
+              metricValues: [{ value: '40' }, { value: '8' }, { value: '120' }]
+            },
+            {
+              dimensionValues: [{ value: '/page-2.html' }, { value: 'Page 2' }],
+              metricValues: [{ value: '36' }, { value: '7' }, { value: '105' }]
+            },
+            {
+              dimensionValues: [{ value: '/page-3.html' }, { value: 'Page 3' }],
+              metricValues: [{ value: '34' }, { value: '6' }, { value: '96' }]
+            },
+            {
+              dimensionValues: [{ value: '/page-4.html' }, { value: 'Page 4' }],
+              metricValues: [{ value: '32' }, { value: '5' }, { value: '90' }]
+            },
+            {
+              dimensionValues: [{ value: '/page-5.html' }, { value: 'Page 5' }],
+              metricValues: [{ value: '30' }, { value: '4' }, { value: '72' }]
+            },
+            {
+              dimensionValues: [{ value: '/page-6.html' }, { value: 'Page 6' }],
+              metricValues: [{ value: '28' }, { value: '4' }, { value: '66' }]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          dimensionHeaders: [{ name: 'eventName' }],
+          metricHeaders: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+          rows: [
+            {
+              dimensionValues: [{ value: 'settings_save_all' }],
+              metricValues: [{ value: '21' }, { value: '8' }]
+            }
+          ]
+        }
+      });
+
+    const batchRunReports = jest.fn()
+      .mockResolvedValueOnce({
+        data: {
+          reports: [
+            {
+              dimensionHeaders: [{ name: 'date' }],
+              metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+              rows: [
+                {
+                  dimensionValues: [{ value: '20260320' }],
+                  metricValues: [{ value: '8' }, { value: '40' }]
+                }
+              ]
+            },
+            {
+              dimensionHeaders: [{ name: 'date' }],
+              metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+              rows: [
+                {
+                  dimensionValues: [{ value: '20260320' }],
+                  metricValues: [{ value: '7' }, { value: '36' }]
+                }
+              ]
+            },
+            {
+              dimensionHeaders: [{ name: 'date' }],
+              metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+              rows: [
+                {
+                  dimensionValues: [{ value: '20260320' }],
+                  metricValues: [{ value: '6' }, { value: '34' }]
+                }
+              ]
+            },
+            {
+              dimensionHeaders: [{ name: 'date' }],
+              metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+              rows: [
+                {
+                  dimensionValues: [{ value: '20260320' }],
+                  metricValues: [{ value: '5' }, { value: '32' }]
+                }
+              ]
+            },
+            {
+              dimensionHeaders: [{ name: 'date' }],
+              metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+              rows: [
+                {
+                  dimensionValues: [{ value: '20260320' }],
+                  metricValues: [{ value: '4' }, { value: '30' }]
+                }
+              ]
+            }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          reports: [
+            {
+              dimensionHeaders: [{ name: 'date' }],
+              metricHeaders: [{ name: 'activeUsers' }, { name: 'screenPageViews' }],
+              rows: [
+                {
+                  dimensionValues: [{ value: '20260320' }],
+                  metricValues: [{ value: '4' }, { value: '28' }]
+                }
+              ]
+            }
+          ]
+        }
+      });
+
+    const app = buildApp(createDeps({
+      googleApis: {
+        auth: {
+          GoogleAuth: jest.fn(() => ({}))
+        },
+        analyticsdata: jest.fn(() => ({
+          properties: {
+            runReport,
+            batchRunReports
+          }
+        }))
+      }
+    }));
+
+    const response = await request(app)
+      .get('/api/admin/behavior-metrics?days=30&limit=6')
+      .set('Authorization', 'Bearer token');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.result.mainPageOptions).toEqual([
+      { key: '/page-1.html', label: 'Page 1' },
+      { key: '/page-2.html', label: 'Page 2' },
+      { key: '/page-3.html', label: 'Page 3' },
+      { key: '/page-4.html', label: 'Page 4' },
+      { key: '/page-5.html', label: 'Page 5' },
+      { key: '/page-6.html', label: 'Page 6' }
+    ]);
+    expect(batchRunReports).toHaveBeenCalledTimes(2);
+    expect(batchRunReports.mock.calls[0][0]?.requestBody?.requests).toHaveLength(5);
+    expect(batchRunReports.mock.calls[1][0]?.requestBody?.requests).toHaveLength(1);
+    expect(batchRunReports.mock.calls[0][0]?.requestBody?.requests.every((entry) => entry.dimensionFilter?.filter?.fieldName === 'pagePath')).toBe(true);
+    expect(batchRunReports.mock.calls[1][0]?.requestBody?.requests[0]?.dimensionFilter).toEqual({
+      filter: {
+        fieldName: 'pagePath',
+        stringFilter: { matchType: 'EXACT', value: '/page-6.html' }
+      }
+    });
+  });
+
   test('firestore-metrics returns separate project cost and firestore doc-ops estimate fields', async () => {
     const deps = createDeps({
       googleApis: {

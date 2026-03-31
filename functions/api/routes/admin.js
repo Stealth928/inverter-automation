@@ -1539,6 +1539,7 @@ function registerAdminRoutes(app, deps = {}) {
   ];
   const DEFAULT_GA4_MEASUREMENT_ID = 'G-MWF4ZBMREE';
   const ADMIN_BEHAVIOR_MAX_PROPERTY_SCAN_COUNT = 25;
+  const ADMIN_BEHAVIOR_BATCH_REQUEST_LIMIT = 5;
   let adminBehaviorMetricsCache = {
     key: '',
     data: null,
@@ -2096,6 +2097,15 @@ function registerAdminRoutes(app, deps = {}) {
         title: page.title
       };
     });
+  };
+
+  const chunkBehaviorPages = (pages = [], chunkSize = ADMIN_BEHAVIOR_BATCH_REQUEST_LIMIT) => {
+    const chunks = [];
+    const safeChunkSize = Math.max(1, Number(chunkSize) || ADMIN_BEHAVIOR_BATCH_REQUEST_LIMIT);
+    for (let index = 0; index < pages.length; index += safeChunkSize) {
+      chunks.push(pages.slice(index, index + safeChunkSize));
+    }
+    return chunks;
   };
 
   const buildGa4ApiErrorMessage = (error) => {
@@ -2849,39 +2859,45 @@ app.get('/api/admin/behavior-metrics', authenticateUser, requireAdmin, async (re
         filterPages.map((page) => [page.key, buildBehaviorPageSeriesTemplate(seriesDates)])
       );
       if (filterPages.length) {
-        const mainPagesResponse = await analyticsdata.properties.batchRunReports({
-          property,
-          requestBody: {
-            requests: filterPages.map((page) => ({
-              dateRanges,
-              dimensions: [{ name: 'date' }],
-              metrics: [
-                { name: 'activeUsers' },
-                { name: 'screenPageViews' }
-              ],
-              dimensionFilter: buildBehaviorPagePathFilter(page.path),
-              orderBys: [{ dimension: { dimensionName: 'date' } }],
-              limit: String(Math.max(days, 31))
-            }))
-          }
-        });
-        const mainPagesReports = Array.isArray(mainPagesResponse?.data?.reports)
-          ? mainPagesResponse.data.reports
-          : [];
         const seriesDateIndex = new Map(seriesDates.map((date, index) => [date, index]));
-        for (const [pageIndex, page] of filterPages.entries()) {
-          const report = mainPagesReports[pageIndex] || {};
-          const dimensionHeaders = report.dimensionHeaders || [];
-          const metricHeaders = report.metricHeaders || [];
-          if (!Array.isArray(report.rows)) continue;
-          for (const row of report.rows) {
-            const date = normalizeGa4Date(parseGa4DimensionValue(row, dimensionHeaders, 'date'));
-            if (!date) continue;
-            const targetIndex = seriesDateIndex.get(date);
-            if (typeof targetIndex !== 'number') continue;
-            const target = mainPageSeriesAll[page.key][targetIndex];
-            target.activeUsers = Math.round(parseGa4MetricValue(row, metricHeaders, 'activeUsers'));
-            target.pageViews = Math.round(parseGa4MetricValue(row, metricHeaders, 'screenPageViews'));
+        const mainPageChunks = chunkBehaviorPages(filterPages);
+        const mainPagesResponses = await Promise.all(
+          mainPageChunks.map((pageChunk) => analyticsdata.properties.batchRunReports({
+            property,
+            requestBody: {
+              requests: pageChunk.map((page) => ({
+                dateRanges,
+                dimensions: [{ name: 'date' }],
+                metrics: [
+                  { name: 'activeUsers' },
+                  { name: 'screenPageViews' }
+                ],
+                dimensionFilter: buildBehaviorPagePathFilter(page.path),
+                orderBys: [{ dimension: { dimensionName: 'date' } }],
+                limit: String(Math.max(days, 31))
+              }))
+            }
+          }))
+        );
+        for (const [chunkIndex, pageChunk] of mainPageChunks.entries()) {
+          const mainPagesReports = Array.isArray(mainPagesResponses[chunkIndex]?.data?.reports)
+            ? mainPagesResponses[chunkIndex].data.reports
+            : [];
+          for (const [pageIndex, page] of pageChunk.entries()) {
+            const report = mainPagesReports[pageIndex] || {};
+            const dimensionHeaders = report.dimensionHeaders || [];
+            const metricHeaders = report.metricHeaders || [];
+            if (!Array.isArray(report.rows)) continue;
+            for (const row of report.rows) {
+              const date = normalizeGa4Date(parseGa4DimensionValue(row, dimensionHeaders, 'date'));
+              if (!date) continue;
+              const targetIndex = seriesDateIndex.get(date);
+              if (typeof targetIndex !== 'number') continue;
+              const target = mainPageSeriesAll[page.key]?.[targetIndex];
+              if (!target) continue;
+              target.activeUsers = Math.round(parseGa4MetricValue(row, metricHeaders, 'activeUsers'));
+              target.pageViews = Math.round(parseGa4MetricValue(row, metricHeaders, 'screenPageViews'));
+            }
           }
         }
       }
