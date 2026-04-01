@@ -241,6 +241,26 @@ const _secretGithubDataworksToken = defineSecret('GITHUB_DATAWORKS_TOKEN');
 const _secretWebPushVapidPublicKey = defineSecret('WEB_PUSH_VAPID_PUBLIC_KEY');
 const _secretWebPushVapidPrivateKey = defineSecret('WEB_PUSH_VAPID_PRIVATE_KEY');
 const _secretWebPushVapidSubject = defineSecret('WEB_PUSH_VAPID_SUBJECT');
+const WEB_PUSH_NOTIFICATION_SECRETS = Object.freeze([
+  _secretWebPushVapidPublicKey,
+  _secretWebPushVapidPrivateKey,
+  _secretWebPushVapidSubject
+]);
+const API_RUNTIME_SECRETS = Object.freeze([
+  _secretTeslaProxyUrl,
+  _secretTeslaProxyToken,
+  _secretGithubDataworksToken,
+  ...WEB_PUSH_NOTIFICATION_SECRETS
+]);
+const RUN_AUTOMATION_SECRETS = Object.freeze([
+  _secretSungrowAppKey,
+  _secretSungrowAppSecret,
+  ...WEB_PUSH_NOTIFICATION_SECRETS
+]);
+const RUN_ADMIN_ALERTS_SECRETS = Object.freeze([
+  _secretGithubDataworksToken,
+  ...WEB_PUSH_NOTIFICATION_SECRETS
+]);
 
 // ==================== CONFIGURATION ====================
 // Reads from environment variables (populated from Secret Manager at runtime,
@@ -1612,14 +1632,7 @@ exports.api = onRequest(
     timeoutSeconds: 60,
     maxInstances: 20,
     memory: '512MiB',
-    secrets: [
-      _secretTeslaProxyUrl,
-      _secretTeslaProxyToken,
-      _secretGithubDataworksToken,
-      _secretWebPushVapidPublicKey,
-      _secretWebPushVapidPrivateKey,
-      _secretWebPushVapidSubject
-    ]
+    secrets: API_RUNTIME_SECRETS
   },
   app
 );
@@ -1799,7 +1812,7 @@ exports.runAutomation = onSchedule(
   {
     schedule: 'every 1 minutes',
     timeZone: 'UTC',
-    secrets: [_secretSungrowAppKey, _secretSungrowAppSecret]
+    secrets: RUN_AUTOMATION_SECRETS
   },
   runAutomationHandler
 );
@@ -1816,7 +1829,8 @@ exports.refreshAemoLiveSnapshots = onSchedule(
 exports.runAdminOperationalAlerts = onSchedule(
   {
     schedule: '2-59/5 * * * *',
-    timeZone: 'UTC'
+    timeZone: 'UTC',
+    secrets: RUN_ADMIN_ALERTS_SECRETS
   },
   runAdminOperationalAlertsHandler
 );

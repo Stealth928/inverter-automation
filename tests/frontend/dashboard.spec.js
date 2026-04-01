@@ -1816,8 +1816,11 @@ test.describe('Dashboard Page', () => {
 
     expect(summaryModel).toBeTruthy();
     expect(summaryModel.badgeText).toBe('Live summary');
-    expect(summaryModel.headline).toContain('stronger export window later in the horizon');
-    expect(summaryModel.lead).toContain('Battery is at 68% and charging at 0.28 kW.');
+    expect(summaryModel.headline).toContain('Battery is 68% ahead of a');
+    expect(summaryModel.headline).toContain('export window tomorrow at 21:00');
+    expect(summaryModel.headline).not.toContain('broadly steady');
+    expect(summaryModel.lead).toContain('Solar is covering the home and leaving about 2.4 kW spare.');
+    expect(summaryModel.lead).not.toContain('Battery is at 68% and charging at 0.28 kW.');
     expect(summaryModel.nowCopy).toContain('Automation is paused');
     expect(summaryModel.nextItems.map((item) => item.text).join(' ')).toContain('Best export window tomorrow at 21:00');
     expect(summaryModel.chips.map((chip) => chip.label)).toEqual(expect.arrayContaining(['Battery', 'Buy']));
@@ -2191,6 +2194,8 @@ test.describe('Dashboard Page', () => {
     });
 
     expect(summaryModel).toBeTruthy();
+    expect(summaryModel.headline).toContain('Evening Drain is steering the inverter');
+    expect(summaryModel.headline).toContain('through 22:30');
     expect(summaryModel.nowCopy).toContain('Automation is running Evening Drain in battery discharge mode until 22:30.');
     expect(summaryModel.nowCopy).toContain('Rule cooldown has about 21 min remaining.');
     expect(summaryModel.nextItems.map((item) => item.text)).toEqual(expect.arrayContaining([
@@ -2364,6 +2369,7 @@ test.describe('Dashboard Page', () => {
 
     expect(summaryModel).toBeTruthy();
     expect(summaryModel.badgeText).toBe('Partial summary');
+    expect(summaryModel.headline).toContain('Rain conditions are likely to keep solar output subdued today.');
     expect(summaryModel.lead).toContain('weather is likely to suppress solar output');
     expect(summaryModel.chips.map((chip) => chip.label)).toContain('Weather');
     await page.waitForTimeout(300);

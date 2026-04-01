@@ -8110,6 +8110,238 @@
             };
         }
 
+        function selectOverviewCandidateTexts(candidates = [], excludedKeys = new Set(), limit = 3, minimumPreferred = 1) {
+            const preferred = [];
+            const deferred = [];
+            const seen = new Set();
+
+            candidates.forEach((candidate) => {
+                const text = String(candidate?.text || '').trim();
+                if (!text) return;
+
+                const normalized = text.toLowerCase();
+                if (seen.has(normalized)) return;
+                seen.add(normalized);
+
+                if (candidate?.key && excludedKeys.has(candidate.key)) {
+                    deferred.push(text);
+                    return;
+                }
+
+                preferred.push(text);
+            });
+
+            const preferredTarget = Math.max(0, Number(minimumPreferred) || 0);
+            const selected = preferred.slice(0, Math.max(0, Number(limit) || 0));
+
+            if (selected.length < preferredTarget) {
+                const remaining = Math.max(0, Number(limit) || 0) - selected.length;
+                selected.push(...deferred.slice(0, remaining));
+            }
+
+            return selected;
+        }
+
+        function buildOverviewHeadlineDescriptor({
+            inverter,
+            pricing,
+            weather,
+            automation,
+            ev,
+            quickControl,
+            scheduler
+        } = {}) {
+            const hasValue = (value) => value !== null && value !== undefined;
+            const inverterSocPct = inverter?.socPct;
+            const inverterSolarKw = inverter?.solarKw;
+            const inverterLoadKw = inverter?.loadKw;
+            const inverterBatteryMode = inverter?.batteryMode;
+            const pricingCurrentBuyCents = pricing?.currentBuyCents;
+            const pricingBestFeedFuture = pricing?.bestFeedFuture || null;
+            const pricingCheapestFuture = pricing?.cheapestFuture || null;
+            const pricingHighestFuture = pricing?.highestFuture || null;
+            const netSolarKw = hasValue(inverterSolarKw) && hasValue(inverterLoadKw)
+                ? inverterSolarKw - inverterLoadKw
+                : null;
+            const quickControlEndLabel = quickControl?.expiresAt
+                ? formatOverviewRelativeDateTime(quickControl.expiresAt)
+                : null;
+            const exportWindowWhen = pricingBestFeedFuture?.startTime
+                ? formatOverviewRelativeDateTime(pricingBestFeedFuture.startTime)
+                : null;
+            const cheapestWindowWhen = pricingCheapestFuture?.startTime
+                ? formatOverviewRelativeDateTime(pricingCheapestFuture.startTime)
+                : null;
+            const highestWindowWhen = pricingHighestFuture?.startTime
+                ? formatOverviewRelativeDateTime(pricingHighestFuture.startTime)
+                : null;
+
+            if (quickControl?.active) {
+                const actionLabel = quickControl.type === 'charge' ? 'charge' : 'discharge';
+                const powerLabel = quickControl.powerKw !== null ? ` at ${formatOverviewPowerKw(quickControl.powerKw)}` : '';
+                const timeLabel = quickControlEndLabel
+                    ? `until ${quickControlEndLabel}`
+                    : `for another ${formatMsToReadable(quickControl.remainingMs || 0)}`;
+                return {
+                    focus: 'quickControl',
+                    usedKeys: ['quickControl'],
+                    text: `Manual battery ${actionLabel} override is active ${timeLabel}${powerLabel}.`
+                };
+            }
+
+            if (automation?.telemetryFailsafePaused) {
+                return {
+                    focus: 'automation',
+                    usedKeys: ['automation'],
+                    text: 'Fresh inverter telemetry is missing, so automation is paused until live data catches up.'
+                };
+            }
+
+            if (automation?.inBlackout) {
+                return {
+                    focus: 'automation',
+                    usedKeys: ['automation'],
+                    text: 'A blackout window is active, so automation is intentionally standing down for now.'
+                };
+            }
+
+            if (automation?.enabled && automation.activeRule && automation.segmentEndLabel) {
+                const modeLabel = describeOverviewAutomationMode(automation.activeMode);
+                return {
+                    focus: 'automation',
+                    usedKeys: ['automation'],
+                    text: `${automation.activeRule} is steering the inverter${modeLabel ? ` in ${modeLabel}` : ''} through ${automation.segmentEndLabel}.`
+                };
+            }
+
+            if (pricingBestFeedFuture && exportWindowWhen && hasValue(inverterSocPct) && inverterSocPct >= 55) {
+                return {
+                    focus: 'pricing',
+                    usedKeys: ['battery', 'pricing'],
+                    text: `Battery is ${Math.round(inverterSocPct)}% ahead of a ${formatOverviewPrice(pricingBestFeedFuture.priceCents)} export window ${exportWindowWhen}.`
+                };
+            }
+
+            if (inverterBatteryMode === 'charging' && weather?.solarSupport === 'strong') {
+                if (netSolarKw !== null && netSolarKw > 0.35) {
+                    return {
+                        focus: 'solar',
+                        usedKeys: ['battery', 'solar'],
+                        text: `Solar surplus is charging the battery and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`
+                    };
+                }
+
+                return {
+                    focus: 'solar',
+                    usedKeys: ['battery', 'solar'],
+                    text: 'Strong solar conditions are replenishing the battery comfortably right now.'
+                };
+            }
+
+            if (inverterBatteryMode === 'discharging' && hasValue(pricingCurrentBuyCents) && pricingCurrentBuyCents >= 25) {
+                return {
+                    focus: 'pricing',
+                    usedKeys: ['battery', 'pricing'],
+                    text: `Buy pricing is ${formatOverviewPrice(pricingCurrentBuyCents)}, and the battery is covering part of the home load.`
+                };
+            }
+
+            if (weather?.solarSupport === 'weak' && hasValue(inverterSocPct) && inverterSocPct < 40) {
+                return {
+                    focus: 'battery',
+                    usedKeys: ['battery', 'weather'],
+                    text: `Battery reserve is down to ${Math.round(inverterSocPct)}% while weaker solar conditions stay in play.`
+                };
+            }
+
+            if (hasValue(pricingCurrentBuyCents) && pricingCurrentBuyCents <= 10) {
+                const softerWindowText = pricingCheapestFuture && cheapestWindowWhen && pricingCheapestFuture.priceCents <= pricingCurrentBuyCents - 3
+                    ? ` Another softer buy window lands ${cheapestWindowWhen}.`
+                    : '';
+                return {
+                    focus: 'pricing',
+                    usedKeys: ['pricing'],
+                    text: `Buy pricing is sitting at ${formatOverviewPrice(pricingCurrentBuyCents)}, which keeps the near-term run inexpensive.${softerWindowText}`
+                };
+            }
+
+            if (weather?.solarSupport === 'weak' && weather?.currentCondition) {
+                return {
+                    focus: 'weather',
+                    usedKeys: ['weather'],
+                    text: `${weather.currentCondition} conditions are likely to keep solar output subdued today.`
+                };
+            }
+
+            if (weather?.solarSupport === 'strong' && weather?.currentCondition) {
+                return {
+                    focus: 'weather',
+                    usedKeys: ['weather'],
+                    text: `${weather.currentCondition} conditions are still supportive for solar production right now.`
+                };
+            }
+
+            if (ev?.isCharging && hasValue(ev?.socPct) && hasValue(ev?.timeToFullHours)) {
+                return {
+                    focus: 'ev',
+                    usedKeys: ['ev'],
+                    text: `${ev.selectedName} is charging from ${Math.round(ev.socPct)}% and should finish in about ${formatEVHoursToFull(ev.timeToFullHours)}.`
+                };
+            }
+
+            if (scheduler?.enabled && scheduler.activeCount > 0 && scheduler.nextWindow) {
+                return {
+                    focus: 'scheduler',
+                    usedKeys: ['scheduler'],
+                    text: `Manual scheduler has ${scheduler.activeCount} active window${scheduler.activeCount === 1 ? '' : 's'}, with the next one at ${scheduler.nextWindow.label}.`
+                };
+            }
+
+            const fallbackFragments = [];
+            if (netSolarKw !== null) {
+                if (netSolarKw > 0.35) {
+                    fallbackFragments.push({ key: 'solar', text: 'Solar is covering the home' });
+                } else if (netSolarKw < -0.35) {
+                    fallbackFragments.push({ key: 'solar', text: 'Home load is running ahead of solar output' });
+                }
+            }
+            if (!fallbackFragments.length && hasValue(inverterSocPct)) {
+                fallbackFragments.push({ key: 'battery', text: `Battery is steady at ${Math.round(inverterSocPct)}%` });
+            }
+            if (hasValue(pricingCurrentBuyCents)) {
+                fallbackFragments.push({ key: 'pricing', text: `buy pricing sits at ${formatOverviewPrice(pricingCurrentBuyCents)}` });
+            } else if (pricingBestFeedFuture && exportWindowWhen) {
+                fallbackFragments.push({ key: 'pricing', text: `the best export window is ${exportWindowWhen}` });
+            } else if (pricingHighestFuture && highestWindowWhen) {
+                fallbackFragments.push({ key: 'pricing', text: `the highest buy window lands ${highestWindowWhen}` });
+            }
+            if (weather?.currentCondition) {
+                fallbackFragments.push({ key: 'weather', text: `${String(weather.currentCondition).toLowerCase()} weather is in play` });
+            }
+
+            if (fallbackFragments.length >= 2) {
+                return {
+                    focus: 'balanced',
+                    usedKeys: fallbackFragments.slice(0, 2).map((item) => item.key),
+                    text: `${fallbackFragments[0].text} while ${fallbackFragments[1].text}.`
+                };
+            }
+
+            if (fallbackFragments.length === 1) {
+                return {
+                    focus: 'balanced',
+                    usedKeys: [fallbackFragments[0].key],
+                    text: `${fallbackFragments[0].text}.`
+                };
+            }
+
+            return {
+                focus: 'balanced',
+                usedKeys: [],
+                text: 'Live dashboard signals are aligned, with no standout pressure point right now.'
+            };
+        }
+
         function buildOverviewSummaryModel() {
             const inverter = extractInverterOverviewSignal(window.__latestOverviewInverterPayload);
             const pricing = extractPricingOverviewSignal(window.lastAmberResponse);
@@ -8133,6 +8365,16 @@
             const pricingNextSpike = pricing?.nextSpike || null;
             const evSocPct = ev?.socPct;
             const evTimeToFullHours = ev?.timeToFullHours;
+            const headlineDescriptor = buildOverviewHeadlineDescriptor({
+                inverter,
+                pricing,
+                weather,
+                automation,
+                ev,
+                quickControl,
+                scheduler
+            });
+            const headlineExcludedKeys = new Set(headlineDescriptor.usedKeys || []);
 
             const sourceEntries = [
                 ['inverter', inverter],
@@ -8155,71 +8397,90 @@
                 };
             }
 
-            let headline = 'The dashboard is broadly steady, with no immediate red flags in the live signals.';
-            if (quickControl?.active) {
-                headline = `Quick control is ${quickControl.type === 'charge' ? 'charging' : 'discharging'} the battery for the next ${formatMsToReadable(quickControl.remainingMs || 0)}.`;
-            } else if (automation?.telemetryFailsafePaused) {
-                headline = 'Automation is paused by telemetry fail-safe, so the live state needs attention before the next cycle.';
-            } else if (automation?.inBlackout) {
-                headline = 'Automation is inside a blackout window, so the system is intentionally holding steady.';
-            } else if (pricingBestFeedFuture && hasValue(inverterSocPct) && inverterSocPct >= 60) {
-                headline = 'The battery looks well positioned for a stronger export window later in the horizon.';
-            } else if (inverterBatteryMode === 'charging' && weather?.solarSupport === 'strong') {
-                headline = 'Solar is comfortably replenishing the battery right now.';
-            } else if (inverterBatteryMode === 'discharging' && hasValue(pricingCurrentBuyCents) && pricingCurrentBuyCents >= 25) {
-                headline = 'The battery is helping carry the site through a relatively expensive period.';
-            } else if (weather?.solarSupport === 'weak' && hasValue(inverterSocPct) && inverterSocPct < 40) {
-                headline = 'Solar looks weaker ahead, so reserve management matters more than usual.';
-            } else if (hasValue(pricingCurrentBuyCents) && pricingCurrentBuyCents <= 10) {
-                headline = 'Pricing is soft right now, which keeps the short-term operating window comfortable.';
-            }
+            const headline = headlineDescriptor.text;
 
-            const leadClauses = [];
+            const leadCandidates = [];
             if (hasValue(inverterSocPct)) {
                 if (inverterBatteryMode === 'charging' && hasValue(inverterBatteryPowerKw)) {
-                    leadClauses.push(`Battery is at ${Math.round(inverterSocPct)}% and charging at ${formatOverviewPowerKw(inverterBatteryPowerKw)}.`);
+                    leadCandidates.push({
+                        key: 'battery',
+                        text: `Battery is at ${Math.round(inverterSocPct)}% and charging at ${formatOverviewPowerKw(inverterBatteryPowerKw)}.`
+                    });
                 } else if (inverterBatteryMode === 'discharging' && hasValue(inverterBatteryPowerKw)) {
-                    leadClauses.push(`Battery is at ${Math.round(inverterSocPct)}% and discharging at ${formatOverviewPowerKw(inverterBatteryPowerKw)}.`);
+                    leadCandidates.push({
+                        key: 'battery',
+                        text: `Battery is at ${Math.round(inverterSocPct)}% and discharging at ${formatOverviewPowerKw(inverterBatteryPowerKw)}.`
+                    });
                 } else {
-                    leadClauses.push(`Battery is holding at ${Math.round(inverterSocPct)}%.`);
+                    leadCandidates.push({
+                        key: 'battery',
+                        text: `Battery is holding at ${Math.round(inverterSocPct)}%.`
+                    });
                 }
             }
             if (hasValue(inverterSolarKw) && hasValue(inverterLoadKw)) {
                 const netSolarKw = inverterSolarKw - inverterLoadKw;
                 if (netSolarKw > 0.35) {
-                    leadClauses.push(`Solar is covering the home and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`);
+                    leadCandidates.push({
+                        key: 'solar',
+                        text: `Solar is covering the home and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`
+                    });
                 } else if (netSolarKw < -0.35) {
                     const fallbackSource = inverterBatteryMode === 'discharging'
                         ? 'the battery'
                         : (inverterGridMode === 'import' ? 'the grid' : 'other sources');
-                    leadClauses.push(`Solar is below the house load, so the shortfall is being covered by ${fallbackSource}.`);
+                    leadCandidates.push({
+                        key: 'solar',
+                        text: `Solar is below the house load, so the shortfall is being covered by ${fallbackSource}.`
+                    });
                 } else {
-                    leadClauses.push('Solar and house load are fairly balanced.');
+                    leadCandidates.push({
+                        key: 'solar',
+                        text: 'Solar and house load are fairly balanced.'
+                    });
                 }
             }
             if (hasValue(pricingCurrentBuyCents)) {
                 const buyText = `Buy pricing is ${describeOverviewBuyPrice(pricingCurrentBuyCents)} at ${formatOverviewPrice(pricingCurrentBuyCents)}.`;
                 if (hasValue(pricingCurrentFeedCents)) {
-                    leadClauses.push(`${buyText} Feed-in is ${describeOverviewFeedPrice(pricingCurrentFeedCents)} at ${formatOverviewPrice(pricingCurrentFeedCents)}.`);
+                    leadCandidates.push({
+                        key: 'pricing',
+                        text: `${buyText} Feed-in is ${describeOverviewFeedPrice(pricingCurrentFeedCents)} at ${formatOverviewPrice(pricingCurrentFeedCents)}.`
+                    });
                 } else {
-                    leadClauses.push(buyText);
+                    leadCandidates.push({
+                        key: 'pricing',
+                        text: buyText
+                    });
                 }
             }
             if (weather) {
                 const tempText = weather.currentTempC !== null ? ` at ${Math.round(weather.currentTempC)}C` : '';
                 if (weather.solarSupport === 'strong') {
-                    leadClauses.push(`${weather.currentCondition}${tempText} weather still supports solar output.`);
+                    leadCandidates.push({
+                        key: 'weather',
+                        text: `${weather.currentCondition}${tempText} weather still supports solar output.`
+                    });
                 } else if (weather.solarSupport === 'weak') {
-                    leadClauses.push(`${weather.currentCondition}${tempText} weather is likely to suppress solar output.`);
+                    leadCandidates.push({
+                        key: 'weather',
+                        text: `${weather.currentCondition}${tempText} weather is likely to suppress solar output.`
+                    });
                 } else {
-                    leadClauses.push(`${weather.currentCondition}${tempText} weather looks fairly neutral for solar.`);
+                    leadCandidates.push({
+                        key: 'weather',
+                        text: `${weather.currentCondition}${tempText} weather looks fairly neutral for solar.`
+                    });
                 }
             }
-            const lead = leadClauses.filter(Boolean).slice(0, 3).join(' ');
+            const lead = selectOverviewCandidateTexts(leadCandidates, headlineExcludedKeys, 3, 2).join(' ');
 
-            const nowClauses = [];
+            const nowCandidates = [];
             if (quickControl?.active) {
-                nowClauses.push(`Quick control is overriding normal behaviour with a ${quickControl.type} request at ${formatOverviewPowerKw(quickControl.powerKw)} for another ${formatMsToReadable(quickControl.remainingMs || 0)}.`);
+                nowCandidates.push({
+                    key: 'quickControl',
+                    text: `Quick control is overriding normal behaviour with a ${quickControl.type} request at ${formatOverviewPowerKw(quickControl.powerKw)} for another ${formatMsToReadable(quickControl.remainingMs || 0)}.`
+                });
             }
             if (automation) {
                 const activeModeLabel = describeOverviewAutomationMode(automation.activeMode);
@@ -8227,44 +8488,81 @@
                     ? formatMsToReadable(automation.activeRuleCooldownRemainingMs)
                     : null;
                 if (automation.inBlackout) {
-                    nowClauses.push('Automation is intentionally paused inside its blackout window.');
+                    nowCandidates.push({
+                        key: 'automation',
+                        text: 'Automation is intentionally paused inside its blackout window.'
+                    });
                 } else if (automation.telemetryFailsafePaused) {
-                    nowClauses.push('Automation is paused by telemetry fail-safe until fresh inverter data returns.');
+                    nowCandidates.push({
+                        key: 'automation',
+                        text: 'Automation is paused by telemetry fail-safe until fresh inverter data returns.'
+                    });
                 } else if (automation.enabled && automation.activeRule) {
                     if (automation.activeSegmentEnabled === false) {
-                        nowClauses.push(`Automation selected ${automation.activeRule}, but the inverter segment is still pending confirmation.`);
+                        nowCandidates.push({
+                            key: 'automation',
+                            text: `Automation selected ${automation.activeRule}, but the inverter segment is still pending confirmation.`
+                        });
                     } else if (automation.segmentEndLabel) {
                         const modeText = activeModeLabel ? ` in ${activeModeLabel}` : '';
-                        nowClauses.push(`Automation is running ${automation.activeRule}${modeText} until ${automation.segmentEndLabel}.`);
+                        nowCandidates.push({
+                            key: 'automation',
+                            text: `Automation is running ${automation.activeRule}${modeText} until ${automation.segmentEndLabel}.`
+                        });
                     } else {
-                        nowClauses.push(`Automation is live and currently backing ${automation.activeRule}.`);
+                        nowCandidates.push({
+                            key: 'automation',
+                            text: `Automation is live and currently backing ${automation.activeRule}.`
+                        });
                     }
                     if (cooldownLabel) {
-                        nowClauses.push(`Rule cooldown has about ${cooldownLabel} remaining.`);
+                        nowCandidates.push({
+                            key: 'automation',
+                            text: `Rule cooldown has about ${cooldownLabel} remaining.`
+                        });
                     }
                 } else if (automation.enabled) {
                     const armedLabel = automation.ruleCount > 0
                         ? `${automation.ruleCount} rule${automation.ruleCount === 1 ? '' : 's'} armed`
                         : 'no enabled rules armed';
-                    nowClauses.push(`Automation is live with ${armedLabel}, but no rule currently owns the inverter.`);
+                    nowCandidates.push({
+                        key: 'automation',
+                        text: `Automation is live with ${armedLabel}, but no rule currently owns the inverter.`
+                    });
                 } else {
-                    nowClauses.push('Automation is paused, so nothing will adjust automatically until the master switch is re-enabled.');
+                    nowCandidates.push({
+                        key: 'automation',
+                        text: 'Automation is paused, so nothing will adjust automatically until the master switch is re-enabled.'
+                    });
                 }
             }
             if (ev) {
                 if (ev.isCharging && hasValue(evSocPct)) {
-                    nowClauses.push(`${ev.selectedName} is charging from ${Math.round(evSocPct)}%${hasValue(evTimeToFullHours) ? ` with about ${formatEVHoursToFull(evTimeToFullHours)} remaining` : ''}.`);
+                    nowCandidates.push({
+                        key: 'ev',
+                        text: `${ev.selectedName} is charging from ${Math.round(evSocPct)}%${hasValue(evTimeToFullHours) ? ` with about ${formatEVHoursToFull(evTimeToFullHours)} remaining` : ''}.`
+                    });
                 } else if (hasValue(evSocPct)) {
                     const chargingLabel = formatEVChargingState(ev.chargingState).toLowerCase();
-                    nowClauses.push(`${ev.selectedName} is ${chargingLabel} at ${Math.round(evSocPct)}%.`);
+                    nowCandidates.push({
+                        key: 'ev',
+                        text: `${ev.selectedName} is ${chargingLabel} at ${Math.round(evSocPct)}%.`
+                    });
                 } else if (ev.commandLabel) {
-                    nowClauses.push(`${ev.selectedName} is linked but currently reports ${ev.commandLabel.toLowerCase()}.`);
+                    nowCandidates.push({
+                        key: 'ev',
+                        text: `${ev.selectedName} is linked but currently reports ${ev.commandLabel.toLowerCase()}.`
+                    });
                 }
             }
             if (scheduler?.enabled && scheduler.activeCount > 0 && !quickControl?.active) {
-                nowClauses.push(`Manual scheduler has ${scheduler.activeCount} enabled window${scheduler.activeCount === 1 ? '' : 's'} ready.`);
+                nowCandidates.push({
+                    key: 'scheduler',
+                    text: `Manual scheduler has ${scheduler.activeCount} enabled window${scheduler.activeCount === 1 ? '' : 's'} ready.`
+                });
             }
-            const nowCopy = nowClauses.filter(Boolean).slice(0, 2).join(' ') || 'No manual override or automation exception stands out right now.';
+            const nowCopy = selectOverviewCandidateTexts(nowCandidates, headlineExcludedKeys, 2, 1).join(' ')
+                || 'No manual override or automation exception stands out right now.';
 
             // Build up to 3 independent forecast items for the "Coming up" panel
             const nextItems = [];
