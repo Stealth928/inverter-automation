@@ -784,6 +784,9 @@
             <span id="selectedCountLabel">0 selected</span>
         </div>
         <button class="btn-clear-sel" onclick="clearSelection()">Clear selection</button>
+        <button class="btn-import" id="backtestBtn" onclick="backtestSelected()" style="display:none;background:var(--bg-overlay);color:var(--text);border:1px solid var(--border);">
+            <span>Backtest in Lab</span>
+        </button>
         <button class="btn-import" id="importBtn" onclick="importSelected()">
             <span id="importBtnText">Import to Automation →</span>
         </button>

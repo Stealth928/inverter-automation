@@ -648,6 +648,57 @@ class APIClient {
     return this.get('/api/weather', { place, days });
   }
 
+  // ==================== BACKTESTS ====================
+
+  async createBacktestRun(payload) {
+    return this.post('/api/backtests/runs', payload || {});
+  }
+
+  async listBacktestRuns(limit = 20) {
+    return this.get('/api/backtests/runs', { limit });
+  }
+
+  async getBacktestRun(runId) {
+    return this.get(`/api/backtests/runs/${encodeURIComponent(runId)}`);
+  }
+
+  async listBacktestTariffPlans() {
+    return this.get('/api/backtests/tariff-plans');
+  }
+
+  async createBacktestTariffPlan(payload) {
+    return this.post('/api/backtests/tariff-plans', payload || {});
+  }
+
+  async updateBacktestTariffPlan(planId, payload) {
+    return this.post(`/api/backtests/tariff-plans/${encodeURIComponent(planId)}`, payload || {});
+  }
+
+  async deleteBacktestTariffPlan(planId) {
+    return this.delete(`/api/backtests/tariff-plans/${encodeURIComponent(planId)}`);
+  }
+
+  // ==================== OPTIMIZER ====================
+
+  async createOptimizationRun(payload) {
+    return this.post('/api/optimizations/runs', payload || {});
+  }
+
+  async listOptimizationRuns(limit = 20) {
+    return this.get('/api/optimizations/runs', { limit });
+  }
+
+  async getOptimizationRun(runId) {
+    return this.get(`/api/optimizations/runs/${encodeURIComponent(runId)}`);
+  }
+
+  async applyOptimizationVariant(runId, variantId, confirm = true) {
+    return this.post(`/api/optimizations/runs/${encodeURIComponent(runId)}/apply`, {
+      variantId,
+      confirm
+    });
+  }
+
   // ==================== HEALTH ====================
 
   async healthCheck() {

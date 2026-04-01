@@ -12,6 +12,7 @@
 
 const functions = require('firebase-functions');
 const { onRequest } = require('firebase-functions/v2/https');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const { AsyncLocalStorage } = require('async_hooks');
 const admin = require('firebase-admin');
@@ -57,6 +58,8 @@ const { registerSchedulerMutationRoutes } = require('./api/routes/scheduler-muta
 const { registerAutomationMutationRoutes } = require('./api/routes/automation-mutations');
 const { registerAutomationCycleRoute } = require('./api/routes/automation-cycle');
 const { registerEVRoutes } = require('./api/routes/ev');
+const { registerBacktestRoutes } = require('./api/routes/backtests');
+const { registerOptimizationRoutes } = require('./api/routes/optimizations');
 const { runAutomationSchedulerCycle } = require('./lib/services/automation-scheduler-service');
 const { createAutomationSchedulerMetricsSink } = require('./lib/services/automation-scheduler-metrics-sink');
 const { createApiRateLimiter } = require('./lib/services/api-rate-limiter');
@@ -68,6 +71,9 @@ const { createQuickControlService } = require('./lib/services/quick-control-serv
 const { createNotificationsService } = require('./lib/services/notifications-service');
 const { createSchedulerSloAlertNotifier } = require('./lib/services/scheduler-slo-alert-notifier');
 const { createWeatherService } = require('./lib/services/weather-service');
+const { createHistoricalWeatherService } = require('./lib/services/historical-weather-service');
+const { createBacktestService } = require('./lib/services/backtest-service');
+const { createOptimizationService } = require('./lib/services/optimization-service');
 const { createCacheMetricsService } = require('./lib/services/cache-metrics-service');
 const { createStructuredLogger } = require('./lib/structured-logger');
 const { parseAutomationTelemetry } = require('./lib/device-telemetry');
@@ -297,6 +303,17 @@ const getConfig = () => {
         inverter: 300000,  // 5 minutes
         weather: 1800000,  // 30 minutes
         teslaStatus: 600000 // 10 minutes
+      },
+      backtesting: {
+        replayIntervalMinutes: 5,
+        maxLookbackDays: 365,
+        maxScenarios: 3,
+        maxActiveRuns: 2,
+        runTtlMs: 30 * 24 * 60 * 60 * 1000
+      },
+      optimizer: {
+        maxActiveRuns: 2,
+        runTtlMs: 30 * 24 * 60 * 60 * 1000
       }
     }
   };
@@ -397,6 +414,26 @@ const {
   callWeatherAPI,
   getCachedWeatherData
 } = weatherService;
+
+const historicalWeatherService = createHistoricalWeatherService({ logger });
+const backtestService = createBacktestService({
+  adapterRegistry,
+  db,
+  foxessAPI,
+  getConfig,
+  getHistoricalWeather: historicalWeatherService.getHistoricalWeather,
+  getUserConfig,
+  getUserRules,
+  logger
+});
+const optimizationService = createOptimizationService({
+  backtestService,
+  db,
+  deleteUserRule,
+  getConfig,
+  getUserRules,
+  setUserRule
+});
 
 const UPSTREAM_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000;
 let upstreamHealthSnapshotCache = {
@@ -1355,6 +1392,14 @@ registerEVRoutes(app, {
   vehiclesRepo
 });
 
+registerBacktestRoutes(app, {
+  backtestService
+});
+
+registerOptimizationRoutes(app, {
+  optimizationService
+});
+
 // ==================== HELPER FUNCTIONS ====================
 
 // ==================== FOXESS API MODULE ====================
@@ -1802,10 +1847,46 @@ async function runAdminOperationalAlertsHandler(_context) {
   return evaluation;
 }
 
+async function processBacktestRunHandler(event) {
+  const userId = event?.params?.userId;
+  const runId = event?.params?.runId;
+  if (!userId || !runId) return;
+  await backtestService.processRun(userId, runId);
+}
+
+async function processOptimizationRunHandler(event) {
+  const userId = event?.params?.userId;
+  const runId = event?.params?.runId;
+  if (!userId || !runId) return;
+  await optimizationService.processRun(userId, runId);
+}
+
 // ==================== EXPORT CLOUD SCHEDULER FUNCTION ====================
 // Scheduler for background automation (runs every 1 minute via Cloud Scheduler)
 // For firebase-functions v7+ (2nd gen), we use functions.scheduler
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+
+exports.processBacktestRun = onDocumentCreated(
+  {
+    document: 'users/{userId}/backtests/runs/items/{runId}',
+    region: 'australia-southeast1',
+    memory: '1GiB',
+    timeoutSeconds: 540,
+    secrets: RUN_AUTOMATION_SECRETS
+  },
+  processBacktestRunHandler
+);
+
+exports.processOptimizationRun = onDocumentCreated(
+  {
+    document: 'users/{userId}/optimizations/runs/items/{runId}',
+    region: 'australia-southeast1',
+    memory: '1GiB',
+    timeoutSeconds: 540,
+    secrets: RUN_AUTOMATION_SECRETS
+  },
+  processOptimizationRunHandler
+);
 
 // Simple schedule without advanced options for CLI compatibility
 exports.runAutomation = onSchedule(

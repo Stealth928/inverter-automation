@@ -9,6 +9,7 @@
         let userInverterCapacityW = 10000;
         let userDefaultRulePowerW = null;
         let initialRecommendationApplied = false;
+        const AUTOMATION_LAB_CANDIDATE_KEY = 'automationLabCandidateSnapshot';
         const TEMPLATE_POWER_PERCENT_FALLBACK = Object.freeze({
             price_high_feedin_export: 50,
             price_spike_response: 80,
@@ -347,6 +348,7 @@
 
             const countLabel = document.getElementById('selectedCountLabel');
             const btnText = document.getElementById('importBtnText');
+            const backtestBtn = document.getElementById('backtestBtn');
 
             countLabel.textContent = total === 0
                 ? '0 selected'
@@ -365,7 +367,58 @@
             } else {
                 bar.classList.remove('visible');
             }
+
+            if (backtestBtn) {
+                backtestBtn.style.display = addCount > 0 ? '' : 'none';
+                backtestBtn.disabled = addCount === 0;
+            }
         }
+
+        function buildBacktestCandidateSnapshot() {
+            const selectedTemplates = Array.from(selectedImportIds)
+                .map((id) => window.RULE_LIBRARY.find((tmpl) => tmpl.id === id))
+                .filter(Boolean);
+            if (selectedTemplates.length === 0) return null;
+
+            const rules = {};
+            selectedTemplates.forEach((tmpl) => {
+                const ruleId = slugify(tmpl.name);
+                const preparedAction = prepareTemplateActionForImport(
+                    tmpl.rule.action,
+                    userInverterCapacityW,
+                    userDefaultRulePowerW,
+                    tmpl.id
+                );
+                rules[ruleId] = {
+                    ...JSON.parse(JSON.stringify(tmpl.rule)),
+                    id: ruleId,
+                    name: tmpl.name,
+                    enabled: true,
+                    action: preparedAction.action
+                };
+            });
+
+            return {
+                source: 'rules-library',
+                name: selectedTemplates.length === 1
+                    ? selectedTemplates[0].name
+                    : `Rules Library candidate (${selectedTemplates.length} rules)`,
+                createdAtMs: Date.now(),
+                templateIds: selectedTemplates.map((tmpl) => tmpl.id),
+                rules
+            };
+        }
+
+        window.backtestSelected = function() {
+            const candidateSnapshot = buildBacktestCandidateSnapshot();
+            if (!candidateSnapshot) return;
+            try {
+                localStorage.setItem(AUTOMATION_LAB_CANDIDATE_KEY, JSON.stringify(candidateSnapshot));
+            } catch (error) {
+                console.warn('[Rules Library] Failed to persist Automation Lab candidate snapshot', error);
+            }
+            window.location.href = '/test.html?candidate=library';
+        };
 
         // ── Import / Remove ────────────────────────────────────
         window.importSelected = async function() {
