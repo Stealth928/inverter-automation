@@ -74,6 +74,109 @@ test.describe('Test Lab Page', () => {
     expect(styles.quickRunButton?.colorBrightness).toBeLessThan(80);
   });
 
+  test('should unlock Backtesting / Optimisation for promoted admins after AppShell is ready', async ({ page }) => {
+    let adminReady = false;
+
+    await page.goto('about:blank');
+    await page.addInitScript(() => {
+      let appShellValue = null;
+      let released = false;
+      const pendingOnReady = [];
+
+      const wrapAppShell = (value) => {
+        if (!value || value.__automationLabReadyWrapped || typeof value.onReady !== 'function') {
+          return value;
+        }
+
+        const originalOnReady = value.onReady.bind(value);
+        value.onReady = (callback) => {
+          if (released) {
+            return originalOnReady(callback);
+          }
+          pendingOnReady.push(callback);
+        };
+        value.__automationLabReadyWrapped = true;
+        window.__releaseAutomationLabShellReady = () => {
+          if (released) return;
+          released = true;
+          while (pendingOnReady.length) {
+            originalOnReady(pendingOnReady.shift());
+          }
+        };
+        return value;
+      };
+
+      Object.defineProperty(window, 'AppShell', {
+        configurable: true,
+        get() {
+          return appShellValue;
+        },
+        set(value) {
+          appShellValue = wrapAppShell(value);
+        }
+      });
+    });
+
+    await page.route('**/api/**', async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
+      let status = 200;
+      let body = { errno: 0, result: {} };
+
+      if (path === '/api/admin/check') {
+        status = adminReady ? 200 : 401;
+        body = adminReady
+          ? { errno: 0, result: { isAdmin: true } }
+          : { errno: 401, error: 'Unauthorized' };
+      } else if (path === '/api/config/setup-status') {
+        body = { errno: 0, result: { setupComplete: true } };
+      } else if (path === '/api/user/init-profile') {
+        body = { errno: 0, result: { initialized: true } };
+      } else if (path === '/api/config') {
+        body = {
+          errno: 0,
+          result: {
+            timezone: 'Australia/Sydney',
+            inverterCapacityW: 10000
+          }
+        };
+      } else if (path === '/api/automation/status') {
+        body = {
+          errno: 0,
+          result: {
+            enabled: true,
+            rules: {},
+            config: {
+              automation: { intervalMs: 60000 },
+              cache: { amber: 60000, inverter: 300000, weather: 1800000 },
+              defaults: { cooldownMinutes: 5, durationMinutes: 30 }
+            }
+          }
+        };
+      } else if (path === '/api/backtests/tariff-plans' || path === '/api/backtests/runs') {
+        body = { errno: 0, result: [] };
+      }
+
+      await route.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify(body)
+      });
+    });
+
+    await page.goto('/test.html');
+    adminReady = true;
+    await page.evaluate(() => {
+      if (typeof window.__releaseAutomationLabShellReady === 'function') {
+        window.__releaseAutomationLabShellReady();
+      }
+    });
+
+    const backtestButton = page.getByRole('button', { name: /Backtesting \/ Optimisation/i });
+    await expect(backtestButton).toBeVisible({ timeout: 10000 });
+    await expect(backtestButton).toBeEnabled({ timeout: 10000 });
+  });
+
   test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {
     let createRequestCount = 0;
     let lastCreatePayload = null;

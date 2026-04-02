@@ -1900,11 +1900,29 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', async () => {
+    function bootstrapAutomationLab() {
         if (state.bootstrapped) return;
         state.bootstrapped = true;
         injectStyles();
         state.tariffDraft = createTariffDraft(state.currentTimezone);
         loadInitialData();
-    });
+    }
+
+    function startAutomationLabWhenReady() {
+        if (window.AppShell && typeof window.AppShell.onReady === 'function') {
+            window.AppShell.onReady(() => {
+                bootstrapAutomationLab();
+            });
+            return;
+        }
+        bootstrapAutomationLab();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            startAutomationLabWhenReady();
+        }, { once: true });
+    } else {
+        startAutomationLabWhenReady();
+    }
 })();
