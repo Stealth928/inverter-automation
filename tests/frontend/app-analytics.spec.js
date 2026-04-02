@@ -1,4 +1,11 @@
+const fs = require('fs');
+const path = require('path');
 const { test, expect } = require('@playwright/test');
+
+const appAnalyticsSource = fs.readFileSync(
+  path.join(__dirname, '../../frontend/js/app-analytics.js'),
+  'utf8'
+);
 
 test.describe('App analytics bootstrap', () => {
   test('waits for a default Firebase app before initializing analytics', async ({ page }) => {
@@ -8,6 +15,17 @@ test.describe('App analytics bootstrap', () => {
       if (msg.type() === 'error') {
         consoleErrors.push(msg.text());
       }
+    });
+
+    await page.route('**/js/app-analytics.js*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/javascript',
+        body: appAnalyticsSource.replace(
+          'if (!analyticsSkipped && isLocalOrEmulatorHost()) {',
+          'if (false && !analyticsSkipped && isLocalOrEmulatorHost()) {'
+        )
+      });
     });
 
     await page.route('**/analytics-regression.html', async (route) => {

@@ -120,7 +120,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **ARCH-1: Composition root still large at 1666 lines**
 - Severity: **Medium**
 - Why: Despite good route extraction, `functions/index.js` still wires 60+ dependency injections, making changes risky and reviews slow
-- Evidence: [functions/index.js](functions/index.js) — 1666 lines, mix of DI wiring, middleware setup, and 4 Cloud Function exports
+- Evidence: [functions/index.js](../functions/index.js) — 1666 lines, mix of DI wiring, middleware setup, and 4 Cloud Function exports
 - Impact: High cognitive load for any backend change; merge conflicts likely
 - Fix: Extract DI container creation into `functions/lib/container.js`; move scheduled job handlers to `functions/lib/jobs/`
 - Effort: M | Confidence: High
@@ -145,7 +145,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **API-1: In-memory rate limiter resets on cold start**
 - Severity: **High**
 - Why: Cloud Functions scale to multiple instances and cold-start frequently. Each instance has its own rate limit state. A determined attacker can bypass limits by causing new instances.
-- Evidence: [functions/lib/services/api-rate-limiter.js](functions/lib/services/api-rate-limiter.js#L12) — `const store = new Map()`
+- Evidence: [functions/lib/services/api-rate-limiter.js](../functions/lib/services/api-rate-limiter.js#L12) — `const store = new Map()`
 - Impact: Rate limiting is decorative under load or attack
 - Fix: Use Firestore-backed rate limiting with TTL documents, or use Firebase App Check
 - Effort: M | Confidence: High
@@ -153,7 +153,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **API-2: No request timeout on upstream API calls from frontend**
 - Severity: **High**
 - Why: `api-client.js` uses `fetch()` without `AbortController` timeout. Browser defaults vary (Chrome ~600s). Users see perpetual loading spinners.
-- Evidence: [frontend/js/api-client.js](frontend/js/api-client.js) — no timeout or retry logic
+- Evidence: [frontend/js/api-client.js](../frontend/js/api-client.js) — no timeout or retry logic
 - Impact: Poor UX during upstream degradation; no retry on transient failures
 - Fix: Add 20s timeout with AbortController; retry once on 408/429/5xx
 - Effort: S | Confidence: High
@@ -161,7 +161,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **API-3: JSON parse error leaks raw body in response**
 - Severity: **Medium**
 - Why: On malformed JSON, the error handler returns up to 1000 chars of raw body to the client, which could contain sensitive data if a proxy forwards bodies.
-- Evidence: [functions/index.js](functions/index.js#L1191) — `raw: req.rawBody.slice(0, 1000)`
+- Evidence: [functions/index.js](../functions/index.js#L1191) — `raw: req.rawBody.slice(0, 1000)`
 - Impact: Information disclosure risk (low probability, but unnecessary)
 - Fix: Remove `raw` field from error response; log it server-side only
 - Effort: S | Confidence: High
@@ -169,7 +169,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **API-4: CORS allows any localhost origin**
 - Severity: **Medium**
 - Why: `isLocalhost` check accepts any port on localhost/127.0.0.1 as valid CORS origin, including malicious localhost services
-- Evidence: [functions/index.js](functions/index.js#L1149-L1151) — `const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'`
+- Evidence: [functions/index.js](../functions/index.js#L1149-L1151) — `const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'`
 - Impact: Any local process can make credentialed cross-origin requests to the API in dev
 - Fix: Only allow localhost in emulator mode: `isLocalhost && process.env.FUNCTIONS_EMULATOR`
 - Effort: S | Confidence: High
@@ -177,7 +177,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **API-5: Token accepted via query parameter**
 - Severity: **Medium**
 - Why: `req.query.idToken` is accepted as auth mechanism. Query params appear in server logs, browser history, and referrer headers.
-- Evidence: [functions/api/auth.js](functions/api/auth.js#L59) — `req.query.idToken`
+- Evidence: [functions/api/auth.js](../functions/api/auth.js#L59) — `req.query.idToken`
 - Impact: Token leakage via logs or referrer
 - Fix: Deprecate query param auth; only support Authorization header. If redirect flows require it, use short-lived nonces instead.
 - Effort: S | Confidence: High
@@ -229,7 +229,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **DATA-1: FoxESS API token stored in readable config, not secrets**
 - Severity: **Medium**
 - Why: FoxESS token is functionally equivalent to a password but stored in `users/{uid}/config/main` which is client-readable per Firestore rules, unlike Sungrow/AlphaESS/SigenEnergy passwords.
-- Evidence: [functions/api/routes/setup-public.js](functions/api/routes/setup-public.js) stores `foxessToken` in config; [firestore.rules](firestore.rules#L43) allows user read on config
+- Evidence: [functions/api/routes/setup-public.js](../functions/api/routes/setup-public.js) stores `foxessToken` in config; [firestore.rules](../firestore.rules#L43) allows user read on config
 - Impact: Token exposed to client-side code; inconsistent security posture across providers
 - Fix: Move `foxessToken` to `users/{uid}/secrets/credentials`; update foxess.js to read from secrets via Admin SDK
 - Effort: M | Confidence: High
@@ -237,7 +237,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **DATA-2: No field-level validation in Firestore rules**
 - Severity: **Medium**
 - Why: Firestore rules validate document structure (required fields) but not field values. A malicious client could write extreme values.
-- Evidence: [firestore.rules](firestore.rules) — `hasRequiredFields()` checks existence, not content
+- Evidence: [firestore.rules](../firestore.rules) — `hasRequiredFields()` checks existence, not content
 - Impact: Data corruption if client bypasses frontend validation
 - Fix: Add value constraints for critical fields (e.g., `resource.data.inverterCapacityW > 0 && resource.data.inverterCapacityW < 100000`)
 - Effort: M | Confidence: Medium
@@ -255,7 +255,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **SEC-1: Emulator bypass has no production guard**
 - Severity: **High**
 - Why: Setup credential validation is skipped when `FUNCTIONS_EMULATOR` or `FIRESTORE_EMULATOR_HOST` is set. If these env vars leak to production, all credential validation is bypassed.
-- Evidence: [functions/api/routes/setup-public.js](functions/api/routes/setup-public.js#L136-L144)
+- Evidence: [functions/api/routes/setup-public.js](../functions/api/routes/setup-public.js#L136-L144)
 - Impact: Fake credentials could be stored, breaking automation for affected users
 - Fix: Add explicit guard: `if (process.env.K_SERVICE && isEmulator) throw new Error('Emulator bypass in production')`
 - Effort: S | Confidence: High
@@ -289,7 +289,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **TEST-1: Jest coverage thresholds are too low**
 - Severity: **High**
 - Why: Thresholds at 20% statements / 10% branches / 5% functions allow massive test-free code to ship.
-- Evidence: [functions/jest.config.js](functions/jest.config.js#L11-L17) — `statements: 20, branches: 10, functions: 5, lines: 20`
+- Evidence: [functions/jest.config.js](../functions/jest.config.js#L11-L17) — `statements: 20, branches: 10, functions: 5, lines: 20`
 - Impact: Regressions pass CI undetected
 - Fix: Raise thresholds incrementally: 50→60→70% over 90 days
 - Effort: S (config change) + M (writing missing tests) | Confidence: High
@@ -305,7 +305,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **TEST-3: OpenAPI checks are structural, not behavioral**
 - Severity: **Medium**
 - Why: `openapi-contract-check.js` validates YAML syntax and path parity, but never validates that actual API responses match the schema.
-- Evidence: [scripts/openapi-contract-check.js](scripts/openapi-contract-check.js) — structural checks only
+- Evidence: [scripts/openapi-contract-check.js](../scripts/openapi-contract-check.js) — structural checks only
 - Impact: Schema drift between spec and implementation
 - Fix: Add response schema validation in integration tests using `ajv` against OpenAPI schemas
 - Effort: M | Confidence: Medium
@@ -331,7 +331,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **PERF-1: Cold start not instrumented or mitigated**
 - Severity: **Medium**
 - Why: Node 22 + 512 MiB Cloud Function with multiple heavy imports. No min-instances configured. Cold start likely 500-800ms but unmeasured.
-- Evidence: [functions/index.js](functions/index.js) exports; no `minInstances` in function config
+- Evidence: [functions/index.js](../functions/index.js) exports; no `minInstances` in function config
 - Impact: First request after idle period is slow; user-visible latency
 - Fix: Set `minInstances: 1` for the API function; instrument cold start timing
 - Effort: S | Confidence: High
@@ -383,7 +383,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **HYGIENE-2: `runAdminOperationalAlerts` is still under-documented**
 - Severity: **Medium**
 - Why: Third scheduled Cloud Function not mentioned in `docs/BACKGROUND_AUTOMATION.md`
-- Evidence: [functions/index.js](functions/index.js) exports 3 scheduled functions; docs only describe 2
+- Evidence: [functions/index.js](../functions/index.js) exports 3 scheduled functions; docs only describe 2
 - Impact: Operators may not know about operational alerting
 - Fix: Add to `BACKGROUND_AUTOMATION.md`
 - Effort: S | Confidence: High
@@ -401,7 +401,7 @@ Firestore  FoxESS    Amber      AEMO       Sungrow
 **SEO-1: Service worker offline fallback ignores auth state**
 - Severity: **Low**
 - Why: Offline fallback serves `/app.html` regardless of whether user is authenticated. An unauthenticated user hitting offline mode sees the app shell instead of login page.
-- Evidence: [frontend/sw.js](frontend/sw.js#L10) — `OFFLINE_FALLBACK_PAGE = '/app.html'`
+- Evidence: [frontend/sw.js](../frontend/sw.js#L10) — `OFFLINE_FALLBACK_PAGE = '/app.html'`
 - Impact: Confusing UX for unauthenticated offline users; minor
 - Fix: Add auth check or serve `/login.html` as offline fallback for unauthenticated
 - Effort: S | Confidence: Low

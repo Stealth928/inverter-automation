@@ -1,6 +1,6 @@
 # Frontend Content Guide
 
-Last updated: 2026-03-28
+Last updated: 2026-04-02
 
 ## Purpose
 
@@ -116,6 +116,19 @@ Every public page should include:
   applicable
 - market-insights preview: `WebPage`, `Dataset`, `BreadcrumbList`, optional
   `FAQPage`
+
+## Analytics Instrumentation Rules
+
+Public pages use `frontend/js/marketing-analytics.js`. Internal authenticated
+surfaces use `frontend/js/app-analytics.js`.
+
+Current policy:
+
+- local and emulator hosts should not send app analytics by default
+- product analytics must still initialize normally on deployed hosts once the
+  Firebase default app is available
+- regression tests may explicitly opt into local app analytics bootstrap when
+  verifying delayed Firebase initialization behavior
 
 ## Blog Slug Rules
 

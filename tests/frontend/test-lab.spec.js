@@ -36,7 +36,8 @@ test.describe('Test Lab Page', () => {
     await page.goto('/test.html?mode=quick');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'light');
     await expect(page.locator('.lab-mode-head')).toBeVisible();
-    await expect(page.locator('.lab-quick-point').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /Quick Simulation/i })).toHaveClass(/active/);
+    await expect(page.getByRole('button', { name: /Run Automation Test/i })).toBeVisible();
 
     const styles = await page.evaluate(() => {
       const parseRgb = (value) => {
@@ -62,15 +63,15 @@ test.describe('Test Lab Page', () => {
       return {
         activeTab: read('.lab-mode-tab.active'),
         modeStat: read('.lab-mode-stat'),
-        quickTitle: read('.lab-quick-title'),
-        quickPoint: read('.lab-quick-point')
+        quickPanel: read('#simConditionsCard'),
+        quickRunButton: read('#simRunActions .btn-primary')
       };
     });
 
     expect(styles.activeTab?.colorBrightness).toBeLessThan(80);
     expect(styles.modeStat?.backgroundBrightness).toBeGreaterThan(200);
-    expect(styles.quickPoint?.backgroundBrightness).toBeGreaterThan(200);
-    expect(styles.quickTitle?.colorBrightness).toBeLessThan(60);
+    expect(styles.quickPanel?.backgroundBrightness).toBeGreaterThan(200);
+    expect(styles.quickRunButton?.colorBrightness).toBeLessThan(80);
   });
 
   test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {
@@ -199,19 +200,23 @@ test.describe('Test Lab Page', () => {
   });
 
   test('should run test and show results', async ({ page }) => {
-    const runBtn = page.locator('button:has-text("Run"), button:has-text("Test")').first();
-    
-    if (await runBtn.count() > 0) {
-      await runBtn.click();
-      await page.waitForTimeout(1000);
-      
-      // Should show some result
-      const hasResult = await page.locator('.results, .output, [data-results]').count() > 0;
-      
-      expect(typeof hasResult).toBe('boolean');
-    } else {
-      expect(true).toBeTruthy();
-    }
+    await page.route('**/api/automation/test', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          errno: 0,
+          triggered: false,
+          allResults: []
+        })
+      });
+    });
+
+    const runBtn = page.getByRole('button', { name: /Run Automation Test/i });
+    await expect(runBtn).toBeVisible();
+    await runBtn.click();
+
+    await expect(page.locator('#testResults')).toContainText('No Rules Matched');
   });
 
   test('should display pass/fail status', async ({ page }) => {
