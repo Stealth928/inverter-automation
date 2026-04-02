@@ -57,6 +57,31 @@ describe('optimization route module', () => {
     expect(createRun).toHaveBeenCalledWith('u-opt', { backtestRunId: 'run-1', goal: 'maximize_roi' });
   });
 
+  test('rejects non-admin optimization access when admin gate is configured', async () => {
+    const listRuns = jest.fn();
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-opt' };
+        next();
+      });
+      registerOptimizationRoutes(instance, {
+        optimizationService: {
+          createRun: jest.fn(),
+          listRuns,
+          getRun: jest.fn(),
+          applyVariant: jest.fn()
+        },
+        requireAdmin: (_req, res) => res.status(403).json({ errno: 403, error: 'Admin access required' })
+      });
+    });
+
+    const response = await request(app).get('/api/optimizations/runs');
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toEqual({ errno: 403, error: 'Admin access required' });
+    expect(listRuns).not.toHaveBeenCalled();
+  });
+
   test('maps not found apply errors to 404', async () => {
     const applyVariant = jest.fn(async () => {
       throw new Error('Optimization variant not found');

@@ -107,6 +107,202 @@ function registerAutomationMutationRoutes(app, deps = {}) {
     };
   }
 
+  function toFiniteNumber(value, fallback = null) {
+    if (value === null || value === undefined || value === '') return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function getEnabledConditionKeys(conditions = {}) {
+    return Object.entries(conditions || {})
+      .filter(([, condition]) => condition && typeof condition === 'object' && condition.enabled === true)
+      .map(([key]) => key);
+  }
+
+  function formatConditionName(conditionKey) {
+    return String(conditionKey || '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/^./, (char) => char.toUpperCase());
+  }
+
+  function findHourlyStartIndex(hourly = {}, currentTime = null) {
+    const times = Array.isArray(hourly.time) ? hourly.time : [];
+    if (!times.length) return 0;
+    if (typeof currentTime === 'string' && currentTime) {
+      const currentHour = currentTime.substring(0, 13);
+      const idx = times.findIndex((time) => typeof time === 'string' && time.substring(0, 13) === currentHour);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  }
+
+  function evaluateAggregateConditionFromMock({
+    conditionKey,
+    label,
+    condition,
+    mockData,
+    mockWeatherData
+  }) {
+    const lookAheadUnit = String(condition.lookAheadUnit || 'hours').trim().toLowerCase();
+    const rawLookAhead = toFiniteNumber(condition.lookAhead, lookAheadUnit === 'days' ? 1 : 6) || (lookAheadUnit === 'days' ? 1 : 6);
+    const checkType = String(condition.checkType || condition.check || 'average').trim().toLowerCase();
+    const operator = condition.operator || condition.op || (conditionKey === 'cloudCover' ? '<' : '>');
+    const target = toFiniteNumber(condition.value, 0);
+    const target2 = toFiniteNumber(condition.value2, null);
+    const weatherData = mockWeatherData?.result || mockWeatherData || null;
+    const hourly = weatherData?.hourly || null;
+
+    let actualValue = null;
+
+    if (hourly && Array.isArray(hourly.time)) {
+      const source = conditionKey === 'solarRadiation'
+        ? hourly.shortwave_radiation
+        : (hourly.cloudcover || hourly.cloud_cover);
+      if (Array.isArray(source) && source.length > 0) {
+        const lookAheadHours = lookAheadUnit === 'days' ? rawLookAhead * 24 : rawLookAhead;
+        const startIdx = findHourlyStartIndex(hourly, weatherData?.current?.time || null);
+        const endIdx = Math.min(startIdx + lookAheadHours, source.length);
+        const values = source.slice(startIdx, endIdx).map((value) => Number(value)).filter((value) => Number.isFinite(value));
+        if (values.length > 0) {
+          if (checkType === 'min') {
+            actualValue = Math.min(...values);
+          } else if (checkType === 'max') {
+            actualValue = Math.max(...values);
+          } else {
+            actualValue = values.reduce((sum, value) => sum + value, 0) / values.length;
+          }
+        }
+      }
+    }
+
+    if (!Number.isFinite(actualValue)) {
+      const fallbackValue = conditionKey === 'solarRadiation'
+        ? (lookAheadUnit === 'days'
+          ? toFiniteNumber(mockData.forecastSolar1D, toFiniteNumber(mockData.solarRadiation, null))
+          : toFiniteNumber(mockData.solarRadiation, toFiniteNumber(mockData.forecastSolar1D, null)))
+        : (lookAheadUnit === 'days'
+          ? toFiniteNumber(mockData.forecastCloudCover1D, toFiniteNumber(mockData.cloudCover, null))
+          : toFiniteNumber(mockData.cloudCover, toFiniteNumber(mockData.forecastCloudCover1D, null)));
+      actualValue = Number.isFinite(fallbackValue) ? fallbackValue : null;
+    }
+
+    const met = Number.isFinite(actualValue)
+      ? ((operator === 'between' && target2 !== null)
+        ? compareValue(actualValue, 'between', target, target2)
+        : compareValue(actualValue, operator, target))
+      : false;
+
+    return {
+      met,
+      detail: {
+        name: label,
+        value: Number.isFinite(actualValue) ? Math.round(actualValue) : 'N/A',
+        target: operator === 'between' && target2 !== null ? `${target}-${target2}` : target,
+        operator,
+        met
+      }
+    };
+  }
+
+  function parseTimestampMs(value) {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  function normalizeForecastIntervals(priceData = [], priceType = 'general') {
+    const channelType = priceType === 'feedIn' ? 'feedIn' : 'general';
+    return (Array.isArray(priceData) ? priceData : [])
+      .filter((entry) => {
+        if (!entry || typeof entry !== 'object') return false;
+        if (String(entry.channelType || '').trim() !== channelType) return false;
+        const entryType = String(entry.type || '').trim();
+        return !entryType || entryType === 'ForecastInterval';
+      })
+      .map((entry) => {
+        const startMs = parseTimestampMs(entry.startTime || entry.start || entry.nemTime || null);
+        const endMs = parseTimestampMs(entry.endTime || entry.end || null);
+        const perKwh = toFiniteNumber(entry.perKwh, null);
+        if (!Number.isFinite(startMs) || !Number.isFinite(perKwh)) return null;
+        return {
+          startMs,
+          endMs: Number.isFinite(endMs) && endMs > startMs ? endMs : (startMs + (30 * 60 * 1000)),
+          value: channelType === 'feedIn' ? -perKwh : perKwh
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.startMs - b.startMs);
+  }
+
+  function evaluateForecastPriceFromMock(condition, mockData) {
+    const lookAheadUnit = String(condition.lookAheadUnit || 'minutes').trim().toLowerCase();
+    const rawLookAhead = toFiniteNumber(condition.lookAhead, lookAheadUnit === 'days' ? 1 : lookAheadUnit === 'hours' ? 1 : 30)
+      || (lookAheadUnit === 'days' ? 1 : lookAheadUnit === 'hours' ? 1 : 30);
+    const lookAheadMinutes = lookAheadUnit === 'days'
+      ? rawLookAhead * 24 * 60
+      : lookAheadUnit === 'hours'
+        ? rawLookAhead * 60
+        : rawLookAhead;
+    const priceType = String(condition.type || 'general').trim().toLowerCase() === 'feedin' ? 'feedIn' : 'general';
+    const checkType = String(condition.checkType || condition.check || 'average').trim().toLowerCase();
+    const operator = condition.operator || '>=';
+    const target = toFiniteNumber(condition.value, 0);
+    const target2 = toFiniteNumber(condition.value2, null);
+    const intervals = normalizeForecastIntervals(mockData.priceData, priceType);
+
+    let actualValue = null;
+    if (intervals.length > 0) {
+      const windowStartMs = intervals[0].startMs;
+      const windowEndMs = windowStartMs + (lookAheadMinutes * 60 * 1000);
+      const relevant = intervals.filter((interval) => interval.endMs > windowStartMs && interval.startMs < windowEndMs);
+      const values = relevant.map((interval) => interval.value).filter((value) => Number.isFinite(value));
+      if (values.length > 0) {
+        if (checkType === 'min') {
+          actualValue = Math.min(...values);
+        } else if (checkType === 'max') {
+          actualValue = Math.max(...values);
+        } else if (checkType === 'any') {
+          actualValue = values.find((value) => compareValue(value, operator, target, target2));
+        } else {
+          let weightedSum = 0;
+          let weightedMs = 0;
+          relevant.forEach((interval) => {
+            const overlapMs = Math.max(0, Math.min(interval.endMs, windowEndMs) - Math.max(interval.startMs, windowStartMs));
+            if (overlapMs <= 0) return;
+            weightedSum += interval.value * overlapMs;
+            weightedMs += overlapMs;
+          });
+          actualValue = weightedMs > 0 ? (weightedSum / weightedMs) : (values.reduce((sum, value) => sum + value, 0) / values.length);
+        }
+      }
+    }
+
+    if (!Number.isFinite(actualValue)) {
+      const fallbackValue = priceType === 'feedIn'
+        ? toFiniteNumber(mockData.forecastFeedIn1D, null)
+        : toFiniteNumber(mockData.forecastBuy1D, null);
+      actualValue = Number.isFinite(fallbackValue) ? fallbackValue : null;
+    }
+
+    const met = Number.isFinite(actualValue)
+      ? (checkType === 'any'
+        ? actualValue !== undefined && actualValue !== null
+        : ((operator === 'between' && target2 !== null)
+          ? compareValue(actualValue, 'between', target, target2)
+          : compareValue(actualValue, operator, target)))
+      : false;
+
+    return {
+      met,
+      detail: {
+        name: 'Forecast Price',
+        value: Number.isFinite(actualValue) ? Number(actualValue.toFixed(1)) : 'N/A',
+        target: operator === 'between' && target2 !== null ? `${target}-${target2}` : target,
+        operator,
+        met
+      }
+    };
+  }
+
   async function clearActiveSegmentsForProvider(userId, userConfig, explicitDeviceId = null) {
     const { provider, deviceSN } = getProviderContext(userConfig, explicitDeviceId);
     if (!deviceSN) {
@@ -779,15 +975,58 @@ app.post('/api/automation/test', async (req, res) => {
 
     for (const [ruleId, rule] of sorted) {
       const cond = rule.conditions || {};
+      const enabledConditionKeys = getEnabledConditionKeys(cond);
       let met = true;
       const condDetails = [];
+      const handledConditionKeys = new Set();
+
+      if (enabledConditionKeys.length === 0) {
+        allResults.push({
+          ruleName: rule.name || ruleId,
+          ruleId,
+          met: false,
+          priority: rule.priority || 99,
+          conditions: [],
+          action: rule.action || {},
+          reason: 'No conditions enabled'
+        });
+        continue;
+      }
+
+      // price (provider-agnostic current price condition)
+      if (cond.price?.enabled) {
+        const priceType = String(cond.price.type || 'feedIn').trim().toLowerCase();
+        const actual = priceType === 'buy' || priceType === 'general'
+          ? Number(mockData.buyPrice || 0)
+          : Number(mockData.feedInPrice || 0);
+        const target = Number(cond.price.value || 0);
+        const target2 = cond.price.value2 !== undefined ? Number(cond.price.value2) : undefined;
+        const operator = cond.price.operator || cond.price.op || '>=';
+        const cmet = operator === 'between' && target2 !== undefined
+          ? compareValue(actual, 'between', target, target2)
+          : compareValue(actual, operator, target);
+        condDetails.push({
+          name: priceType === 'buy' || priceType === 'general' ? 'Buy Price' : 'Feed-in Price',
+          value: actual,
+          target,
+          operator,
+          met: !!cmet
+        });
+        handledConditionKeys.add('price');
+        if (!cmet) met = false;
+      }
 
       // feedInPrice
       if (cond.feedInPrice?.enabled) {
         const price = Number(mockData.feedInPrice || 0);
         const target = Number(cond.feedInPrice.value || 0);
-        const cmet = compareValue(price, cond.feedInPrice.operator, target);
-        condDetails.push({ name: 'Feed-in Price', value: price, target, operator: cond.feedInPrice.operator, met: !!cmet });
+        const target2 = cond.feedInPrice.value2 !== undefined ? Number(cond.feedInPrice.value2) : undefined;
+        const operator = cond.feedInPrice.operator || cond.feedInPrice.op || '>=';
+        const cmet = operator === 'between' && target2 !== undefined
+          ? compareValue(price, 'between', target, target2)
+          : compareValue(price, operator, target);
+        condDetails.push({ name: 'Feed-in Price', value: price, target, operator, met: !!cmet });
+        handledConditionKeys.add('feedInPrice');
         if (!cmet) met = false;
       }
 
@@ -795,8 +1034,13 @@ app.post('/api/automation/test', async (req, res) => {
       if (cond.buyPrice?.enabled) {
         const price = Number(mockData.buyPrice || 0);
         const target = Number(cond.buyPrice.value || 0);
-        const cmet = compareValue(price, cond.buyPrice.operator, target);
-        condDetails.push({ name: 'Buy Price', value: price, target, operator: cond.buyPrice.operator, met: !!cmet });
+        const target2 = cond.buyPrice.value2 !== undefined ? Number(cond.buyPrice.value2) : undefined;
+        const operator = cond.buyPrice.operator || cond.buyPrice.op || '>=';
+        const cmet = operator === 'between' && target2 !== undefined
+          ? compareValue(price, 'between', target, target2)
+          : compareValue(price, operator, target);
+        condDetails.push({ name: 'Buy Price', value: price, target, operator, met: !!cmet });
+        handledConditionKeys.add('buyPrice');
         if (!cmet) met = false;
       }
 
@@ -804,8 +1048,13 @@ app.post('/api/automation/test', async (req, res) => {
       if (cond.soc?.enabled) {
         const soc = Number(mockData.soc || 0);
         const target = Number(cond.soc.value || 0);
-        const cmet = compareValue(soc, cond.soc.operator, target);
-        condDetails.push({ name: 'Battery SoC', value: soc, target, operator: cond.soc.operator, met: !!cmet });
+        const target2 = cond.soc.value2 !== undefined ? Number(cond.soc.value2) : undefined;
+        const operator = cond.soc.operator || cond.soc.op || '>=';
+        const cmet = operator === 'between' && target2 !== undefined
+          ? compareValue(soc, 'between', target, target2)
+          : compareValue(soc, operator, target);
+        condDetails.push({ name: 'Battery SoC', value: soc, target, operator, met: !!cmet });
+        handledConditionKeys.add('soc');
         if (!cmet) met = false;
       }
 
@@ -815,6 +1064,7 @@ app.post('/api/automation/test', async (req, res) => {
         const tempResult = evaluateTemperatureCondition(tempCond, {
           batteryTemp: Number(mockData.batteryTemp),
           ambientTemp: Number(mockData.ambientTemp),
+          inverterTemp: Number(mockData.inverterTemp),
           weatherData: mockWeatherData
         });
 
@@ -827,11 +1077,18 @@ app.post('/api/automation/test', async (req, res) => {
             met: false,
             reason: tempResult.reason
           });
+          if (cond.temp?.enabled) handledConditionKeys.add('temp');
+          if (cond.temperature?.enabled) handledConditionKeys.add('temperature');
           met = false;
         } else {
+          const normalizedTempType = String(tempResult.type || '').toLowerCase();
           const label = tempResult.source === 'weather_daily'
             ? `Forecast ${tempResult.metric === 'min' ? 'Min' : 'Max'} Temp (D+${tempResult.dayOffset || 0})`
-            : (String(tempResult.type || '').toLowerCase() === 'battery' ? 'Battery Temp' : 'Ambient Temp');
+            : (normalizedTempType === 'battery'
+              ? 'Battery Temp'
+              : normalizedTempType === 'inverter'
+                ? 'Inverter Temp'
+                : 'Ambient Temp');
           condDetails.push({
             name: label,
             value: tempResult.actual,
@@ -839,8 +1096,43 @@ app.post('/api/automation/test', async (req, res) => {
             operator: tempResult.operator,
             met: !!tempResult.met
           });
+          if (cond.temp?.enabled) handledConditionKeys.add('temp');
+          if (cond.temperature?.enabled) handledConditionKeys.add('temperature');
           if (!tempResult.met) met = false;
         }
+      }
+
+      if (cond.solarRadiation?.enabled) {
+        const result = evaluateAggregateConditionFromMock({
+          conditionKey: 'solarRadiation',
+          label: 'Solar Radiation',
+          condition: cond.solarRadiation,
+          mockData,
+          mockWeatherData
+        });
+        condDetails.push(result.detail);
+        handledConditionKeys.add('solarRadiation');
+        if (!result.met) met = false;
+      }
+
+      if (cond.cloudCover?.enabled) {
+        const result = evaluateAggregateConditionFromMock({
+          conditionKey: 'cloudCover',
+          label: 'Cloud Cover',
+          condition: cond.cloudCover,
+          mockData,
+          mockWeatherData
+        });
+        condDetails.push(result.detail);
+        handledConditionKeys.add('cloudCover');
+        if (!result.met) met = false;
+      }
+
+      if (cond.forecastPrice?.enabled) {
+        const result = evaluateForecastPriceFromMock(cond.forecastPrice, mockData);
+        condDetails.push(result.detail);
+        handledConditionKeys.add('forecastPrice');
+        if (!result.met) met = false;
       }
 
       // time
@@ -863,10 +1155,32 @@ app.post('/api/automation/test', async (req, res) => {
           operator: 'in',
           met: !!timeResult.met
         });
+        if (cond.time?.enabled) handledConditionKeys.add('time');
+        if (cond.timeWindow?.enabled) handledConditionKeys.add('timeWindow');
         if (!timeResult.met) met = false;
       }
 
-      allResults.push({ ruleName: rule.name || ruleId, ruleId, met, priority: rule.priority || 99, conditions: condDetails });
+      enabledConditionKeys
+        .filter((key) => !handledConditionKeys.has(key))
+        .forEach((key) => {
+          condDetails.push({
+            name: formatConditionName(key),
+            value: 'N/A',
+            target: 'Unsupported in Automation Lab',
+            operator: 'n/a',
+            met: false
+          });
+          met = false;
+        });
+
+      allResults.push({
+        ruleName: rule.name || ruleId,
+        ruleId,
+        met,
+        priority: rule.priority || 99,
+        conditions: condDetails,
+        action: rule.action || {}
+      });
 
       if (met) {
         // First match wins

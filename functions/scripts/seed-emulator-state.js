@@ -548,7 +548,164 @@ function getDateKey(offsetDays = 0) {
   return d.toLocaleDateString('en-CA', { timeZone: METRICS_TIMEZONE });
 }
 
-async function ensureSeedAuthUser(auth, seedUser) {
+function toComparableString(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function getSeedCredentialShape(seedUser) {
+  const provider = String(seedUser?.provider || '').toLowerCase().trim();
+  const config = seedUser?.config || {};
+  const secrets = seedUser?.secrets || {};
+
+  if (provider === 'foxess') {
+    return {
+      provider,
+      config: {
+        deviceSn: config.deviceSn,
+        foxessToken: config.foxessToken
+      },
+      secrets: {}
+    };
+  }
+
+  if (provider === 'sungrow') {
+    return {
+      provider,
+      config: {
+        sungrowDeviceSn: config.sungrowDeviceSn || config.deviceSn,
+        sungrowUsername: config.sungrowUsername
+      },
+      secrets: {
+        sungrowPassword: secrets.sungrowPassword
+      }
+    };
+  }
+
+  if (provider === 'sigenergy') {
+    return {
+      provider,
+      config: {
+        sigenUsername: config.sigenUsername,
+        sigenRegion: config.sigenRegion,
+        sigenStationId: config.sigenStationId,
+        sigenDeviceSn: config.sigenDeviceSn || config.deviceSn
+      },
+      secrets: {
+        sigenPassword: secrets.sigenPassword
+      }
+    };
+  }
+
+  if (provider === 'alphaess') {
+    return {
+      provider,
+      config: {
+        alphaessSystemSn: config.alphaessSystemSn || config.deviceSn,
+        alphaessAppId: config.alphaessAppId
+      },
+      secrets: {
+        alphaessAppSecret: secrets.alphaessAppSecret || config.alphaessAppSecret
+      }
+    };
+  }
+
+  return { provider, config: {}, secrets: {} };
+}
+
+function getExistingCredentialShape(seedUser, existingConfig = {}, existingSecrets = {}) {
+  const provider = String(seedUser?.provider || '').toLowerCase().trim();
+
+  if (provider === 'foxess') {
+    return {
+      provider,
+      config: {
+        deviceSn: existingConfig.deviceSn || existingConfig.deviceSN,
+        foxessToken: existingConfig.foxessToken
+      },
+      secrets: {}
+    };
+  }
+
+  if (provider === 'sungrow') {
+    return {
+      provider,
+      config: {
+        sungrowDeviceSn: existingConfig.sungrowDeviceSn || existingConfig.deviceSn || existingConfig.deviceSN,
+        sungrowUsername: existingConfig.sungrowUsername
+      },
+      secrets: {
+        sungrowPassword: existingSecrets.sungrowPassword || existingConfig.sungrowPassword
+      }
+    };
+  }
+
+  if (provider === 'sigenergy') {
+    return {
+      provider,
+      config: {
+        sigenUsername: existingConfig.sigenUsername,
+        sigenRegion: existingConfig.sigenRegion,
+        sigenStationId: existingConfig.sigenStationId,
+        sigenDeviceSn: existingConfig.sigenDeviceSn || existingConfig.deviceSn || existingConfig.deviceSN
+      },
+      secrets: {
+        sigenPassword: existingSecrets.sigenPassword || existingConfig.sigenPassword
+      }
+    };
+  }
+
+  if (provider === 'alphaess') {
+    return {
+      provider,
+      config: {
+        alphaessSystemSn: existingConfig.alphaessSystemSn || existingConfig.deviceSn || existingConfig.deviceSN,
+        alphaessAppId: existingConfig.alphaessAppId
+      },
+      secrets: {
+        alphaessAppSecret: existingSecrets.alphaessAppSecret || existingConfig.alphaessAppSecret
+      }
+    };
+  }
+
+  return { provider, config: {}, secrets: {} };
+}
+
+function hasNonSeedCredentialOverride(seedUser, existingConfig = {}, existingSecrets = {}) {
+  const seedProvider = String(seedUser?.provider || '').toLowerCase().trim();
+  const existingProvider = String(existingConfig?.deviceProvider || '').toLowerCase().trim();
+
+  if (existingProvider && seedProvider && existingProvider !== seedProvider && existingConfig?.setupComplete) {
+    return true;
+  }
+
+  const expected = getSeedCredentialShape(seedUser);
+  const actual = getExistingCredentialShape(seedUser, existingConfig, existingSecrets);
+
+  const actualConfigEntries = Object.entries(actual.config || {});
+  const actualSecretEntries = Object.entries(actual.secrets || {});
+  const allEntries = actualConfigEntries.concat(actualSecretEntries);
+
+  let hasAnyCredential = false;
+  for (const [key, value] of allEntries) {
+    const normalizedActual = toComparableString(value);
+    if (!normalizedActual) continue;
+    hasAnyCredential = true;
+    const normalizedExpected = toComparableString(
+      Object.prototype.hasOwnProperty.call(expected.config || {}, key)
+        ? expected.config[key]
+        : expected.secrets[key]
+    );
+    if (normalizedActual !== normalizedExpected) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function ensureSeedAuthUser(auth, seedUser, options = {}) {
+  const preserveExisting = options.preserveExisting === true;
   const byUid = await getUserByUidOrNull(auth, seedUser.uid);
   const byEmail = await getUserByEmailOrNull(auth, seedUser.email);
 
@@ -568,14 +725,19 @@ async function ensureSeedAuthUser(auth, seedUser) {
     });
     console.log('Created auth user:', userRecord.uid);
   } else {
-    userRecord = await auth.updateUser(seedUser.uid, {
-      email: seedUser.email,
-      password: seedUser.password,
-      displayName: seedUser.displayName,
-      emailVerified: true,
-      disabled: false
-    });
-    console.log('Updated auth user:', userRecord.uid);
+    if (preserveExisting) {
+      userRecord = byUid;
+      console.log('Preserved auth user:', userRecord.uid);
+    } else {
+      userRecord = await auth.updateUser(seedUser.uid, {
+        email: seedUser.email,
+        password: seedUser.password,
+        displayName: seedUser.displayName,
+        emailVerified: true,
+        disabled: false
+      });
+      console.log('Updated auth user:', userRecord.uid);
+    }
   }
 
   await auth.setCustomUserClaims(seedUser.uid, {
@@ -611,14 +773,29 @@ function validateRequiredConfig(seedUser, config) {
 }
 
 async function seedSingleUser({ db, auth, seedUser, ts }) {
-  const userRecord = await ensureSeedAuthUser(auth, seedUser);
-  const uid = userRecord.uid;
+  const uid = seedUser.uid;
+  const userRef = db.collection('users').doc(uid);
+  const [existingConfigSnap, existingSecretsSnap] = await Promise.all([
+    userRef.collection('config').doc('main').get(),
+    userRef.collection('secrets').doc('credentials').get()
+  ]);
+  const existingConfig = existingConfigSnap.exists ? (existingConfigSnap.data() || {}) : {};
+  const existingSecrets = existingSecretsSnap.exists ? (existingSecretsSnap.data() || {}) : {};
+  const preserveExisting = hasNonSeedCredentialOverride(seedUser, existingConfig, existingSecrets);
+
+  const userRecord = await ensureSeedAuthUser(auth, seedUser, { preserveExisting });
+
+  if (preserveExisting) {
+    console.log('Preserved live/local credential override for users/%s; skipping seed writes until reset.', uid);
+    return userRecord;
+  }
+
   const cacheNowMs = Date.now();
   const cacheNow = new Date(cacheNowMs);
   const cacheNowIso = cacheNow.toISOString();
   const { provider, deviceSN } = resolveProviderAndDeviceId(seedUser);
 
-  await db.collection('users').doc(uid).set({
+  await userRef.set({
     uid,
     email: seedUser.email,
     displayName: seedUser.displayName,
@@ -638,19 +815,19 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
     updatedAt: ts
   };
 
-  await db.collection('users').doc(uid).collection('config').doc('main').set(configPayload, { merge: true });
+  await userRef.collection('config').doc('main').set(configPayload, { merge: true });
   console.log('Wrote users/%s/config/main', uid);
 
   const secretsPayload = seedUser.secrets || {};
   if (Object.keys(secretsPayload).length > 0) {
-    await db.collection('users').doc(uid).collection('secrets').doc('credentials').set({
+    await userRef.collection('secrets').doc('credentials').set({
       ...secretsPayload,
       updatedAt: ts
     }, { merge: true });
     console.log('Wrote users/%s/secrets/credentials', uid);
   }
 
-  await db.collection('users').doc(uid).collection('automation').doc('state').set({
+  await userRef.collection('automation').doc('state').set({
     enabled: true,
     lastCheck: ts,
     lastTriggered: ts,
@@ -661,7 +838,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   console.log('Wrote users/%s/automation/state', uid);
 
   const inverterCachePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, false);
-  await db.collection('users').doc(uid).collection('cache').doc('inverter').set({
+  await userRef.collection('cache').doc('inverter').set({
     data: inverterCachePayload,
     timestamp: cacheNowMs,
     ttlMs: INVERTER_CACHE_TTL_MS,
@@ -672,7 +849,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   console.log('Wrote users/%s/cache/inverter', uid);
 
   const inverterRealtimePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, true);
-  await db.collection('users').doc(uid).collection('cache').doc('inverter-realtime').set({
+  await userRef.collection('cache').doc('inverter-realtime').set({
     data: inverterRealtimePayload,
     timestamp: cacheNowMs,
     ttlMs: INVERTER_CACHE_TTL_MS,
@@ -683,7 +860,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   console.log('Wrote users/%s/cache/inverter-realtime', uid);
 
   const amberSites = buildAmberSites(seedUser);
-  await db.collection('users').doc(uid).collection('cache').doc('amber_sites').set({
+  await userRef.collection('cache').doc('amber_sites').set({
     sites: amberSites,
     cachedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
@@ -691,7 +868,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
 
   const amberSiteId = String(seedUser?.config?.amberSiteId || `seed-site-${provider}`);
   const currentRows = buildAmberCurrentRows(seedUser);
-  await db.collection('users').doc(uid).collection('cache').doc(`amber_current_${amberSiteId}`).set({
+  await userRef.collection('cache').doc(`amber_current_${amberSiteId}`).set({
     siteId: amberSiteId,
     prices: currentRows,
     cachedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -700,7 +877,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
 
   const rule = seedUser.rule || {};
   const ruleId = rule.id || `seed_rule_${seedUser.provider}`;
-  await db.collection('users').doc(uid).collection('rules').doc(ruleId).set({
+  await userRef.collection('rules').doc(ruleId).set({
     ...rule,
     enabled: typeof rule.enabled === 'boolean' ? rule.enabled : true,
     createdAt: ts,
@@ -708,7 +885,7 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   }, { merge: true });
   console.log('Wrote users/%s/rules/%s', uid, ruleId);
 
-  await db.collection('users').doc(uid).collection('history').doc(`seed_entry_${seedUser.provider}`).set({
+  await userRef.collection('history').doc(`seed_entry_${seedUser.provider}`).set({
     type: 'seed',
     provider: seedUser.provider,
     message: `Local emulator seed entry for ${seedUser.provider}`,
@@ -721,11 +898,11 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
   const yesterdayKey = getDateKey(1);
   const todayMetrics = seedUser.metrics?.today || {};
   const yesterdayMetrics = seedUser.metrics?.yesterday || {};
-  await db.collection('users').doc(uid).collection('metrics').doc(todayKey).set({
+  await userRef.collection('metrics').doc(todayKey).set({
     ...todayMetrics,
     updatedAt: ts
   }, { merge: true });
-  await db.collection('users').doc(uid).collection('metrics').doc(yesterdayKey).set({
+  await userRef.collection('metrics').doc(yesterdayKey).set({
     ...yesterdayMetrics,
     updatedAt: ts
   }, { merge: true });
@@ -810,4 +987,12 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  getExistingCredentialShape,
+  getSeedCredentialShape,
+  hasNonSeedCredentialOverride
+};

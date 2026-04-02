@@ -267,18 +267,57 @@
         // State
         let mockSchedulerSegments = [];
         let currentRules = {};
-        
-        // Initialize time to now
-        document.getElementById('simTime').value = new Date().toTimeString().slice(0,5);
+
+        const SIM_WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const SIM_WEEKDAY_SHORT_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        function initializeSimulationClock() {
+            const now = new Date();
+            const timeInput = document.getElementById('simTime');
+            const dayInput = document.getElementById('simDayOfWeek');
+            if (timeInput) {
+                timeInput.value = now.toTimeString().slice(0, 5);
+            }
+            if (dayInput) {
+                dayInput.value = String(now.getDay());
+            }
+        }
+
+        function formatSimulationWeekday(dayIndex, short = false) {
+            const labels = short ? SIM_WEEKDAY_SHORT_LABELS : SIM_WEEKDAY_LABELS;
+            const parsed = Number(dayIndex);
+            if (!Number.isInteger(parsed) || parsed < 0 || parsed >= labels.length) {
+                return '';
+            }
+            return labels[parsed];
+        }
+
+        function formatSimulationRuleDays(days = []) {
+            if (!Array.isArray(days) || days.length === 0) {
+                return '';
+            }
+
+            const labels = days
+                .map((day) => formatSimulationWeekday(day, true))
+                .filter(Boolean);
+
+            return labels.length > 0 ? ` (${labels.join(', ')})` : '';
+        }
+
+        initializeSimulationClock();
 
         // Presets aligned to rule-library templates:
         // highFeedIn -> price_high_feedin_export
         // cheapBuy   -> price_cheap_import_charge
+        // negativePrice -> price_negative_price_charge
         // spike      -> price_spike_response
+        // gridGuard  -> price_buy_price_guard
         // lowSoc     -> battery_low_soc_guard
         // hotBattery -> battery_high_temp_limit
         // cloudyDay  -> solar_cloudy_precharge
+        // lowSolar   -> solar_low_generation_backup
         // sunnyPeak  -> solar_sunny_peak_headroom
+        // weekendExport -> ev_weekend_surplus_export
         const presets = {
             highFeedIn: {
                 ruleId: 'price_high_feedin_export',
@@ -290,10 +329,20 @@
                 feedIn: 3, buy: 3, soc: 45, batteryTemp: 24, ambientTemp: 19, inverterTemp: 31,
                 solarRadiation: 180, cloudCover: 55, forecastBuy1D: 6, forecastFeedIn1D: 5, forecastSolar1D: 220, forecastCloudCover1D: 58
             },
+            negativePrice: {
+                ruleId: 'price_negative_price_charge',
+                feedIn: 1, buy: -6, soc: 58, batteryTemp: 22, ambientTemp: 17, inverterTemp: 28,
+                solarRadiation: 160, cloudCover: 62, forecastBuy1D: 4, forecastFeedIn1D: 5, forecastSolar1D: 210, forecastCloudCover1D: 68
+            },
             spike: {
                 ruleId: 'price_spike_response',
                 feedIn: 65, buy: 85, soc: 62, batteryTemp: 31, ambientTemp: 26, inverterTemp: 39,
                 solarRadiation: 520, cloudCover: 20, forecastBuy1D: 70, forecastFeedIn1D: 58, forecastSolar1D: 540, forecastCloudCover1D: 22
+            },
+            gridGuard: {
+                ruleId: 'price_buy_price_guard',
+                feedIn: 6, buy: 42, soc: 38, batteryTemp: 27, ambientTemp: 25, inverterTemp: 35,
+                solarRadiation: 140, cloudCover: 35, forecastBuy1D: 48, forecastFeedIn1D: 7, forecastSolar1D: 190, forecastCloudCover1D: 40
             },
             lowSoc: {
                 ruleId: 'battery_low_soc_guard',
@@ -311,10 +360,22 @@
                 feedIn: 4, buy: 12, soc: 44, batteryTemp: 23, ambientTemp: 16, inverterTemp: 29,
                 solarRadiation: 120, cloudCover: 90, forecastBuy1D: 14, forecastFeedIn1D: 4, forecastSolar1D: 140, forecastCloudCover1D: 92
             },
+            lowSolar: {
+                ruleId: 'solar_low_generation_backup',
+                feedIn: 7, buy: 18, soc: 42, batteryTemp: 21, ambientTemp: 14, inverterTemp: 27,
+                solarRadiation: 120, cloudCover: 86, forecastBuy1D: 24, forecastFeedIn1D: 6, forecastSolar1D: 130, forecastCloudCover1D: 88
+            },
             sunnyPeak: {
                 ruleId: 'solar_sunny_peak_headroom',
                 feedIn: 8, buy: 24, soc: 88, batteryTemp: 30, ambientTemp: 27, inverterTemp: 41,
                 solarRadiation: 760, cloudCover: 6, forecastBuy1D: 22, forecastFeedIn1D: 10, forecastSolar1D: 880, forecastCloudCover1D: 8
+            },
+            weekendExport: {
+                ruleId: 'ev_weekend_surplus_export',
+                time: '11:30',
+                dayOfWeek: 6,
+                feedIn: 10, buy: 18, soc: 94, batteryTemp: 29, ambientTemp: 24, inverterTemp: 37,
+                solarRadiation: 690, cloudCover: 10, forecastBuy1D: 20, forecastFeedIn1D: 12, forecastSolar1D: 720, forecastCloudCover1D: 12
             }
         };
 
@@ -335,6 +396,9 @@
             document.getElementById('simForecastCloudCover1D').value = p.forecastCloudCover1D;
             if (p.time) {
                 document.getElementById('simTime').value = p.time;
+            }
+            if (p.dayOfWeek !== undefined && p.dayOfWeek !== null) {
+                document.getElementById('simDayOfWeek').value = String(p.dayOfWeek);
             }
             const ruleText = p.ruleId ? ` (${p.ruleId})` : '';
             log('info', `Loaded preset: ${name}${ruleText}`);
@@ -902,7 +966,7 @@
                 // Handle both 'time' and legacy 'timeWindow' formats
                 const timeCond = conditions.time || conditions.timeWindow;
                 if (timeCond?.enabled) {
-                    const label = `${timeCond.startTime || timeCond.start}-${timeCond.endTime || timeCond.end}`;
+                    const label = `${timeCond.startTime || timeCond.start}-${timeCond.endTime || timeCond.end}${formatSimulationRuleDays(timeCond.days || [])}`;
                     condHtml += condBadge(label, '#79c0ff', 'rgba(121, 192, 255, 0.15)');
                 }
                 
@@ -931,6 +995,7 @@
         }
 
         async function runTest() {
+            const selectedDayOfWeek = document.getElementById('simDayOfWeek').value;
             const mockData = {
                 feedInPrice: parseFloat(document.getElementById('simFeedIn').value) || 0,
                 buyPrice: parseFloat(document.getElementById('simBuy').value) || 0,
@@ -946,11 +1011,13 @@
                 // 1-Day forecast weather
                 forecastSolar1D: parseFloat(document.getElementById('simForecastSolar1D').value) || 0,
                 forecastCloudCover1D: parseFloat(document.getElementById('simForecastCloudCover1D').value) || 0,
-                testTime: document.getElementById('simTime').value || null
+                testTime: document.getElementById('simTime').value || null,
+                testDayOfWeek: selectedDayOfWeek === '' ? null : Number(selectedDayOfWeek)
             };
             
             const timeStr = mockData.testTime ? ` Time=${mockData.testTime}` : '';
-            log('info', `Testing: FI=${mockData.feedInPrice}¢, Buy=${mockData.buyPrice}¢, SoC=${mockData.soc}%, BatTemp=${mockData.batteryTemp}°C, Solar=${mockData.solarRadiation}W/m², Cloud=${mockData.cloudCover}%${timeStr}`);
+            const dayStr = mockData.testDayOfWeek === null ? '' : ` Day=${formatSimulationWeekday(mockData.testDayOfWeek)}`;
+            log('info', `Testing: FI=${mockData.feedInPrice}¢, Buy=${mockData.buyPrice}¢, SoC=${mockData.soc}%, BatTemp=${mockData.batteryTemp}°C, Solar=${mockData.solarRadiation}W/m², Cloud=${mockData.cloudCover}%${timeStr}${dayStr}`);
             
             // Show loading state
             const resultsContainer = document.getElementById('testResults');

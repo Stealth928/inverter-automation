@@ -1,7 +1,7 @@
 # Deployment Guide
 
 Purpose: practical deployment runbook for production-safe releases.
-Last updated: 2026-03-26
+Last updated: 2026-04-02
 
 Use [RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKLIST.md) for the
 full go/no-go list.
@@ -40,6 +40,7 @@ It currently validates:
 - backend Jest suite
 - market-insights contract tests
 - ESLint
+- docs-impact alignment
 - critical module/export wiring
 - Firebase rewrite sanity checks
 - API contract parity
@@ -48,6 +49,7 @@ It currently validates:
 
 Additional release checks to run when relevant:
 
+- `npm run docs:impact:check`
 - `npm run test:pwa:versions`
 - `npm run test:release:manifest`
 - `npm run release:verify-live`
@@ -144,7 +146,8 @@ Before merge or deploy:
 - use small, reversible commits
 - avoid mixing migrations, refactors, and features in one release when possible
 - update docs for behavior, API, or operational-flow changes
-- refresh `docs/API_CONTRACT_BASELINE_MAR26.md` after live route changes
+- run `npm run docs:impact:check`
+- refresh `docs/API_CONTRACT_BASELINE.md` after live route changes
 - keep `docs/API.md` and `docs/openapi/openapi.v1.yaml` aligned with runtime
 - keep public-content changes aligned with `sitemap.xml`, `llms.txt`,
   `llms-full.txt`, and `firebase.json`

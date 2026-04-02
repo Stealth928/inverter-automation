@@ -1,6 +1,6 @@
 # API Reference
 
-Last updated: 2026-03-26
+Last updated: 2026-04-02
 
 ## Overview
 
@@ -8,7 +8,7 @@ All backend endpoints are served behind the Hosting rewrite at `/api/**`.
 
 Use this document as the narrative guide for the live API surface. For the
 generated route inventory, line-level handler map, and frontend-consumer audit,
-use [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md).
+use [API_CONTRACT_BASELINE.md](API_CONTRACT_BASELINE.md).
 
 Use [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) as the incremental
 machine-readable subset. It does not yet cover every live route.
@@ -146,6 +146,29 @@ Pricing notes:
 | `POST` | `/api/quickcontrol/start` | Start time-boxed quick charge/discharge override |
 | `POST` | `/api/quickcontrol/end` | End active quick control |
 | `GET` | `/api/quickcontrol/status` | Read quick-control state |
+
+### Backtesting and Tariff Plans
+
+Used by the Automation Lab backtest surface (`test.html`).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/backtests/runs` | Create a new backtest run (queued for async processing) |
+| `GET` | `/api/backtests/runs` | List recent backtest runs for the current user |
+| `GET` | `/api/backtests/runs/:runId` | Get a specific backtest run including results |
+| `GET` | `/api/backtests/tariff-plans` | List saved manual tariff plans |
+| `POST` | `/api/backtests/tariff-plans` | Create a new manual tariff plan |
+| `POST` | `/api/backtests/tariff-plans/:planId` | Update an existing tariff plan |
+| `DELETE` | `/api/backtests/tariff-plans/:planId` | Delete a tariff plan |
+
+Behavior notes:
+
+- Runs replay historical data at 5-minute intervals
+- Maximum lookback is 90 days; maximum 3 scenarios per run
+- Baseline scenario (passive self-use) is always generated for comparison
+- Results include per-scenario summaries, interval impact analysis, and pairwise comparisons
+- Delta convention: positive `billAud` = scenario saved money vs baseline
+- Tariff plans support time-of-use windows with separate import/export rates
 
 Behavior notes:
 

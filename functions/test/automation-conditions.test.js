@@ -138,21 +138,28 @@ describe('automation-conditions', () => {
       expect(result.reason).toContain('No forecast data');
     });
 
-    test('falls back to battery/ambient temps for non-forecast types', () => {
+    test('uses battery, ambient, and inverter temperatures for non-forecast types', () => {
       const batteryResult = evaluateTemperatureCondition(
         { enabled: true, type: 'battery', operator: '<', value: 40 },
-        { batteryTemp: 32, ambientTemp: 45 }
+        { batteryTemp: 32, ambientTemp: 45, inverterTemp: 51 }
       );
 
       const ambientResult = evaluateTemperatureCondition(
         { enabled: true, type: 'ambient', operator: '>=', value: 30 },
-        { batteryTemp: 32, ambientTemp: 45 }
+        { batteryTemp: 32, ambientTemp: 45, inverterTemp: 51 }
+      );
+
+      const inverterResult = evaluateTemperatureCondition(
+        { enabled: true, type: 'inverter', operator: '>=', value: 50 },
+        { batteryTemp: 32, ambientTemp: 45, inverterTemp: 51 }
       );
 
       expect(batteryResult.met).toBe(true);
       expect(batteryResult.actual).toBe(32);
       expect(ambientResult.met).toBe(true);
       expect(ambientResult.actual).toBe(45);
+      expect(inverterResult.met).toBe(true);
+      expect(inverterResult.actual).toBe(51);
     });
 
     test('supports between operator for forecast temperature', () => {

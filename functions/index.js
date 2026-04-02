@@ -1393,11 +1393,13 @@ registerEVRoutes(app, {
 });
 
 registerBacktestRoutes(app, {
-  backtestService
+  backtestService,
+  requireAdmin
 });
 
 registerOptimizationRoutes(app, {
-  optimizationService
+  optimizationService,
+  requireAdmin
 });
 
 // ==================== HELPER FUNCTIONS ====================

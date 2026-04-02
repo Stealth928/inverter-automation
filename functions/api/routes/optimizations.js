@@ -9,8 +9,21 @@ function requireUser(req, res) {
   return userId;
 }
 
+function createRequireFeatureAccess(requireAdmin) {
+  return async function requireFeatureAccess(req, res, next) {
+    const userId = requireUser(req, res);
+    if (!userId) return;
+    if (typeof requireAdmin !== 'function') {
+      return next();
+    }
+    return requireAdmin(req, res, next);
+  };
+}
+
 function registerOptimizationRoutes(app, deps = {}) {
   const optimizationService = deps.optimizationService;
+  const requireAdmin = typeof deps.requireAdmin === 'function' ? deps.requireAdmin : null;
+  const requireFeatureAccess = createRequireFeatureAccess(requireAdmin);
 
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('registerOptimizationRoutes requires an Express app');
@@ -19,9 +32,8 @@ function registerOptimizationRoutes(app, deps = {}) {
     throw new Error('registerOptimizationRoutes requires optimizationService');
   }
 
-  app.post('/api/optimizations/runs', async (req, res) => {
-    const userId = requireUser(req, res);
-    if (!userId) return;
+  app.post('/api/optimizations/runs', requireFeatureAccess, async (req, res) => {
+    const userId = req.user.uid;
     try {
       const result = await optimizationService.createRun(userId, req.body || {});
       return res.json({ errno: 0, result });
@@ -30,9 +42,8 @@ function registerOptimizationRoutes(app, deps = {}) {
     }
   });
 
-  app.get('/api/optimizations/runs', async (req, res) => {
-    const userId = requireUser(req, res);
-    if (!userId) return;
+  app.get('/api/optimizations/runs', requireFeatureAccess, async (req, res) => {
+    const userId = req.user.uid;
     try {
       const result = await optimizationService.listRuns(userId, req.query.limit);
       return res.json({ errno: 0, result });
@@ -41,9 +52,8 @@ function registerOptimizationRoutes(app, deps = {}) {
     }
   });
 
-  app.get('/api/optimizations/runs/:runId', async (req, res) => {
-    const userId = requireUser(req, res);
-    if (!userId) return;
+  app.get('/api/optimizations/runs/:runId', requireFeatureAccess, async (req, res) => {
+    const userId = req.user.uid;
     try {
       const result = await optimizationService.getRun(userId, req.params.runId);
       if (!result) return res.status(404).json({ errno: 404, error: 'Optimization run not found' });
@@ -53,9 +63,8 @@ function registerOptimizationRoutes(app, deps = {}) {
     }
   });
 
-  app.post('/api/optimizations/runs/:runId/apply', async (req, res) => {
-    const userId = requireUser(req, res);
-    if (!userId) return;
+  app.post('/api/optimizations/runs/:runId/apply', requireFeatureAccess, async (req, res) => {
+    const userId = req.user.uid;
     try {
       const result = await optimizationService.applyVariant(
         userId,

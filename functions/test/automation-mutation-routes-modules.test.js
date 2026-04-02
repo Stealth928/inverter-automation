@@ -567,4 +567,82 @@ describe('automation mutation route module', () => {
     });
     expect(response.body.allResults).toHaveLength(1);
   });
+
+  test('automation test route evaluates weather conditions instead of treating them as empty', async () => {
+    const deps = buildDeps({
+      getUserRules: jest.fn(async () => ({
+        rainy_week_battery_saver: {
+          action: { workMode: 'SelfUse', durationMinutes: 360, minSocOnGrid: 30 },
+          conditions: {
+            solarRadiation: { enabled: true, checkType: 'average', operator: '<=', value: 150, lookAhead: 7, lookAheadUnit: 'days' },
+            cloudCover: { enabled: true, checkType: 'average', operator: '>=', value: 85, lookAhead: 7, lookAheadUnit: 'days' }
+          },
+          enabled: true,
+          name: 'Rainy Week Battery Saver',
+          priority: 7
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-rule-test-weather' };
+        next();
+      });
+      registerAutomationMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/test')
+      .send({
+        mockData: {
+          forecastSolar1D: 120,
+          forecastCloudCover1D: 90
+        }
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.triggered).toBe(true);
+    expect(response.body.result.ruleName).toBe('Rainy Week Battery Saver');
+    expect(response.body.allResults).toHaveLength(1);
+    expect(response.body.allResults[0].conditions).toHaveLength(2);
+    expect(response.body.allResults[0].conditions.map((entry) => entry.name)).toEqual(['Solar Radiation', 'Cloud Cover']);
+  });
+
+  test('automation test route does not trigger rules with no enabled conditions', async () => {
+    const deps = buildDeps({
+      getUserRules: jest.fn(async () => ({
+        empty_rule: {
+          action: { workMode: 'SelfUse' },
+          conditions: {},
+          enabled: true,
+          name: 'Empty Rule',
+          priority: 1
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-rule-test-empty' };
+        next();
+      });
+      registerAutomationMutationRoutes(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/test')
+      .send({ mockData: {} });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.triggered).toBe(false);
+    expect(response.body.allResults).toHaveLength(1);
+    expect(response.body.allResults[0]).toMatchObject({
+      ruleId: 'empty_rule',
+      met: false,
+      reason: 'No conditions enabled'
+    });
+  });
 });

@@ -662,6 +662,10 @@ class APIClient {
     return this.get(`/api/backtests/runs/${encodeURIComponent(runId)}`);
   }
 
+  async deleteBacktestRun(runId) {
+    return this.delete(`/api/backtests/runs/${encodeURIComponent(runId)}`);
+  }
+
   async listBacktestTariffPlans() {
     return this.get('/api/backtests/tariff-plans');
   }

@@ -18,6 +18,7 @@ describe('backtest route module', () => {
       registerBacktestRoutes(instance, {
         backtestService: {
           createRun: jest.fn(),
+          deleteRun: jest.fn(),
           listRuns: jest.fn(),
           getRun: jest.fn(),
           listTariffPlans: jest.fn(),
@@ -44,6 +45,7 @@ describe('backtest route module', () => {
       registerBacktestRoutes(instance, {
         backtestService: {
           createRun,
+          deleteRun: jest.fn(),
           listRuns: jest.fn(),
           getRun: jest.fn(),
           listTariffPlans: jest.fn(),
@@ -65,6 +67,35 @@ describe('backtest route module', () => {
     });
   });
 
+  test('rejects non-admin backtest access when admin gate is configured', async () => {
+    const listRuns = jest.fn();
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-backtest' };
+        next();
+      });
+      registerBacktestRoutes(instance, {
+        backtestService: {
+          createRun: jest.fn(),
+          deleteRun: jest.fn(),
+          listRuns,
+          getRun: jest.fn(),
+          listTariffPlans: jest.fn(),
+          createTariffPlan: jest.fn(),
+          updateTariffPlan: jest.fn(),
+          deleteTariffPlan: jest.fn()
+        },
+        requireAdmin: (_req, res) => res.status(403).json({ errno: 403, error: 'Admin access required' })
+      });
+    });
+
+    const response = await request(app).get('/api/backtests/runs');
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toEqual({ errno: 403, error: 'Admin access required' });
+    expect(listRuns).not.toHaveBeenCalled();
+  });
+
   test('returns 404 when a run is missing', async () => {
     const app = buildApp((instance) => {
       instance.use('/api', (req, _res, next) => {
@@ -74,6 +105,7 @@ describe('backtest route module', () => {
       registerBacktestRoutes(instance, {
         backtestService: {
           createRun: jest.fn(),
+          deleteRun: jest.fn(),
           listRuns: jest.fn(),
           getRun: jest.fn(async () => null),
           listTariffPlans: jest.fn(),
@@ -100,6 +132,7 @@ describe('backtest route module', () => {
       registerBacktestRoutes(instance, {
         backtestService: {
           createRun: jest.fn(),
+          deleteRun: jest.fn(),
           listRuns: jest.fn(),
           getRun: jest.fn(),
           listTariffPlans: jest.fn(),
@@ -114,5 +147,33 @@ describe('backtest route module', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ errno: 0, result: { deleted: true } });
     expect(deleteTariffPlan).toHaveBeenCalledWith('u-backtest', 'plan-1');
+  });
+
+  test('deletes a completed backtest run', async () => {
+    const deleteRun = jest.fn(async () => true);
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-backtest' };
+        next();
+      });
+      registerBacktestRoutes(instance, {
+        backtestService: {
+          createRun: jest.fn(),
+          deleteRun,
+          listRuns: jest.fn(),
+          getRun: jest.fn(),
+          listTariffPlans: jest.fn(),
+          createTariffPlan: jest.fn(),
+          updateTariffPlan: jest.fn(),
+          deleteTariffPlan: jest.fn()
+        }
+      });
+    });
+
+    const response = await request(app).delete('/api/backtests/runs/run-1');
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ errno: 0, result: { deleted: true } });
+    expect(deleteRun).toHaveBeenCalledWith('u-backtest', 'run-1');
   });
 });

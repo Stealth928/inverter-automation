@@ -1,6 +1,6 @@
 # Release Readiness Checklist
 
-Last updated: 2026-03-26
+Last updated: 2026-04-02
 
 Use this checklist before every production deployment. All items should be
 complete before merging to `main` and deploying.
@@ -12,6 +12,7 @@ complete before merging to `main` and deploying.
 - [ ] `node scripts/pre-deploy-check.js`
 - [ ] `npm run api:contract:check`
 - [ ] `npm run openapi:check`
+- [ ] `npm run docs:impact:check`
 - [ ] `npm run test:market-insights:contracts`
 - [ ] `npm run test:pwa:versions`
 - [ ] `npm run test:release:manifest`
@@ -29,9 +30,10 @@ complete before merging to `main` and deploying.
 
 ## 3. API and Documentation Alignment
 
-- [ ] `docs/API_CONTRACT_BASELINE_MAR26.md` was refreshed after route changes
+- [ ] `docs/API_CONTRACT_BASELINE.md` was refreshed after route changes
 - [ ] `docs/API.md` matches the live API behavior and auth model
 - [ ] `docs/openapi/openapi.v1.yaml` still matches the routes it declares
+- [ ] docs impact was either updated in canonical docs or justified with `No doc impact:`
 - [ ] response envelopes remain backward compatible:
   `{ errno, result, error, msg }`
 - [ ] unmounted route modules are not being treated as live functionality

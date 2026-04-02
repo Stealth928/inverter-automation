@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-03-27
+Last updated: 2026-04-02
 Purpose: canonical map of the actively maintained documentation set.
 
 ## Start Here
@@ -9,6 +9,8 @@ Purpose: canonical map of the actively maintained documentation set.
   project.
 - [SETUP.md](SETUP.md): local development, provider onboarding, secrets,
   Firestore model, and deployment prerequisites.
+- [DOCUMENTATION_GOVERNANCE.md](DOCUMENTATION_GOVERNANCE.md): canonical docs
+  map, docs-impact matrix, and enforcement flow.
 - [guides/PRODUCT_CAPABILITY_GUIDE.md](guides/PRODUCT_CAPABILITY_GUIDE.md):
   canonical product reference covering public pages, authenticated surfaces,
   integrations, admin tooling, and boundaries.
@@ -21,7 +23,7 @@ Purpose: canonical map of the actively maintained documentation set.
 - [API.md](API.md): narrative API guide grouped by auth model and workflow.
 - [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml): incremental OpenAPI
   contract baseline used by `npm run openapi:check`.
-- [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md): generated
+- [API_CONTRACT_BASELINE.md](API_CONTRACT_BASELINE.md): generated
   live route inventory from mounted backend routes. This is the most complete
   API surface map today.
 - [AUTOMATION.md](AUTOMATION.md): rule engine, supported conditions/actions,
@@ -95,16 +97,20 @@ content now lives elsewhere.
   canonical product reference.
 - [guides/TESLA_EV_INTEGRATION.md](guides/TESLA_EV_INTEGRATION.md): short alias
   for the canonical Tesla onboarding guide.
+- [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md): legacy
+  alias for the stable generated API baseline path.
 
 ## Hygiene Rules
 
 - Prefer updating an existing canonical doc over adding a new overlapping one.
-- Treat [API_CONTRACT_BASELINE_MAR26.md](API_CONTRACT_BASELINE_MAR26.md) as the
+- Treat [API_CONTRACT_BASELINE.md](API_CONTRACT_BASELINE.md) as the
   live API inventory and [openapi/openapi.v1.yaml](openapi/openapi.v1.yaml) as
   the incremental machine-readable subset.
 - Refresh the API baseline with `npm run api:contract:refresh` whenever mounted
   routes or frontend endpoint calls change.
 - Keep public-content docs aligned with `frontend/sitemap.xml`, `frontend/llms.txt`,
   `frontend/llms-full.txt`, and `firebase.json` crawl headers.
+- Run `npm run docs:impact:check` when product, API, automation, setup, or
+  release flows change.
 - Historical evidence docs may explain why a change happened, but canonical docs
   should explain what is true now.

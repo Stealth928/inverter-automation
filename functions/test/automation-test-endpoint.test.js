@@ -253,4 +253,47 @@ describe('Automation Test Endpoint', () => {
       ])
     );
   });
+
+  test('uses inverter temperature mock data for inverter temperature rules', async () => {
+    mockRules = [
+      {
+        id: 'inverter_temp_rule',
+        data: {
+          name: 'Inverter Temp Rule',
+          enabled: true,
+          priority: 1,
+          conditions: {
+            temperature: { enabled: true, type: 'inverter', operator: '>=', value: 45 }
+          },
+          action: { workMode: 'SelfUse', durationMinutes: 30 }
+        }
+      }
+    ];
+
+    const response = await request(app)
+      .post('/api/automation/test')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        mockData: {
+          batteryTemp: 30,
+          ambientTemp: 27,
+          inverterTemp: 48
+        }
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.errno).toBe(0);
+    expect(response.body.triggered).toBe(true);
+    expect(response.body.result.ruleId).toBe('inverter_temp_rule');
+    expect(response.body.allResults[0].conditions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Inverter Temp',
+          value: 48,
+          target: 45,
+          met: true
+        })
+      ])
+    );
+  });
 });

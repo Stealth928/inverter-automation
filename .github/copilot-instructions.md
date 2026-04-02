@@ -67,7 +67,8 @@
 - Runtime target is Node 22 (`functions/package.json` + `firebase.json` runtime).
 - Prefer extracting new logic into route/service/repository modules instead of growing `functions/index.js`.
 - Preserve rate-limit and cache behavior when touching FoxESS/Amber/Weather paths.
-- If API shapes change, update docs (`docs/API.md`, `docs/openapi/openapi.v1.yaml`) and related tests in the same PR.
+- If API shapes change, update docs (`docs/API.md`, `docs/openapi/openapi.v1.yaml`, `docs/API_CONTRACT_BASELINE.md`) and related tests in the same PR.
+- Run `npm run docs:impact:check` when code changes touch product, API, automation, setup, or release flows.
 
 # High-Value Files
 
@@ -87,4 +88,4 @@
 3. Add or update focused tests for changed behavior.
 4. Run `npm --prefix functions run lint` and relevant tests before finishing.
 5. For larger backend changes, run `node scripts/pre-deploy-check.js`.
-6. Update docs when contracts, endpoints, or operational workflows change.
+6. Update docs when contracts, endpoints, or operational workflows change, or document `No doc impact:` in the PR template when the change is truly internal-only.

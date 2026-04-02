@@ -75,10 +75,12 @@ function createAutomationRuleEvaluationService(deps = {}) {
     logger.debug('Automation', `Evaluating rule '${rule.name}' in timezone ${userTimezone} (${String(userTime.hour).padStart(2,'0')}:${String(userTime.minute).padStart(2,'0')})`);
     
     // Parse inverter data
-    const { soc, batTemp, ambientTemp } = parseAutomationTelemetry(inverterData);
+    const { soc, batTemp, ambientTemp, inverterTemp } = parseAutomationTelemetry(inverterData);
     
     // Parse Amber prices
     const { feedInPrice, buyPrice } = getCurrentAmberPrices(cache.amber);
+
+    logger.debug('Automation', `Temperature inputs for '${rule.name}': ambient=${ambientTemp}, inverter=${inverterTemp}`);
     
     logger.debug('Automation', `Evaluating rule '${rule.name}' - Live data: SoC=${soc}%, BatTemp=${batTemp}°C, FeedIn=${feedInPrice?.toFixed(1)}¢, Buy=${buyPrice?.toFixed(1)}¢`);
     
@@ -191,6 +193,7 @@ function createAutomationRuleEvaluationService(deps = {}) {
       const tempResult = evaluateTemperatureCondition(tempCondition, {
         batteryTemp: batTemp,
         ambientTemp,
+        inverterTemp,
         weatherData: cache.weather
       });
   

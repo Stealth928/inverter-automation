@@ -272,3 +272,53 @@ Keep these product and support constraints explicit:
 - quick control and manual scheduling are not reservation systems; automation can
   overwrite later scheduler state
 - curtailment is operationally strongest on the FoxESS path
+
+## Automation Lab
+
+The Automation Lab (`test.html`) provides two modes:
+
+### Quick Simulation
+
+Single-moment rule evaluation with mocked or live inputs. Tests which rule
+would win, what scheduler segment would be created, and what API payload would
+be sent. Supports quick presets aligned to rule-library templates (High Export,
+Cheap Import, Price Spike, Low Battery, Hot Battery, Cloudy Day, Sunny Peak).
+
+### Backtesting / Optimisation
+
+Replays historical data at 5-minute intervals to compare rule sets, tariffs, or
+optimization variants against a passive self-use baseline.
+
+Key characteristics:
+
+- maximum lookback: 90 days
+- maximum scenarios per run: 3
+- replay grid: fixed 5-minute intervals in UTC
+- baseline always generated for comparison (passive self-use)
+- supports manual tariff plans with time-of-use import/export windows
+- supports provider interval tariffs from Amber API history
+
+Delta convention for results:
+
+- `deltaVsBaseline.billAud`: positive = scenario saved money vs baseline
+- `deltaVsBaseline.importKWh`: positive = scenario imported less
+- `deltaVsBaseline.exportKWh`: positive = scenario exported more
+- `deltaVsBaseline.throughputKWh`: informational (positive = more cycling)
+- `intervalImpact.helped/hurt/neutral`: count of 5-min intervals where scenario
+  beat, lost to, or matched baseline
+
+Unsupported conditions in backtesting:
+
+- EV vehicle conditions (requires vehicle data history)
+- Battery temperature history (only forecast/ambient temps available)
+- Legacy weather conditions (replaced by solar radiation and cloud cover)
+
+Related endpoints:
+
+- `POST /api/backtests/runs`
+- `GET /api/backtests/runs`
+- `GET /api/backtests/runs/:runId`
+- `GET /api/backtests/tariff-plans`
+- `POST /api/backtests/tariff-plans`
+- `POST /api/backtests/tariff-plans/:planId`
+- `DELETE /api/backtests/tariff-plans/:planId`

@@ -21,7 +21,7 @@ const silent = args.has('--silent');
 const repoRoot = getRepoRoot();
 const apiClientFile = path.join(repoRoot, 'frontend', 'js', 'api-client.js');
 const frontendDir = path.join(repoRoot, 'frontend');
-const outputDocFile = path.join(repoRoot, 'docs', 'API_CONTRACT_BASELINE_MAR26.md');
+const outputDocFile = path.join(repoRoot, 'docs', 'API_CONTRACT_BASELINE.md');
 
 function parseApiClientEndpoints(content) {
   const lines = content.split(/\r?\n/);
@@ -184,7 +184,7 @@ function generateMarkdownReport(data) {
   const now = new Date().toISOString().slice(0, 10);
   const lines = [];
 
-  lines.push('# API Contract Baseline (March 2026)');
+  lines.push('# API Contract Baseline');
   lines.push('');
   lines.push(`Generated: ${now} via \`node scripts/api-contract-baseline.js --write-doc\``);
   lines.push('');

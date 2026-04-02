@@ -344,9 +344,23 @@ try {
 }
 
 // ============================================================================
-// 10. REPO HYGIENE CHECKS
+// 10. VERIFY DOCS IMPACT ALIGNMENT
 // ============================================================================
-section('10. Verifying Repo Hygiene');
+section('10. Verifying Docs Impact Alignment');
+
+try {
+  log(colors.cyan, 'Running: node scripts/docs-impact-check.js');
+  execSync('node scripts/docs-impact-check.js', { stdio: 'inherit', cwd: repoRoot });
+  checkPass('Docs impact checks passed');
+} catch (e) {
+  checkFail('Docs impact check failed - run: node scripts/docs-impact-check.js');
+  failures.push('DOCS_IMPACT_FAILURE');
+}
+
+// ============================================================================
+// 11. REPO HYGIENE CHECKS
+// ============================================================================
+section('11. Verifying Repo Hygiene');
 
 try {
   log(colors.cyan, 'Running: node scripts/repo-hygiene-check.js');
@@ -358,7 +372,7 @@ try {
 }
 
 // ============================================================================
-// 11. SUMMARY AND EXIT
+// 12. SUMMARY AND EXIT
 // ============================================================================
 section('Pre-Deployment Check Summary');
 

@@ -43,11 +43,12 @@ High-signal entry points:
 | --- | --- |
 | [docs/SETUP.md](docs/SETUP.md) | Local development, provider onboarding, secrets, Firestore model, deployment prerequisites |
 | [docs/API.md](docs/API.md) | Narrative API guide grouped by workflow and auth model |
-| [docs/API_CONTRACT_BASELINE_MAR26.md](docs/API_CONTRACT_BASELINE_MAR26.md) | Generated live route inventory from mounted backend routes |
+| [docs/API_CONTRACT_BASELINE.md](docs/API_CONTRACT_BASELINE.md) | Generated live route inventory from mounted backend routes |
 | [docs/openapi/openapi.v1.yaml](docs/openapi/openapi.v1.yaml) | Incremental machine-readable OpenAPI baseline |
 | [docs/AUTOMATION.md](docs/AUTOMATION.md) | Rule model, supported conditions/actions, provider behavior |
 | [docs/BACKGROUND_AUTOMATION.md](docs/BACKGROUND_AUTOMATION.md) | Scheduled jobs, cadence, locks, idempotency, metrics, alerting |
 | [docs/AEMO_AGGREGATION_PIPELINE.md](docs/AEMO_AGGREGATION_PIPELINE.md) | Raw AEMO ingest, aggregate generation, published bundle flow, live snapshot job |
+| [docs/DOCUMENTATION_GOVERNANCE.md](docs/DOCUMENTATION_GOVERNANCE.md) | Canonical docs map, docs-impact matrix, and enforcement points |
 | [docs/guides/PRODUCT_CAPABILITY_GUIDE.md](docs/guides/PRODUCT_CAPABILITY_GUIDE.md) | Canonical product reference covering the shipped surface and boundaries |
 | [docs/guides/TESTING_GUIDE.md](docs/guides/TESTING_GUIDE.md) | Backend, frontend, contract, and release test tracks |
 | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Practical production-safe release workflow |
@@ -139,6 +140,7 @@ npm run emu:stop
 ```bash
 npm --prefix functions run lint
 npm --prefix functions test -- --runInBand
+npm run docs:impact:check
 npm run api:contract:check
 npm run openapi:check
 npm run test:market-insights:contracts

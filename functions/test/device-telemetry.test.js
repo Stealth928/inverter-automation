@@ -45,7 +45,8 @@ describe('device telemetry normalization helpers', () => {
     expect(parseAutomationTelemetry(inverterData)).toEqual({
       soc: 61,
       batTemp: 30.4,
-      ambientTemp: 25.1
+      ambientTemp: 25.1,
+      inverterTemp: null
     });
   });
 
@@ -63,7 +64,28 @@ describe('device telemetry normalization helpers', () => {
     expect(parseAutomationTelemetry(inverterData)).toEqual({
       soc: 88,
       batTemp: 28.7,
-      ambientTemp: 22.5
+      ambientTemp: 22.5,
+      inverterTemp: null
+    });
+  });
+
+  test('parseAutomationTelemetry resolves inverter temperature aliases', () => {
+    const inverterData = {
+      result: [{
+        datas: [
+          { variable: 'SoC', value: 54 },
+          { variable: 'batTemperature', value: 27.4 },
+          { variable: 'ambientTemperation', value: 21.9 },
+          { variable: 'invTemperation', value: 38.6 }
+        ]
+      }]
+    };
+
+    expect(parseAutomationTelemetry(inverterData)).toEqual({
+      soc: 54,
+      batTemp: 27.4,
+      ambientTemp: 21.9,
+      inverterTemp: 38.6
     });
   });
 });

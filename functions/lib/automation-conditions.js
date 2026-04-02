@@ -219,6 +219,7 @@ function getForecastTemperature(weatherData, metric = 'max', dayOffset = 0) {
 function evaluateTemperatureCondition(tempCondition, context = {}) {
   const condition = tempCondition || {};
   const type = condition.type || 'battery';
+  const normalizedType = String(type).toLowerCase();
   const operator = condition.op || condition.operator || '>';
   const value = Number(condition.value);
   const value2 = condition.value2 !== undefined && condition.value2 !== null ? Number(condition.value2) : null;
@@ -248,11 +249,16 @@ function evaluateTemperatureCondition(tempCondition, context = {}) {
     }
 
     actual = forecast.value;
-  } else if (String(type).toLowerCase() === 'battery') {
+  } else if (normalizedType === 'battery') {
     actual = context.batteryTemp;
+    source = 'battery';
+  } else if (normalizedType === 'inverter') {
+    actual = context.inverterTemp;
+    source = 'inverter';
   } else {
-    // Legacy behavior: non-battery temp types map to ambient/inverter input.
+    // Legacy behavior: non-battery temp types map to ambient temperature input.
     actual = context.ambientTemp;
+    source = 'ambient';
   }
 
   if (actual === null || actual === undefined || Number.isNaN(Number(actual))) {

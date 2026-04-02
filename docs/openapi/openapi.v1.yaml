@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: >
     Incremental OpenAPI contract baseline used by npm run openapi:check.
-    Coverage is still partial; use docs/API_CONTRACT_BASELINE_MAR26.md for the
+    Coverage is still partial; use docs/API_CONTRACT_BASELINE.md for the
     current measured backend route inventory until spec parity is complete.
 servers:
   - url: /
@@ -497,6 +497,177 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiEnvelopeAdminSchedulerMetrics"
+
+  /api/backtests/runs:
+    post:
+      tags: [Automation]
+      summary: Create a new backtest run
+      operationId: createBacktestRun
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period, scenarios]
+              properties:
+                period:
+                  type: object
+                  properties:
+                    startDate:
+                      type: string
+                      format: date
+                    endDate:
+                      type: string
+                      format: date
+                includeBaseline:
+                  type: boolean
+                  default: true
+                comparisonMode:
+                  type: string
+                  enum: [current_vs_baseline, current_vs_candidate, candidate_vs_baseline, current_vs_plan]
+                scenarios:
+                  type: array
+                  maxItems: 3
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      ruleSetSnapshot:
+                        type: object
+                      tariff:
+                        type: object
+      responses:
+        "200":
+          description: Backtest run created (status queued)
+    get:
+      tags: [Automation]
+      summary: List recent backtest runs
+      operationId: listBacktestRuns
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Array of backtest run summaries
+
+  /api/backtests/runs/{runId}:
+    get:
+      tags: [Automation]
+      summary: Get a specific backtest run with results
+      operationId: getBacktestRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backtest run with results
+
+  /api/backtests/tariff-plans:
+    get:
+      tags: [Automation]
+      summary: List saved tariff plans
+      operationId: listBacktestTariffPlans
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Array of tariff plan objects
+    post:
+      tags: [Automation]
+      summary: Create a manual tariff plan
+      operationId: createBacktestTariffPlan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, importWindows]
+              properties:
+                name:
+                  type: string
+                timezone:
+                  type: string
+                dailySupplyCharge:
+                  type: number
+                importWindows:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      startTime:
+                        type: string
+                      endTime:
+                        type: string
+                      centsPerKwh:
+                        type: number
+                exportWindows:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      startTime:
+                        type: string
+                      endTime:
+                        type: string
+                      centsPerKwh:
+                        type: number
+      responses:
+        "200":
+          description: Created tariff plan
+
+  /api/backtests/tariff-plans/{planId}:
+    post:
+      tags: [Automation]
+      summary: Update a tariff plan
+      operationId: updateBacktestTariffPlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: planId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated tariff plan
+    delete:
+      tags: [Automation]
+      summary: Delete a tariff plan
+      operationId: deleteBacktestTariffPlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: planId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Plan deleted
+
 components:
   securitySchemes:
     bearerAuth:

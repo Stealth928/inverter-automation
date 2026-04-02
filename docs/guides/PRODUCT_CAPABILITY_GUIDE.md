@@ -79,7 +79,7 @@ not ship a separate native mobile app.
 | `market-insights.html` | Full market workspace | Member market analysis experience |
 | `settings.html` | Configuration hub | Provider credentials, automation config, curtailment, Tesla |
 | `admin.html` | Admin console | Metrics, user ops, announcements, DataWorks, dead letters |
-| `test.html` | Automation Lab | Internal QA and rule-testing surface |
+| `test.html` | Automation Lab | Two-mode testing surface: Quick Simulation for single-moment rule evaluation, and Backtesting/Optimisation for historical replay with visual savings reports, interval impact analysis, rule mix charts, tariff comparison, and explainable rule optimisation |
 
 Important distinction:
 
@@ -310,5 +310,5 @@ Keep these constraints explicit in product and support material:
 - the setup flow is narrower than the full backend capability map
 - the public market-insights preview is not the full member workspace
 - the public rule-template recommender is not the rules library itself
-- `test.html` is an internal Automation Lab, not a normal customer page
+- `test.html` is the Automation Lab with two modes: Quick Simulation and Backtesting/Optimisation
 - Tesla commands are not guaranteed for every vehicle/environment

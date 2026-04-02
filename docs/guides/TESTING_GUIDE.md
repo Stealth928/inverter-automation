@@ -1,7 +1,7 @@
 # Testing Guide
 
 Purpose: canonical test execution reference.
-Last verified: 2026-03-26
+Last verified: 2026-04-02
 
 ## 1. Test Tracks
 
@@ -15,7 +15,7 @@ Current snapshot:
 
 - backend Jest suite files: `113`
 - frontend Playwright spec files: `20`
-- root script test files: `5`
+- root script test files: `6`
 - Playwright listed tests: `261`
 
 Refresh inventory:
@@ -124,6 +124,12 @@ Repo hygiene:
 npm run hygiene:check
 ```
 
+Docs-impact alignment:
+
+```bash
+npm run docs:impact:check
+```
+
 ## 6. PowerShell Runner
 
 File: `run-tests.ps1`
@@ -168,6 +174,7 @@ Minimum merge or release checks:
 - `npm --prefix functions test -- --runInBand`
 - `npm run api:contract:check`
 - `npm run openapi:check`
+- `npm run docs:impact:check`
 - `npm run hygiene:check`
 - `npm run test:market-insights:contracts`
 - `npm run test:pwa:versions`

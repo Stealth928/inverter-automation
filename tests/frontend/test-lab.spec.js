@@ -27,6 +27,52 @@ test.describe('Test Lab Page', () => {
     await expect(page).toHaveTitle(/Test|Lab|Debug|Automation/i);
   });
 
+  test('should adapt Automation Lab chrome in light theme', async ({ page }) => {
+    await page.goto('about:blank');
+    await page.addInitScript(() => {
+      window.localStorage.setItem('uiTheme', 'light');
+    });
+
+    await page.goto('/test.html?mode=quick');
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'light');
+    await expect(page.locator('.lab-mode-head')).toBeVisible();
+    await expect(page.locator('.lab-quick-point').first()).toBeVisible();
+
+    const styles = await page.evaluate(() => {
+      const parseRgb = (value) => {
+        const matches = String(value || '').match(/\d+(\.\d+)?/g);
+        return matches ? matches.slice(0, 3).map(Number) : null;
+      };
+      const brightness = (rgb) => {
+        if (!rgb || rgb.length < 3) return null;
+        return ((rgb[0] * 299) + (rgb[1] * 587) + (rgb[2] * 114)) / 1000;
+      };
+      const read = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const style = window.getComputedStyle(el);
+        return {
+          backgroundColor: style.backgroundColor,
+          color: style.color,
+          backgroundBrightness: brightness(parseRgb(style.backgroundColor)),
+          colorBrightness: brightness(parseRgb(style.color))
+        };
+      };
+
+      return {
+        activeTab: read('.lab-mode-tab.active'),
+        modeStat: read('.lab-mode-stat'),
+        quickTitle: read('.lab-quick-title'),
+        quickPoint: read('.lab-quick-point')
+      };
+    });
+
+    expect(styles.activeTab?.colorBrightness).toBeLessThan(80);
+    expect(styles.modeStat?.backgroundBrightness).toBeGreaterThan(200);
+    expect(styles.quickPoint?.backgroundBrightness).toBeGreaterThan(200);
+    expect(styles.quickTitle?.colorBrightness).toBeLessThan(60);
+  });
+
   test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {
     let createRequestCount = 0;
     let lastCreatePayload = null;
@@ -204,6 +250,62 @@ test.describe('Test Lab Page', () => {
     }
     
     expect(true).toBeTruthy();
+  });
+
+  test('should populate the expanded quick presets including weekday-aware scenarios', async ({ page }) => {
+    await page.goto('about:blank');
+
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          errno: 0,
+          result: {
+            inverterCapacityW: 10000
+          }
+        })
+      });
+    });
+
+    await page.route('**/api/automation/status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          errno: 0,
+          result: {
+            enabled: true,
+            rules: {},
+            config: {
+              automation: { intervalMs: 60000 },
+              cache: { amber: 60000, inverter: 300000, weather: 1800000 },
+              defaults: { cooldownMinutes: 5, durationMinutes: 30 }
+            }
+          }
+        })
+      });
+    });
+
+    await page.goto('/test.html');
+    await page.getByRole('button', { name: /Quick Simulation/i }).click();
+    await page.waitForFunction(() => typeof window.loadPreset === 'function');
+
+    await page.getByRole('button', { name: /Negative Price/i }).click();
+    await expect(page.locator('#simBuy')).toHaveValue('-6');
+    await expect(page.locator('#simSoC')).toHaveValue('58');
+    await expect(page.locator('#simForecastBuy1D')).toHaveValue('4');
+
+    await page.getByRole('button', { name: /Low Solar/i }).click();
+    await expect(page.locator('#simSolarRadiation')).toHaveValue('120');
+    await expect(page.locator('#simForecastSolar1D')).toHaveValue('130');
+    await expect(page.locator('#simCloudCover')).toHaveValue('86');
+
+    await page.getByRole('button', { name: /Weekend Export/i }).click();
+    await expect(page.locator('#simTime')).toHaveValue('11:30');
+    await expect(page.locator('#simDayOfWeek')).toHaveValue('6');
+    await expect(page.locator('#simFeedIn')).toHaveValue('10');
+    await expect(page.locator('#simSoC')).toHaveValue('94');
   });
 
   test('should show condition details', async ({ page }) => {

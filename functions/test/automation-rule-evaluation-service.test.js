@@ -17,7 +17,7 @@ function buildService(overrides = {}) {
     getCurrentAmberPrices: jest.fn(() => ({ feedInPrice: 5.5, buyPrice: 15.2 })),
     getUserTime: jest.fn(() => ({ hour: 12, minute: 0, dayOfWeek: 1 })),
     logger: { debug: jest.fn() },
-    parseAutomationTelemetry: jest.fn(() => ({ soc: 60, batTemp: 23, ambientTemp: 26 })),
+    parseAutomationTelemetry: jest.fn(() => ({ soc: 60, batTemp: 23, ambientTemp: 26, inverterTemp: 31 })),
     resolveAutomationTimezone: jest.fn(() => 'Australia/Sydney'),
     ...overrides
   };
@@ -46,7 +46,7 @@ describe('automation rule evaluation service', () => {
 
   test('evaluateRule returns triggered=true when enabled SoC condition is met', async () => {
     const { service, deps } = buildService({
-      parseAutomationTelemetry: jest.fn(() => ({ soc: 72, batTemp: 20, ambientTemp: 22 }))
+      parseAutomationTelemetry: jest.fn(() => ({ soc: 72, batTemp: 20, ambientTemp: 22, inverterTemp: 29 }))
     });
 
     const result = await service.evaluateRule(
@@ -97,6 +97,58 @@ describe('automation rule evaluation service', () => {
       feedInPrice: 5.5,
       buyPrice: 15.2
     });
+  });
+
+  test('passes inverter temperature through to the temperature evaluator', async () => {
+    const evaluateTemperatureCondition = jest.fn(() => ({
+      met: true,
+      actual: 48,
+      operator: '>=',
+      target: 45,
+      target2: null,
+      type: 'inverter',
+      source: 'inverter',
+      metric: null,
+      dayOffset: 0
+    }));
+    const { service } = buildService({
+      evaluateTemperatureCondition,
+      parseAutomationTelemetry: jest.fn(() => ({ soc: 58, batTemp: 24, ambientTemp: 26, inverterTemp: 48 }))
+    });
+
+    const result = await service.evaluateRule(
+      'u-eval',
+      'rule-inverter-temp',
+      {
+        name: 'Inverter Temp Guard',
+        conditions: {
+          temperature: { enabled: true, type: 'inverter', operator: '>=', value: 45 }
+        }
+      },
+      { amber: [] },
+      {},
+      {}
+    );
+
+    expect(evaluateTemperatureCondition).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'inverter', operator: '>=', value: 45 }),
+      expect.objectContaining({ batteryTemp: 24, ambientTemp: 26, inverterTemp: 48 })
+    );
+    expect(result.triggered).toBe(true);
+    expect(result.results).toEqual([
+      {
+        condition: 'temperature',
+        met: true,
+        actual: 48,
+        operator: '>=',
+        target: 45,
+        target2: null,
+        type: 'inverter',
+        source: 'inverter',
+        metric: null,
+        dayOffset: 0
+      }
+    ]);
   });
 
   test('forecastPrice averages mixed interval widths by covered minutes', async () => {

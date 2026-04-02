@@ -7562,6 +7562,97 @@
             return null;
         }
 
+        function parseOverviewClockMinutes(value) {
+            const match = String(value || '').match(/T(\d{2}):(\d{2})/);
+            if (!match) return null;
+
+            const hour = Number(match[1]);
+            const minute = Number(match[2]);
+            if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+            if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+            return (hour * 60) + minute;
+        }
+
+        function getOverviewWeatherLightPhase(current = {}, daily = {}) {
+            const currentMinutes = parseOverviewClockMinutes(current.time);
+            const sunriseSource = Array.isArray(daily.sunrise) ? daily.sunrise[0] : daily.sunrise;
+            const sunsetSource = Array.isArray(daily.sunset) ? daily.sunset[0] : daily.sunset;
+            const sunriseMinutes = parseOverviewClockMinutes(sunriseSource);
+            const sunsetMinutes = parseOverviewClockMinutes(sunsetSource);
+            const dawnWindowMinutes = 45;
+            const duskWindowMinutes = 60;
+
+            if (
+                currentMinutes !== null
+                && sunriseMinutes !== null
+                && sunsetMinutes !== null
+                && sunsetMinutes > sunriseMinutes
+            ) {
+                if (currentMinutes < sunriseMinutes) {
+                    return (sunriseMinutes - currentMinutes) <= dawnWindowMinutes ? 'before-sunrise' : 'night';
+                }
+                if (currentMinutes >= sunsetMinutes) {
+                    return (currentMinutes - sunsetMinutes) <= duskWindowMinutes ? 'after-sunset' : 'night';
+                }
+                if ((currentMinutes - sunriseMinutes) <= dawnWindowMinutes) return 'morning';
+                if ((sunsetMinutes - currentMinutes) <= duskWindowMinutes) return 'late-day';
+                return 'day';
+            }
+
+            if (current.is_day !== undefined && current.is_day !== null) {
+                return Number(current.is_day) === 1 ? 'day' : 'night';
+            }
+
+            if (currentMinutes !== null) {
+                if (currentMinutes < 360) return 'night';
+                if (currentMinutes < 480) return 'morning';
+                if (currentMinutes >= 1140) return 'night';
+                if (currentMinutes >= 1020) return 'late-day';
+                return 'day';
+            }
+
+            return 'unknown';
+        }
+
+        function isOverviewWeatherDaylightPhase(lightPhase) {
+            return lightPhase === 'day' || lightPhase === 'morning' || lightPhase === 'late-day';
+        }
+
+        function describeOverviewWeatherTimeContext(weather, options = {}) {
+            const capitalize = options.capitalize === true;
+            const lightPhase = String(weather?.lightPhase || '').trim();
+            const labelMap = {
+                'before-sunrise': capitalize ? 'Before sunrise' : 'before sunrise',
+                'after-sunset': capitalize ? 'After sunset' : 'after sunset',
+                night: capitalize ? 'Overnight' : 'overnight',
+                morning: capitalize ? 'This morning' : 'this morning',
+                'late-day': capitalize ? 'Late today' : 'late today',
+                day: capitalize ? 'Today' : 'today'
+            };
+            if (labelMap[lightPhase]) return labelMap[lightPhase];
+            if (weather?.isDaylight === false) return capitalize ? 'Overnight' : 'overnight';
+            return capitalize ? 'Today' : 'today';
+        }
+
+        function describeOverviewActiveSolarWindow(weather) {
+            const lightPhase = String(weather?.lightPhase || '').trim();
+            if (lightPhase === 'before-sunrise') return 'after sunrise';
+            if (lightPhase === 'morning') return 'this morning';
+            if (lightPhase === 'late-day') return 'through sunset';
+            if (lightPhase === 'after-sunset' || lightPhase === 'night') return 'tomorrow';
+            if (weather?.isDaylight === false) return 'later';
+            return 'right now';
+        }
+
+        function describeOverviewSolarOutlookWindow(weather) {
+            const lightPhase = String(weather?.lightPhase || '').trim();
+            if (lightPhase === 'before-sunrise') return 'later today after sunrise';
+            if (lightPhase === 'late-day') return 'through sunset';
+            if (lightPhase === 'after-sunset' || lightPhase === 'night') return 'tomorrow';
+            if (weather?.isDaylight === false) return 'later';
+            return 'today';
+        }
+
         function formatOverviewPowerKw(value) {
             const numeric = toOverviewFiniteNumber(value);
             if (numeric === null) return null;
@@ -7920,21 +8011,37 @@
             const todayRainMm = toOverviewFiniteNumber(rainSeries[0]);
             const tomorrowRainMm = toOverviewFiniteNumber(rainSeries[1]);
             const tomorrowCondition = weatherCodes[1] !== undefined ? weatherCodeToWord(weatherCodes[1]) : null;
+            const lightPhase = getOverviewWeatherLightPhase(current, daily);
+            const isDaylight = isOverviewWeatherDaylightPhase(lightPhase);
 
             let solarSupport = 'moderate';
-            if (
-                (solarNowWm2 !== null && solarNowWm2 >= 450)
-                && (cloudNowPct === null || cloudNowPct <= 35)
-                && (todayRainMm === null || todayRainMm < 3)
-            ) {
-                solarSupport = 'strong';
+            if (isDaylight) {
+                if (
+                    (solarNowWm2 !== null && solarNowWm2 >= 450)
+                    && (cloudNowPct === null || cloudNowPct <= 35)
+                    && (todayRainMm === null || todayRainMm < 3)
+                ) {
+                    solarSupport = 'strong';
+                } else if (
+                    (solarNowWm2 !== null && solarNowWm2 <= 150)
+                    || (cloudNowPct !== null && cloudNowPct >= 70)
+                    || (todayRainMm !== null && todayRainMm >= 5)
+                    || isOverviewLowSolarCondition(currentCondition)
+                ) {
+                    solarSupport = 'weak';
+                }
             } else if (
-                (solarNowWm2 !== null && solarNowWm2 <= 150)
-                || (cloudNowPct !== null && cloudNowPct >= 70)
+                (cloudNowPct !== null && cloudNowPct >= 80)
                 || (todayRainMm !== null && todayRainMm >= 5)
                 || isOverviewLowSolarCondition(currentCondition)
             ) {
                 solarSupport = 'weak';
+            } else if (
+                (cloudNowPct === null || cloudNowPct <= 35)
+                && (todayRainMm === null || todayRainMm < 3)
+                && /Clear|Partly Cloudy/i.test(String(currentCondition || ''))
+            ) {
+                solarSupport = 'strong';
             }
 
             let nextWetDay = null;
@@ -7966,6 +8073,8 @@
                 todayRainMm,
                 tomorrowRainMm,
                 tomorrowCondition,
+                isDaylight,
+                lightPhase,
                 solarSupport,
                 nextWetDay
             };
@@ -8163,6 +8272,10 @@
             const netSolarKw = hasValue(inverterSolarKw) && hasValue(inverterLoadKw)
                 ? inverterSolarKw - inverterLoadKw
                 : null;
+            const weatherIsDaylight = weather?.isDaylight === true;
+            const weatherTimeContext = describeOverviewWeatherTimeContext(weather);
+            const weatherSolarWindow = describeOverviewActiveSolarWindow(weather);
+            const weatherSolarOutlookWindow = describeOverviewSolarOutlookWindow(weather);
             const quickControlEndLabel = quickControl?.expiresAt
                 ? formatOverviewRelativeDateTime(quickControl.expiresAt)
                 : null;
@@ -8222,19 +8335,19 @@
                 };
             }
 
-            if (inverterBatteryMode === 'charging' && weather?.solarSupport === 'strong') {
-                if (netSolarKw !== null && netSolarKw > 0.35) {
-                    return {
-                        focus: 'solar',
-                        usedKeys: ['battery', 'solar'],
-                        text: `Solar surplus is charging the battery and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`
-                    };
-                }
-
+            if (inverterBatteryMode === 'charging' && netSolarKw !== null && netSolarKw > 0.35) {
                 return {
                     focus: 'solar',
                     usedKeys: ['battery', 'solar'],
-                    text: 'Strong solar conditions are replenishing the battery comfortably right now.'
+                    text: `Solar surplus is charging the battery and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`
+                };
+            }
+
+            if (inverterBatteryMode === 'charging' && weather?.solarSupport === 'strong' && weatherIsDaylight) {
+                return {
+                    focus: 'solar',
+                    usedKeys: ['battery', 'solar'],
+                    text: `Strong solar conditions are replenishing the battery comfortably ${weatherSolarWindow}.`
                 };
             }
 
@@ -8247,6 +8360,13 @@
             }
 
             if (weather?.solarSupport === 'weak' && hasValue(inverterSocPct) && inverterSocPct < 40) {
+                if (weather?.isDaylight === false) {
+                    return {
+                        focus: 'battery',
+                        usedKeys: ['battery', 'weather'],
+                        text: `Battery reserve is down to ${Math.round(inverterSocPct)}% ${weatherTimeContext}, so overnight cover looks tighter.`
+                    };
+                }
                 return {
                     focus: 'battery',
                     usedKeys: ['battery', 'weather'],
@@ -8266,18 +8386,32 @@
             }
 
             if (weather?.solarSupport === 'weak' && weather?.currentCondition) {
+                if (weather?.isDaylight === false) {
+                    return {
+                        focus: 'weather',
+                        usedKeys: ['weather'],
+                        text: `${weather.currentCondition} conditions are lingering ${weatherTimeContext}, so the next solar window may open more softly ${weatherSolarWindow}.`
+                    };
+                }
                 return {
                     focus: 'weather',
                     usedKeys: ['weather'],
-                    text: `${weather.currentCondition} conditions are likely to keep solar output subdued today.`
+                    text: `${weather.currentCondition} conditions are likely to keep solar output subdued ${weatherSolarOutlookWindow}.`
                 };
             }
 
             if (weather?.solarSupport === 'strong' && weather?.currentCondition) {
+                if (weather?.isDaylight === false) {
+                    return {
+                        focus: 'weather',
+                        usedKeys: ['weather'],
+                        text: `${weather.currentCondition} conditions have settled in ${weatherTimeContext}, and the overnight setup looks fairly calm.`
+                    };
+                }
                 return {
                     focus: 'weather',
                     usedKeys: ['weather'],
-                    text: `${weather.currentCondition} conditions are still supportive for solar production right now.`
+                    text: `${weather.currentCondition} conditions are still supportive for solar production ${weatherSolarWindow}.`
                 };
             }
 
@@ -8456,20 +8590,40 @@
             }
             if (weather) {
                 const tempText = weather.currentTempC !== null ? ` at ${Math.round(weather.currentTempC)}C` : '';
-                if (weather.solarSupport === 'strong') {
+                const weatherTimeContext = describeOverviewWeatherTimeContext(weather);
+                const weatherSolarWindow = describeOverviewActiveSolarWindow(weather);
+                const weatherSolarOutlookWindow = describeOverviewSolarOutlookWindow(weather);
+                if (weather.isDaylight === false) {
+                    if (weather.solarSupport === 'weak') {
+                        leadCandidates.push({
+                            key: 'weather',
+                            text: `${weather.currentCondition}${tempText} weather is lingering ${weatherTimeContext}, which could soften the next solar ramp ${weatherSolarWindow}.`
+                        });
+                    } else if (weather.solarSupport === 'strong') {
+                        leadCandidates.push({
+                            key: 'weather',
+                            text: `${weather.currentCondition}${tempText} weather looks settled ${weatherTimeContext}.`
+                        });
+                    } else {
+                        leadCandidates.push({
+                            key: 'weather',
+                            text: `${weather.currentCondition}${tempText} weather is in place ${weatherTimeContext}.`
+                        });
+                    }
+                } else if (weather.solarSupport === 'strong') {
                     leadCandidates.push({
                         key: 'weather',
-                        text: `${weather.currentCondition}${tempText} weather still supports solar output.`
+                        text: `${weather.currentCondition}${tempText} weather still supports solar output ${weatherSolarWindow}.`
                     });
                 } else if (weather.solarSupport === 'weak') {
                     leadCandidates.push({
                         key: 'weather',
-                        text: `${weather.currentCondition}${tempText} weather is likely to suppress solar output.`
+                        text: `${weather.currentCondition}${tempText} weather is likely to suppress solar output ${weatherSolarOutlookWindow}.`
                     });
                 } else {
                     leadCandidates.push({
                         key: 'weather',
-                        text: `${weather.currentCondition}${tempText} weather looks fairly neutral for solar.`
+                        text: `${weather.currentCondition}${tempText} weather looks fairly neutral for solar ${weatherSolarOutlookWindow}.`
                     });
                 }
             }
@@ -8687,7 +8841,9 @@
                     ? `${weather.currentCondition} ${Math.round(weather.currentTempC)}C`
                     : weather.currentCondition;
                 chips.push({
-                    tone: weather.solarSupport === 'strong' ? 'good' : (weather.solarSupport === 'weak' ? 'warning' : 'muted'),
+                    tone: weather.isDaylight === false
+                        ? (weather.solarSupport === 'weak' ? 'warning' : 'muted')
+                        : (weather.solarSupport === 'strong' ? 'good' : (weather.solarSupport === 'weak' ? 'warning' : 'muted')),
                     label: 'Weather',
                     value: weatherValue
                 });
@@ -10702,7 +10858,8 @@
                     if (tempCond?.enabled) {
                         const tempType = tempCond.type || 'battery';
                         let tempLabel = 'Battery Temp';
-                        if (tempType === 'ambient' || tempType === 'inverter') tempLabel = 'Ambient Temp';
+                        if (tempType === 'ambient') tempLabel = 'Ambient Temp';
+                        if (tempType === 'inverter') tempLabel = 'Inverter Temp';
                         if (tempType === 'forecastMax') tempLabel = `Forecast Max (D+${tempCond.dayOffset || 0})`;
                         if (tempType === 'forecastMin') tempLabel = `Forecast Min (D+${tempCond.dayOffset || 0})`;
                         condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempLabel} ${tempCond.operator} ${tempCond.value}°C</span>`;

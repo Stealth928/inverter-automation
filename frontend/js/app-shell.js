@@ -2403,6 +2403,7 @@
         signOut,
         refreshNotifications: () => refreshNotifications({ includeItems: state.notificationPanelOpen, resetCursor: true, silent: true }),
         getUser: () => state.user,
+        getIsAdmin: () => state.isAdmin,
         getApiClient: () => window.apiClient || null
     };
 })(window, document);

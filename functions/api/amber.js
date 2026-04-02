@@ -12,6 +12,7 @@
 
 const admin = require('firebase-admin');
 const fetch = global.fetch;
+const { getUserTime, isValidTimezone } = require('../lib/time-utils');
 
 if (typeof fetch !== 'function') {
   throw new Error('Global fetch is not available in this runtime.');
@@ -28,6 +29,25 @@ const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
 
 function isEmulatorRuntime() {
   return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+}
+
+function toFiniteNumber(value, fallback = null) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function roundTo(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round((Number(value) || 0) * factor) / factor;
+}
+
+function average(values = [], fallback = null) {
+  const numeric = (Array.isArray(values) ? values : [])
+    .map((value) => toFiniteNumber(value, NaN))
+    .filter((value) => Number.isFinite(value));
+  if (numeric.length === 0) return fallback;
+  return numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
 }
 
 /**
@@ -467,8 +487,80 @@ function init(dependencies) {
       currentStart = new Date(currentEnd);
       currentStart.setDate(currentStart.getDate() + 1);
     }
-    
+
     return chunks;
+  }
+
+  async function buildEmulatorHistoricalPrices(siteId, startDate, endDate, resolution, userConfig, userId) {
+    const timezone = isValidTimezone(userConfig?.timezone) ? userConfig.timezone : 'Australia/Sydney';
+    const stepMinutes = Math.max(5, Math.floor(toFiniteNumber(resolution, 30) || 30));
+    const stepMs = stepMinutes * 60 * 1000;
+    const startMs = Date.parse(`${startDate}T00:00:00.000Z`);
+    const endMs = Date.parse(`${endDate}T23:59:59.999Z`);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+      return [];
+    }
+
+    const currentRows = await getCachedAmberPricesCurrent(siteId, userId, userConfig) || [];
+    const generalRows = currentRows.filter((row) => String(row?.channelType || '').toLowerCase() === 'general');
+    const feedInRows = currentRows.filter((row) => String(row?.channelType || '').toLowerCase() === 'feedin');
+    const buyBase = Math.max(6, average(generalRows.map((row) => row?.perKwh), 28) || 28);
+    const feedInBase = Math.max(1.5, average(feedInRows.map((row) => Math.abs(toFiniteNumber(row?.perKwh, 0) || 0)), 8.5) || 8.5);
+    const renewableBase = Math.max(5, Math.min(95, average(currentRows.map((row) => row?.renewables), 45) || 45));
+    const paddedStartMs = startMs - (24 * 60 * 60 * 1000);
+    const paddedEndExclusiveMs = endMs + stepMs + (24 * 60 * 60 * 1000);
+    const rows = [];
+
+    for (let cursor = paddedStartMs, index = 0; cursor < paddedEndExclusiveMs; cursor += stepMs, index += 1) {
+      const intervalStart = new Date(cursor);
+      const intervalEnd = new Date(cursor + stepMs);
+      const userTime = getUserTime(timezone, { now: intervalStart });
+      const hour = Number(userTime.hour || 0);
+      const minute = Number(userTime.minute || 0);
+      const minutesOfDay = (hour * 60) + minute;
+      const dayIndex = Math.floor((cursor - paddedStartMs) / (24 * 60 * 60 * 1000));
+      const overnightDiscount = hour < 6 ? -7 : 0;
+      const solarShoulder = hour >= 10 && hour < 15 ? -4.5 : (hour >= 7 && hour < 10 ? -1.5 : 0);
+      const eveningPeak = hour >= 17 && hour < 21 ? 12.5 : (hour >= 21 && hour < 23 ? 4.5 : 0);
+      const intradayWave = Math.sin((minutesOfDay / 1440) * Math.PI * 2) * 2.4;
+      const dayDrift = (Math.sin(dayIndex / 2.7) * 2.8) + (Math.cos(dayIndex / 5.1) * 1.6);
+      const buy = roundTo(Math.max(4, buyBase + overnightDiscount + solarShoulder + eveningPeak + intradayWave + dayDrift), 2);
+      const solarBonus = hour >= 9 && hour < 16 ? 5.2 : (hour >= 16 && hour < 18 ? 2.1 : 0.4);
+      const feedIn = roundTo(Math.max(1.2, feedInBase + solarBonus - (eveningPeak * 0.18) + (Math.cos((minutesOfDay / 1440) * Math.PI * 2) * 1.7) + (dayDrift * 0.35)), 2);
+      const renewables = roundTo(Math.max(5, Math.min(100, renewableBase + (hour >= 9 && hour < 16 ? 18 : -7) + (Math.sin(dayIndex / 4.2) * 5) + (Math.cos((minutesOfDay / 1440) * Math.PI * 2) * 4))), 1);
+      const startIso = intervalStart.toISOString();
+      const endIso = intervalEnd.toISOString();
+      const common = {
+        startTime: startIso,
+        endTime: endIso,
+        date: startIso.slice(0, 10),
+        nemTime: startIso,
+        type: 'CurrentInterval',
+        period: `${stepMinutes}m`,
+        descriptor: 'emulator-historical'
+      };
+
+      rows.push({
+        ...common,
+        channelType: 'general',
+        perKwh: buy,
+        spotPerKwh: buy,
+        renewables,
+        spikeStatus: buy >= (buyBase + 10) ? 'spike' : 'none',
+        intervalIndex: index
+      });
+      rows.push({
+        ...common,
+        channelType: 'feedIn',
+        perKwh: -feedIn,
+        spotPerKwh: -feedIn,
+        renewables,
+        spikeStatus: 'none',
+        intervalIndex: index
+      });
+    }
+
+    return rows;
   }
 
   /**
@@ -485,6 +577,29 @@ function init(dependencies) {
    */
   async function fetchAmberHistoricalPricesActualOnly(siteId, startDate, endDate, resolution, userConfig, userId) {
     const now = new Date();
+    if (isEmulatorRuntime()) {
+      const cachedPrices = await getCachedAmberPrices(siteId, startDate, endDate, userId);
+      const emulatorPrices = cachedPrices.length > 0
+        ? cachedPrices
+        : await buildEmulatorHistoricalPrices(siteId, startDate, endDate, resolution, userConfig, userId);
+      const actualEmulatorPrices = emulatorPrices.filter((price) => {
+        const priceTime = new Date(price.startTime);
+        return priceTime <= now;
+      });
+      actualEmulatorPrices.sort((left, right) =>
+        new Date(left.startTime).getTime() - new Date(right.startTime).getTime()
+      );
+      return {
+        errno: 0,
+        result: actualEmulatorPrices,
+        _info: {
+          total: actualEmulatorPrices.length,
+          source: cachedPrices.length > 0 ? 'emulator_cache_actual_only' : 'emulator_synth_actual_only',
+          filtered: `${Math.max(0, emulatorPrices.length - actualEmulatorPrices.length)} future prices excluded`
+        }
+      };
+    }
+
     let allPrices = [];
     
     // Split range into 30-day chunks and fetch each from API (skip cache entirely)

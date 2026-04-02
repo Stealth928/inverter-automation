@@ -13,6 +13,10 @@ const { getUserTime, isValidTimezone } = require('../time-utils');
 const { resolveProviderDeviceId } = require('../provider-device-id');
 const { getEffectiveInverterCapacityW } = require('./automation-rule-action-service');
 const { normalizeTariffIntervals } = require('../adapters/tariff-provider');
+const {
+  appendHistoryTelemetryMappings,
+  getConfiguredAcSolarPowerVariable
+} = require('../telemetry-mappings');
 
 const RUN_STATUSES = Object.freeze({
   queued: 'queued',
@@ -23,11 +27,15 @@ const RUN_STATUSES = Object.freeze({
 
 const DEFAULT_LIMITS = Object.freeze({
   replayIntervalMinutes: 5,
-  maxLookbackDays: 365,
+  maxLookbackDays: 90,
   maxScenarios: 3,
   maxActiveRuns: 2,
+  maxSavedRuns: 5,
+  maxRunsPerDay: 5,
   runTtlMs: 30 * 24 * 60 * 60 * 1000
 });
+
+const MAX_REPORT_CHART_POINTS = 96;
 
 const HISTORY_SERIES_VARIABLES = Object.freeze([
   'generationPower',
@@ -43,6 +51,16 @@ const HISTORY_SERIES_VARIABLES = Object.freeze([
   'SoC',
   'SoC1',
   'SoC_1'
+]);
+
+const FOXESS_HISTORY_FALLBACK_VARIABLES = Object.freeze([
+  'generationPower',
+  'pvPower',
+  'meterPower',
+  'meterPower2',
+  'feedinPower',
+  'gridConsumptionPower',
+  'loadsPower'
 ]);
 
 function toFiniteNumber(value, fallback = null) {
@@ -166,6 +184,32 @@ function buildReplayGrid(period = {}, timezone, intervalMinutes = 5) {
   return { startMs, endExclusiveMs, stepMs, gridMs };
 }
 
+function validateBacktestPeriod(period = {}, options = {}) {
+  const startDate = normalizeDateOnly(period.startDate);
+  const endDate = normalizeDateOnly(period.endDate);
+  if (!startDate || !endDate) throw new Error('Backtest period requires startDate and endDate');
+  const startMs = Date.parse(`${startDate}T00:00:00Z`);
+  const endMs = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    throw new Error('Backtest period is invalid');
+  }
+
+  const maxLookbackDays = Math.max(1, Math.round(toFiniteNumber(options.maxLookbackDays, DEFAULT_LIMITS.maxLookbackDays) || DEFAULT_LIMITS.maxLookbackDays));
+  const maxRangeDays = Math.max(1, Math.round(toFiniteNumber(options.maxRangeDays, maxLookbackDays) || maxLookbackDays));
+  const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now();
+  const lookbackDays = Math.ceil((nowMs - startMs) / (24 * 60 * 60 * 1000));
+  if (lookbackDays > maxLookbackDays) {
+    throw new Error(`Backtests are limited to the last ${maxLookbackDays} days`);
+  }
+
+  const rangeDays = Math.floor((endMs - startMs) / (24 * 60 * 60 * 1000)) + 1;
+  if (rangeDays > maxRangeDays) {
+    throw new Error(`Backtest periods cannot exceed ${maxRangeDays} days`);
+  }
+
+  return { startDate, endDate, startMs, endMs, rangeDays };
+}
+
 function normalizeRuleSetSnapshot(snapshot = {}) {
   const sourceRules = snapshot.rules && typeof snapshot.rules === 'object' ? snapshot.rules : snapshot;
   const rules = {};
@@ -198,8 +242,9 @@ function getUnsupportedRuleReasons(rule = {}) {
     reasons.push('EV conditions are not supported in Stage 1 backtesting');
   }
   const temp = conditions.temp || conditions.temperature;
-  if (temp?.enabled && !isForecastTemperatureType(temp.type)) {
-    reasons.push('Battery, ambient, and inverter temperature history is not supported in Stage 1 backtesting');
+  const tempType = String(temp?.type || 'battery').trim().toLowerCase();
+  if (temp?.enabled && !isForecastTemperatureType(tempType) && tempType === 'battery') {
+    reasons.push('Battery temperature history is not supported in Stage 1 backtesting');
   }
   if (conditions.weather?.enabled) {
     reasons.push('Legacy weather conditions are not supported in Stage 1 backtesting');
@@ -311,6 +356,20 @@ function resampleSeriesToGrid(points = [], gridMs = [], options = {}) {
   return values;
 }
 
+function buildHistoryQueryVariables(userConfig, baseVariables = []) {
+  const variables = Array.isArray(baseVariables) ? baseVariables.slice() : [];
+  const acSolarPowerVariable = getConfiguredAcSolarPowerVariable(userConfig);
+  if (acSolarPowerVariable) variables.push(acSolarPowerVariable);
+  return Array.from(new Set(variables.filter(Boolean)));
+}
+
+function getFirstAvailableSeries(series = {}, candidates = []) {
+  for (const candidate of candidates) {
+    if (Array.isArray(series[candidate]) && series[candidate].length > 0) return series[candidate];
+  }
+  return [];
+}
+
 function buildBatteryPowerSeries(series = {}, gridMs = []) {
   if (Array.isArray(series.batteryPower) && series.batteryPower.length > 0) {
     return resampleSeriesToGrid(series.batteryPower, gridMs, { defaultValue: 0 });
@@ -340,12 +399,12 @@ function summarizeHistorySeries(datas = [], gridMs, timezone) {
   });
 
   return {
-    solarKw: resampleSeriesToGrid(series.pvPower || series.generationPower || [], gridMs, { defaultValue: 0 }),
-    loadsKw: resampleSeriesToGrid(series.loadsPower || series.loadPower || [], gridMs, { defaultValue: null }),
-    gridImportKw: resampleSeriesToGrid(series.gridConsumptionPower || series.meterPower || series.meterPower2 || [], gridMs, { defaultValue: 0 }),
-    exportKw: resampleSeriesToGrid(series.feedinPower || series.feedInPower || [], gridMs, { defaultValue: 0 }),
+    solarKw: resampleSeriesToGrid(getFirstAvailableSeries(series, ['solarPowerTotal', 'acSolarPower', 'pvPower', 'generationPower']), gridMs, { defaultValue: 0 }),
+    loadsKw: resampleSeriesToGrid(getFirstAvailableSeries(series, ['loadsPower', 'loadPower']), gridMs, { defaultValue: null }),
+    gridImportKw: resampleSeriesToGrid(getFirstAvailableSeries(series, ['gridConsumptionPower', 'meterPower', 'meterPower2']), gridMs, { defaultValue: 0 }),
+    exportKw: resampleSeriesToGrid(getFirstAvailableSeries(series, ['feedinPower', 'feedInPower']), gridMs, { defaultValue: 0 }),
     batteryPowerKw: buildBatteryPowerSeries(series, gridMs),
-    socPct: resampleSeriesToGrid(series.SoC || series.SoC1 || series.SoC_1 || [], gridMs, { defaultValue: null, maxGapMs: 60 * 60 * 1000 })
+    socPct: resampleSeriesToGrid(getFirstAvailableSeries(series, ['SoC', 'SoC1', 'SoC_1']), gridMs, { defaultValue: null, maxGapMs: 60 * 60 * 1000 })
   };
 }
 
@@ -463,13 +522,14 @@ function buildIntervalTariffLookup(intervals = [], options = {}) {
   };
 }
 
-function buildWeatherIndices(weather = {}, timezone) {
+function buildWeatherIndices(weather = {}, timezone, gridMs = []) {
   const hourly = weather?.result?.hourly || weather?.hourly || {};
   const daily = weather?.result?.daily || weather?.daily || {};
   const hourlyIndex = (Array.isArray(hourly.time) ? hourly.time : []).map((time, index) => ({
     ms: parseTimestampInTimezone(time, timezone),
     solarRadiation: toFiniteNumber(hourly.shortwave_radiation?.[index], null),
-    cloudCover: toFiniteNumber(hourly.cloudcover?.[index], null)
+    cloudCover: toFiniteNumber(hourly.cloudcover?.[index], null),
+    ambientTemperatureC: toFiniteNumber(hourly.temperature_2m?.[index], null)
   })).filter((entry) => Number.isFinite(entry.ms));
   const dailyMap = new Map();
   (Array.isArray(daily.time) ? daily.time : []).forEach((dateOnly, index) => {
@@ -479,7 +539,16 @@ function buildWeatherIndices(weather = {}, timezone) {
       min: toFiniteNumber(daily.temperature_2m_min?.[index], null)
     });
   });
-  return { hourlyIndex, dailyMap };
+  const ambientTemperatureSeries = Array.isArray(gridMs) && gridMs.length > 0
+    ? resampleSeriesToGrid(
+      hourlyIndex
+        .filter((entry) => Number.isFinite(entry.ambientTemperatureC))
+        .map((entry) => ({ ms: entry.ms, value: entry.ambientTemperatureC })),
+      gridMs,
+      { defaultValue: null, maxGapMs: 90 * 60 * 1000 }
+    )
+    : [];
+  return { hourlyIndex, dailyMap, ambientTemperatureSeries };
 }
 
 function sliceHourlyWeather(hourlyIndex = [], startMs, lookAheadHours) {
@@ -550,14 +619,22 @@ function evaluateBacktestRule(options = {}) {
     });
   });
   const temp = conditions.temp || conditions.temperature;
-  if (temp?.enabled && isForecastTemperatureType(temp.type)) {
-    const metric = String(temp.type || '').toLowerCase().includes('min') ? 'min' : 'max';
-    const forecastDateOnly = addDaysToDateOnly(localDateOnly(timezone, options.timestampMs), Math.max(0, Math.round(toFiniteNumber(temp.dayOffset, 0) || 0)));
-    const weatherDay = forecastDateOnly ? options.weatherIndices.dailyMap.get(forecastDateOnly) : null;
-    results.push({
-      condition: 'temperature',
-      met: compareNumeric(weatherDay ? weatherDay[metric] : null, temp.op || temp.operator || '>=', toFiniteNumber(temp.value, 0), toFiniteNumber(temp.value2, null))
-    });
+  if (temp?.enabled) {
+    const tempType = String(temp.type || 'battery').trim().toLowerCase();
+    if (isForecastTemperatureType(tempType)) {
+      const metric = tempType.includes('min') ? 'min' : 'max';
+      const forecastDateOnly = addDaysToDateOnly(localDateOnly(timezone, options.timestampMs), Math.max(0, Math.round(toFiniteNumber(temp.dayOffset, 0) || 0)));
+      const weatherDay = forecastDateOnly ? options.weatherIndices.dailyMap.get(forecastDateOnly) : null;
+      results.push({
+        condition: 'temperature',
+        met: compareNumeric(weatherDay ? weatherDay[metric] : null, temp.op || temp.operator || '>=', toFiniteNumber(temp.value, 0), toFiniteNumber(temp.value2, null))
+      });
+    } else if (tempType !== 'battery') {
+      results.push({
+        condition: 'temperature',
+        met: compareNumeric(options.ambientTempC, temp.op || temp.operator || '>=', toFiniteNumber(temp.value, 0), toFiniteNumber(temp.value2, null))
+      });
+    }
   }
   if (conditions.forecastPrice?.enabled) {
     const unit = String(conditions.forecastPrice.lookAheadUnit || 'minutes').trim().toLowerCase();
@@ -626,6 +703,7 @@ function simulateRuleSet(options = {}) {
     }
     const solarKw = Math.max(0, toFiniteNumber(options.inputSeries.solarKw[index], 0) || 0);
     const loadKw = Math.max(0, toFiniteNumber(options.inputSeries.loadKw[index], 0) || 0);
+    const ambientTempC = toFiniteNumber(options.weatherIndices?.ambientTemperatureSeries?.[index], null);
     const tariffSnapshot = options.tariffLookup.lookup(timestampMs);
     const buyCentsPerKwh = toFiniteNumber(tariffSnapshot.buyCentsPerKwh, 0) || 0;
     const feedInCentsPerKwh = toFiniteNumber(tariffSnapshot.feedInCentsPerKwh, 0) || 0;
@@ -642,6 +720,7 @@ function simulateRuleSet(options = {}) {
       userTime,
       buyCentsPerKwh,
       feedInCentsPerKwh,
+      ambientTempC,
       socPct,
       weatherIndices: options.weatherIndices,
       tariffLookup: options.tariffLookup
@@ -658,6 +737,7 @@ function simulateRuleSet(options = {}) {
         userTime,
         buyCentsPerKwh,
         feedInCentsPerKwh,
+        ambientTempC,
         socPct,
         weatherIndices: options.weatherIndices,
         tariffLookup: options.tariffLookup
@@ -744,6 +824,12 @@ function simulateRuleSet(options = {}) {
       netAud: importCostAud - exportRevenueAud,
       importKWh,
       exportKWh,
+      solarKw,
+      loadKw,
+      gridImportKw,
+      exportKw,
+      buyCentsPerKwh,
+      feedInCentsPerKwh,
       chosenRuleId,
       chosenRuleName: chosenRule?.name || null
     });
@@ -756,6 +842,7 @@ function simulateRuleSet(options = {}) {
     totalImportCostAud,
     totalExportRevenueAud,
     totalSupplyChargeAud,
+    stepMinutes: Math.max(1, Math.round(stepHours * 60)),
     importKWh: totalImportKWh,
     exportKWh: totalExportKWh,
     throughputKWh: totalThroughputKWh,
@@ -773,10 +860,11 @@ function simulateRuleSet(options = {}) {
 
 function buildIntervalImpact(baseline = {}, scenario = {}) {
   const baselineByTime = new Map((baseline.intervalOutcomes || []).map((entry) => [entry.timestampMs, entry]));
-  const impact = { helped: 0, hurt: 0, neutral: 0, highlights: [] };
+  const impact = { helped: 0, hurt: 0, neutral: 0, total: 0, highlights: [] };
   (scenario.intervalOutcomes || []).forEach((entry) => {
     const baselineEntry = baselineByTime.get(entry.timestampMs);
     if (!baselineEntry) return;
+    impact.total += 1;
     const deltaAud = baselineEntry.netAud - entry.netAud;
     if (deltaAud > 0.001) impact.helped += 1;
     else if (deltaAud < -0.001) impact.hurt += 1;
@@ -791,6 +879,48 @@ function buildIntervalImpact(baseline = {}, scenario = {}) {
     .sort((left, right) => Math.abs(right.deltaAud) - Math.abs(left.deltaAud))
     .slice(0, 12);
   return impact;
+}
+
+function averageBucketMetric(entries = [], readValue) {
+  if (!entries.length || typeof readValue !== 'function') return 0;
+  let sum = 0;
+  let count = 0;
+  entries.forEach((entry) => {
+    const value = toFiniteNumber(readValue(entry), null);
+    if (!Number.isFinite(value)) return;
+    sum += value;
+    count += 1;
+  });
+  return count > 0 ? (sum / count) : 0;
+}
+
+function buildPowerPriceChart(result = {}) {
+  const intervals = Array.isArray(result.intervalOutcomes) ? result.intervalOutcomes : [];
+  if (!intervals.length) return null;
+  const stepMinutes = Math.max(1, Math.round(toFiniteNumber(result.stepMinutes, 5) || 5));
+  const bucketSize = Math.max(1, Math.ceil(intervals.length / MAX_REPORT_CHART_POINTS));
+  const points = [];
+
+  for (let index = 0; index < intervals.length; index += bucketSize) {
+    const bucket = intervals.slice(index, Math.min(intervals.length, index + bucketSize));
+    const middle = bucket[Math.floor((bucket.length - 1) / 2)] || bucket[0];
+    points.push({
+      timestampMs: Math.round(toFiniteNumber(middle?.timestampMs, 0) || 0),
+      solarKw: Number(averageBucketMetric(bucket, (entry) => entry.solarKw).toFixed(3)),
+      loadKw: Number(averageBucketMetric(bucket, (entry) => entry.loadKw).toFixed(3)),
+      importKw: Number(averageBucketMetric(bucket, (entry) => entry.gridImportKw).toFixed(3)),
+      exportKw: Number(averageBucketMetric(bucket, (entry) => entry.exportKw).toFixed(3)),
+      buyCentsPerKwh: Number(averageBucketMetric(bucket, (entry) => entry.buyCentsPerKwh).toFixed(2)),
+      feedInCentsPerKwh: Number(averageBucketMetric(bucket, (entry) => entry.feedInCentsPerKwh).toFixed(2))
+    });
+  }
+
+  return {
+    stepMinutes,
+    bucketMinutes: bucketSize * stepMinutes,
+    sourceIntervalCount: intervals.length,
+    points
+  };
 }
 
 function buildScenarioSummary(result = {}, baselineResult = null) {
@@ -808,16 +938,52 @@ function buildScenarioSummary(result = {}, baselineResult = null) {
     triggerCount: result.triggerCount,
     winningRuleMix: result.winningRuleMix
   };
+  if (result.scenarioId !== 'baseline') {
+    summary.chart = buildPowerPriceChart(result);
+  }
   if (baselineResult) {
     summary.deltaVsBaseline = {
       billAud: Number((baselineResult.totalBillAud - result.totalBillAud).toFixed(2)),
       importKWh: Number((baselineResult.importKWh - result.importKWh).toFixed(3)),
       exportKWh: Number((result.exportKWh - baselineResult.exportKWh).toFixed(3)),
-      throughputKWh: Number((result.throughputKWh - baselineResult.throughputKWh).toFixed(3))
+      throughputKWh: Number((result.throughputKWh - baselineResult.throughputKWh).toFixed(3)),
+      equivalentCycles: Number((result.equivalentCycles - baselineResult.equivalentCycles).toFixed(3))
     };
     summary.intervalImpact = buildIntervalImpact(baselineResult, result);
   }
   return summary;
+}
+
+function buildRunListSummary(summary = {}) {
+  if (!summary || typeof summary !== 'object') return null;
+  const entry = {
+    scenarioId: summary.scenarioId,
+    scenarioName: summary.scenarioName,
+    totalBillAud: toFiniteNumber(summary.totalBillAud, null),
+    deltaVsBaseline: summary.deltaVsBaseline && typeof summary.deltaVsBaseline === 'object'
+      ? { billAud: toFiniteNumber(summary.deltaVsBaseline.billAud, null) }
+      : undefined
+  };
+  return entry;
+}
+
+function buildRunListEntry(run = {}, id = '') {
+  const summaries = Array.isArray(run?.result?.summaries)
+    ? run.result.summaries.map(buildRunListSummary).filter(Boolean)
+    : [];
+  const result = summaries.length > 0 ? { summaries } : undefined;
+  return {
+    id,
+    type: run.type,
+    status: run.status,
+    requestedAtMs: run.requestedAtMs,
+    startedAtMs: run.startedAtMs,
+    completedAtMs: run.completedAtMs,
+    expiresAtMs: run.expiresAtMs,
+    request: run.request,
+    error: run.error,
+    result
+  };
 }
 
 function buildPairwiseComparisons(results = []) {
@@ -875,21 +1041,36 @@ function createBacktestService(deps = {}) {
       maxLookbackDays: Math.max(1, Math.round(toFiniteNumber(runtime.maxLookbackDays, DEFAULT_LIMITS.maxLookbackDays) || DEFAULT_LIMITS.maxLookbackDays)),
       maxScenarios: Math.max(1, Math.round(toFiniteNumber(runtime.maxScenarios, DEFAULT_LIMITS.maxScenarios) || DEFAULT_LIMITS.maxScenarios)),
       maxActiveRuns: Math.max(1, Math.round(toFiniteNumber(runtime.maxActiveRuns, DEFAULT_LIMITS.maxActiveRuns) || DEFAULT_LIMITS.maxActiveRuns)),
+      maxSavedRuns: Math.max(1, Math.round(toFiniteNumber(runtime.maxSavedRuns, DEFAULT_LIMITS.maxSavedRuns) || DEFAULT_LIMITS.maxSavedRuns)),
+      maxRunsPerDay: Math.max(1, Math.round(toFiniteNumber(runtime.maxRunsPerDay, DEFAULT_LIMITS.maxRunsPerDay) || DEFAULT_LIMITS.maxRunsPerDay)),
       runTtlMs: Math.max(60 * 60 * 1000, Math.round(toFiniteNumber(runtime.runTtlMs, DEFAULT_LIMITS.runTtlMs) || DEFAULT_LIMITS.runTtlMs))
     };
   }
 
   const runsCollection = (userId) => db.collection('users').doc(userId).collection('backtests').doc('runs').collection('items');
   const tariffPlansCollection = (userId) => db.collection('users').doc(userId).collection('backtests').doc('tariffPlans').collection('items');
+  const dailyUsageCollection = (userId) => db.collection('users').doc(userId).collection('backtests').doc('usage').collection('daily');
 
   async function listRuns(userId, limit = 20) {
     const snapshot = await runsCollection(userId).orderBy('requestedAtMs', 'desc').limit(Math.max(1, Math.min(50, Math.round(toFiniteNumber(limit, 20) || 20)))).get();
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) }));
+    return snapshot.docs.map((doc) => buildRunListEntry(doc.data() || {}, doc.id));
   }
 
   async function getRun(userId, runId) {
     const snapshot = await runsCollection(userId).doc(runId).get();
     return snapshot.exists ? { id: snapshot.id, ...(snapshot.data() || {}) } : null;
+  }
+
+  function getLocalDayWindow(timezone, timestampMs) {
+    const dateKey = localDateOnly(timezone, timestampMs);
+    const nextDateKey = addDaysToDateOnly(dateKey, 1);
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const [nextYear, nextMonth, nextDay] = nextDateKey.split('-').map(Number);
+    return {
+      dateKey,
+      startMs: zonedDateTimeToUtcMs(timezone, { year, month, day }),
+      endExclusiveMs: zonedDateTimeToUtcMs(timezone, { year: nextYear, month: nextMonth, day: nextDay })
+    };
   }
 
   async function listTariffPlans(userId) {
@@ -929,18 +1110,48 @@ function createBacktestService(deps = {}) {
     return snapshot.size;
   }
 
+  async function countSavedRuns(userId, limit = DEFAULT_LIMITS.maxSavedRuns) {
+    const snapshot = await runsCollection(userId)
+      .orderBy('requestedAtMs', 'desc')
+      .limit(Math.max(1, Math.round(toFiniteNumber(limit, DEFAULT_LIMITS.maxSavedRuns) || DEFAULT_LIMITS.maxSavedRuns)))
+      .get();
+    return snapshot.size;
+  }
+
+  async function getDailyRunUsage(userId, timezone, timestampMs, maxRunsPerDay) {
+    const window = getLocalDayWindow(timezone, timestampMs);
+    const usageRef = dailyUsageCollection(userId).doc(window.dateKey);
+    const usageSnapshot = await usageRef.get();
+    if (usageSnapshot.exists) {
+      return {
+        ...window,
+        usageRef,
+        count: Math.max(0, Math.round(toFiniteNumber(usageSnapshot.data()?.count, 0) || 0))
+      };
+    }
+    const snapshot = await runsCollection(userId)
+      .where('requestedAtMs', '>=', window.startMs)
+      .where('requestedAtMs', '<', window.endExclusiveMs)
+      .limit(Math.max(1, Math.round(toFiniteNumber(maxRunsPerDay, DEFAULT_LIMITS.maxRunsPerDay) || DEFAULT_LIMITS.maxRunsPerDay)))
+      .get();
+    return {
+      ...window,
+      usageRef,
+      count: snapshot.size
+    };
+  }
+
   async function normalizeCreateRequest(userId, request = {}) {
     const limits = getLimits();
     const userConfig = await getUserConfig(userId);
     const timezone = String(userConfig?.timezone || 'Australia/Sydney').trim() || 'Australia/Sydney';
-    const startDate = normalizeDateOnly(request?.period?.startDate || request?.startDate);
-    const endDate = normalizeDateOnly(request?.period?.endDate || request?.endDate);
-    if (!startDate || !endDate) throw new Error('Backtest period requires startDate and endDate');
-    const startMs = Date.parse(`${startDate}T00:00:00Z`);
-    const endMs = Date.parse(`${endDate}T00:00:00Z`);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) throw new Error('Backtest period is invalid');
-    const lookbackDays = Math.ceil((Date.now() - startMs) / (24 * 60 * 60 * 1000));
-    if (lookbackDays > limits.maxLookbackDays) throw new Error(`Backtests are limited to the last ${limits.maxLookbackDays} days`);
+    const { startDate, endDate } = validateBacktestPeriod({
+      startDate: request?.period?.startDate || request?.startDate,
+      endDate: request?.period?.endDate || request?.endDate
+    }, {
+      maxLookbackDays: limits.maxLookbackDays,
+      maxRangeDays: limits.maxLookbackDays
+    });
     const scenarios = (Array.isArray(request.scenarios) ? request.scenarios : []).slice(0, limits.maxScenarios);
     if (scenarios.length === 0) {
       scenarios.push({
@@ -964,12 +1175,19 @@ function createBacktestService(deps = {}) {
 
   async function createRun(userId, request = {}) {
     const limits = getLimits();
+    if ((await countSavedRuns(userId, limits.maxSavedRuns)) >= limits.maxSavedRuns) {
+      throw new Error(`You already have ${limits.maxSavedRuns} saved backtests. Delete one from history before running another.`);
+    }
     if ((await countActiveRuns(userId)) >= limits.maxActiveRuns) {
       throw new Error(`You can only have ${limits.maxActiveRuns} queued or running backtests at once`);
     }
     const normalized = await normalizeCreateRequest(userId, request);
     const nowMs = Date.now();
     const docRef = runsCollection(userId).doc();
+    const dailyUsage = await getDailyRunUsage(userId, normalized.timezone, nowMs, limits.maxRunsPerDay);
+    if (dailyUsage.count >= limits.maxRunsPerDay) {
+      throw new Error(`You can generate up to ${limits.maxRunsPerDay} backtest reports per day. Try again tomorrow.`);
+    }
     const stored = {
       type: 'backtestRun',
       status: RUN_STATUSES.queued,
@@ -980,8 +1198,37 @@ function createBacktestService(deps = {}) {
       request: normalized,
       error: null
     };
-    await docRef.set(stored);
+    await db.runTransaction(async (transaction) => {
+      const usageSnapshot = await transaction.get(dailyUsage.usageRef);
+      const currentCount = usageSnapshot.exists
+        ? Math.max(0, Math.round(toFiniteNumber(usageSnapshot.data()?.count, dailyUsage.count) || dailyUsage.count))
+        : dailyUsage.count;
+      if (currentCount >= limits.maxRunsPerDay) {
+        throw new Error(`You can generate up to ${limits.maxRunsPerDay} backtest reports per day. Try again tomorrow.`);
+      }
+      transaction.set(docRef, stored);
+      transaction.set(dailyUsage.usageRef, {
+        dateKey: dailyUsage.dateKey,
+        count: currentCount + 1,
+        createdAtMs: usageSnapshot.exists
+          ? Math.round(toFiniteNumber(usageSnapshot.data()?.createdAtMs, nowMs) || nowMs)
+          : nowMs,
+        updatedAtMs: nowMs
+      }, { merge: true });
+    });
     return { id: docRef.id, ...stored };
+  }
+
+  async function deleteRun(userId, runId) {
+    const docRef = runsCollection(userId).doc(runId);
+    const snapshot = await docRef.get();
+    if (!snapshot.exists) throw new Error('Backtest run not found');
+    const data = snapshot.data() || {};
+    if (data.status === RUN_STATUSES.queued || data.status === RUN_STATUSES.running) {
+      throw new Error('Backtest run is still processing and cannot be deleted yet');
+    }
+    await docRef.delete();
+    return true;
   }
 
   async function fetchFoxessHistory(userConfig, userId, deviceSN, beginMs, endMs) {
@@ -997,7 +1244,7 @@ function createBacktestService(deps = {}) {
         sn: deviceSN,
         begin: chunk.begin,
         end: chunk.end,
-        variables: HISTORY_SERIES_VARIABLES
+        variables: buildHistoryQueryVariables(userConfig, HISTORY_SERIES_VARIABLES)
       }, userConfig, userId).catch(() => null);
       if (!payload || payload.errno !== 0) {
         usedFallbackBatterySeries = true;
@@ -1005,7 +1252,7 @@ function createBacktestService(deps = {}) {
           sn: deviceSN,
           begin: chunk.begin,
           end: chunk.end,
-          variables: ['generationPower', 'pvPower', 'meterPower', 'meterPower2', 'feedinPower', 'gridConsumptionPower', 'loadsPower']
+          variables: buildHistoryQueryVariables(userConfig, FOXESS_HISTORY_FALLBACK_VARIABLES)
         }, userConfig, userId);
       }
       if (!payload || payload.errno !== 0) {
@@ -1050,7 +1297,11 @@ function createBacktestService(deps = {}) {
       `${pricingEndDate}T23:59:59.999Z`,
       resolutionMinutes
     );
-    return buildIntervalTariffLookup(snapshot?.intervals || []);
+    const intervals = Array.isArray(snapshot?.intervals) ? snapshot.intervals : [];
+    if (intervals.length === 0) {
+      throw new Error(`Historical pricing was unavailable for scenario "${scenario.name}" during ${startDate} to ${pricingEndDate}. Reconnect your tariff provider or use a manual tariff plan.`);
+    }
+    return buildIntervalTariffLookup(intervals);
   }
 
   async function fetchHistoricalInputs(userId, request) {
@@ -1093,6 +1344,8 @@ function createBacktestService(deps = {}) {
       if (!historyPayload || historyPayload.errno !== 0) throw new Error(historyPayload?.error || historyPayload?.msg || `${provider} history query failed`);
     }
 
+    appendHistoryTelemetryMappings(historyPayload, userConfig);
+
     const historySeries = summarizeHistorySeries(historyPayload?.result?.[0]?.datas || [], replayGrid.gridMs, timezone);
     const derivedLoads = deriveLoadSeries(historySeries);
     const socReconstruction = reconstructSocSeries({
@@ -1106,7 +1359,7 @@ function createBacktestService(deps = {}) {
       timezone,
       userConfig,
       pricingEndDate,
-      weatherIndices: buildWeatherIndices(weather, timezone),
+      weatherIndices: buildWeatherIndices(weather, timezone, replayGrid.gridMs),
       inputSeries: {
         solarKw: historySeries.solarKw.map((value) => Math.max(0, toFiniteNumber(value, 0) || 0)),
         loadKw: derivedLoads,
@@ -1192,6 +1445,7 @@ function createBacktestService(deps = {}) {
     RUN_STATUSES,
     createRun,
     createTariffPlan,
+    deleteRun,
     deleteTariffPlan,
     getRun,
     listRuns,
@@ -1217,5 +1471,6 @@ module.exports = {
   normalizeTariffPlanModel,
   reconstructSocSeries,
   resampleSeriesToGrid,
-  simulateRuleSet
+  simulateRuleSet,
+  validateBacktestPeriod
 };

@@ -3,6 +3,7 @@
 const SOC_VARIABLE_ALIASES = Object.freeze(['SoC', 'SoC1', 'SoC_1']);
 const BATTERY_TEMPERATURE_ALIASES = Object.freeze(['batTemperature', 'batTemperature_1']);
 const AMBIENT_TEMPERATURE_ALIASES = Object.freeze(['ambientTemperation', 'ambientTemperature']);
+const INVERTER_TEMPERATURE_ALIASES = Object.freeze(['invTemperation', 'invTemperature', 'inverterTemp', 'inverterTemperature', 'invTemp']);
 
 function toAliasArray(aliases) {
   if (Array.isArray(aliases)) return aliases;
@@ -43,13 +44,15 @@ function parseAutomationTelemetry(inverterData) {
   return {
     soc: getVariableValue(datas, SOC_VARIABLE_ALIASES, null),
     batTemp: getVariableValue(datas, BATTERY_TEMPERATURE_ALIASES, null),
-    ambientTemp: getVariableValue(datas, AMBIENT_TEMPERATURE_ALIASES, null)
+    ambientTemp: getVariableValue(datas, AMBIENT_TEMPERATURE_ALIASES, null),
+    inverterTemp: getVariableValue(datas, INVERTER_TEMPERATURE_ALIASES, null)
   };
 }
 
 module.exports = {
   AMBIENT_TEMPERATURE_ALIASES,
   BATTERY_TEMPERATURE_ALIASES,
+  INVERTER_TEMPERATURE_ALIASES,
   SOC_VARIABLE_ALIASES,
   findVariableData,
   getInverterDatas,
