@@ -40,6 +40,16 @@ function cloneConfig(config) {
   return JSON.parse(JSON.stringify(config));
 }
 
+function normalizeNotificationPreferences(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    inboxEnabled: source.inboxEnabled === true,
+    broadcastsEnabled: source.broadcastsEnabled === true,
+    highSignalAutomationEnabled: source.highSignalAutomationEnabled === true,
+    curtailmentEnabled: source.curtailmentEnabled === true
+  };
+}
+
 async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
   const state = cloneConfig(config);
   const evVehicles = [];
@@ -50,8 +60,14 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
   const clearCredentialsRequests = [];
   const configPosts = [];
   const validateKeysRequests = [];
+  const notificationPreferencePosts = [];
   let adminState = false;
   let teslaAppConfig = { configured: false, clientId: '', clientSecretStored: false };
+  const notificationState = {
+    preferences: normalizeNotificationPreferences(options.notificationPreferences || {}),
+    subscriptions: Array.isArray(options.notificationSubscriptions) ? cloneConfig(options.notificationSubscriptions) : [],
+    push: cloneConfig(options.notificationPush || {})
+  };
   const setupStatus = {
     setupComplete: true,
     ...(options.setupStatus || {})
@@ -76,6 +92,14 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
       configPosts.push(cloneConfig(postData || {}));
       Object.assign(state, postData || {});
       body = { errno: 0, result: cloneConfig(state) };
+    } else if (path === '/api/notifications/bootstrap' && method === 'GET') {
+      body = { errno: 0, result: cloneConfig(notificationState) };
+    } else if (path === '/api/notifications/preferences' && method === 'POST') {
+      const postData = route.request().postDataJSON ? route.request().postDataJSON() : {};
+      const preferences = normalizeNotificationPreferences(postData?.preferences || {});
+      notificationPreferencePosts.push({ preferences: cloneConfig(preferences) });
+      notificationState.preferences = cloneConfig(preferences);
+      body = { errno: 0, result: { preferences: cloneConfig(notificationState.preferences) } };
     } else if (path === '/api/config/setup-status') {
       body = { errno: 0, result: { ...setupStatus } };
     } else if (path === '/api/health') {
@@ -233,6 +257,11 @@ async function mockSettingsApi(page, config = BASE_CONFIG, options = {}) {
       const next = Array.isArray(vehicles) ? vehicles : [];
       evVehicles.splice(0, evVehicles.length, ...next.map((vehicle) => ({ ...vehicle })));
     },
+    setNotificationPreferences: (value = {}) => {
+      notificationState.preferences = normalizeNotificationPreferences(value);
+    },
+    getNotificationState: () => cloneConfig(notificationState),
+    getNotificationPreferencePosts: () => notificationPreferencePosts.map((entry) => cloneConfig(entry)),
     getConfigState: () => cloneConfig(state),
     getConfigPosts: () => configPosts.map((entry) => cloneConfig(entry)),
     getValidateKeysRequests: () => validateKeysRequests.map((entry) => cloneConfig(entry)),
@@ -464,6 +493,38 @@ test.describe('Settings Page', () => {
     
     // Notifications are optional
     expect(hasNotifications || hasCheckbox || true).toBeTruthy();
+  });
+
+  test('should use page-level save and reload for notification preferences', async ({ page }) => {
+    const notificationsSection = page.locator('#notificationsSection');
+    const inboxPreference = page.locator('#notifications_pref_inboxEnabled');
+    const saveAllButton = page.locator('button[onclick*="saveAllSettings"]').first();
+    const reloadButton = page.getByRole('button', { name: /Reload from Server/i }).first();
+
+    await expect(notificationsSection.getByRole('button', { name: /Refresh/i })).toHaveCount(0);
+    await expect(notificationsSection.getByRole('button', { name: /Save Preferences/i })).toHaveCount(0);
+    await expect(inboxPreference).not.toBeChecked();
+
+    await inboxPreference.check();
+    await expect(page.locator('#notificationsBadge')).toHaveText(/Modified/i);
+    await expect(page.locator('#configStatus')).toContainText('Unsaved');
+
+    await saveAllButton.click();
+
+    await expect.poll(() => apiMock.getNotificationPreferencePosts().length).toBe(1);
+    await expect.poll(() => apiMock.getNotificationState().preferences.inboxEnabled).toBe(true);
+    await expect(page.locator('#notificationsBadge')).toHaveText(/Synced/i);
+    await expect(page.locator('#configStatus')).toContainText('Up to Date');
+
+    await inboxPreference.uncheck();
+    await expect(page.locator('#notificationsBadge')).toHaveText(/Modified/i);
+    await expect(page.locator('#configStatus')).toContainText('Unsaved');
+
+    await reloadButton.click();
+
+    await expect(inboxPreference).toBeChecked();
+    await expect(page.locator('#notificationsBadge')).toHaveText(/Synced/i);
+    await expect(page.locator('#configStatus')).toContainText('Up to Date');
   });
 
   test('should render Tesla onboarding controls in settings', async ({ page }) => {

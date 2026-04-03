@@ -1018,7 +1018,13 @@
             return notificationLoadPending;
         }
 
-        async function saveNotificationPreferences() {
+        async function saveNotificationPreferences(options = {}) {
+            const {
+                showSuccessMessage = true,
+                showErrorMessage = true,
+                refreshAppShell = true,
+                rethrow = false
+            } = options || {};
             const preferences = normalizeNotificationPreferencesLocal(readNotificationPreferencesFromInputs());
             try {
                 notificationActionBusy = true;
@@ -1037,12 +1043,21 @@
                 notificationPreferenceBaseline = { ...savedPreferences };
                 applyNotificationPreferencesToInputs(savedPreferences);
                 checkNotificationsChanged();
-                showMessage('success', 'Notification preferences saved');
-                if (window.AppShell && typeof window.AppShell.refreshNotifications === 'function') {
+                if (showSuccessMessage) {
+                    showMessage('success', 'Notification preferences saved');
+                }
+                if (refreshAppShell && window.AppShell && typeof window.AppShell.refreshNotifications === 'function') {
                     window.AppShell.refreshNotifications();
                 }
+                return savedPreferences;
             } catch (error) {
-                showMessage('warning', `Failed to save notification preferences: ${error?.message || error}`);
+                if (showErrorMessage) {
+                    showMessage('warning', `Failed to save notification preferences: ${error?.message || error}`);
+                }
+                if (rethrow) {
+                    throw error;
+                }
+                return null;
             } finally {
                 notificationActionBusy = false;
                 await syncNotificationPushUiState().catch(() => undefined);
@@ -3109,7 +3124,11 @@
 
         // Save all settings
         async function saveAllSettings() {
+            let notificationsChanged = false;
+            let configSaved = false;
             try {
+                notificationsChanged = checkNotificationsChanged();
+
                 // Collect all values
                 const newConfig = {
                     automation: {
@@ -3244,6 +3263,7 @@
 
                 const data = await resp.json();
                 if (data.errno !== 0) throw new Error(data.msg || 'Failed to save config');
+                configSaved = true;
 
                 // Capture previous location BEFORE overwriting originalConfig
                 const prevSavedLoc = (originalConfig.location || originalConfig.preferences?.weatherPlace || '').trim().toLowerCase();
@@ -3282,13 +3302,34 @@
                     }
                 } catch (e) { /* non-fatal */ }
 
+                if (notificationsChanged) {
+                    await saveNotificationPreferences({
+                        showSuccessMessage: false,
+                        showErrorMessage: false,
+                        refreshAppShell: false,
+                        rethrow: true
+                    });
+                    if (window.AppShell && typeof window.AppShell.refreshNotifications === 'function') {
+                        window.AppShell.refreshNotifications();
+                    }
+                }
+
                 updateStatus();
                 const savedAt = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
                 document.getElementById('lastSaved').innerHTML = `<span class="status-state">${savedAt}</span>`;
                 
-                showMessage('success', '✅ Configuration saved to server and persisted to disk!');
+                showMessage(
+                    'success',
+                    notificationsChanged
+                        ? '✅ Settings and notification preferences saved'
+                        : '✅ Configuration saved to server and persisted to disk!'
+                );
             } catch (error) {
-                showMessage('warning', `Failed to save configuration: ${error.message}`);
+                if (configSaved && notificationsChanged) {
+                    showMessage('warning', `Core settings were saved, but notification preferences failed: ${error.message}`);
+                } else {
+                    showMessage('warning', `Failed to save configuration: ${error.message}`);
+                }
                 updateStatus();
             }
         }
