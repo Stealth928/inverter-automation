@@ -1,6 +1,12 @@
 'use strict';
 
-const { TEST_USERS } = require('../scripts/emulator-test-user');
+const {
+  TEST_PASSWORD,
+  TEST_USERS,
+  buildOptionalLiveFoxessSeedUid,
+  buildOptionalLiveFoxessSeedUser,
+  buildOptionalLiveFoxessSeedUsers
+} = require('../scripts/emulator-test-user');
 const { hasNonSeedCredentialOverride } = require('../scripts/seed-emulator-state');
 
 describe('seed-emulator-state overwrite protection', () => {
@@ -37,5 +43,94 @@ describe('seed-emulator-state overwrite protection', () => {
     }, {
       sungrowPassword: 'secret'
     })).toBe(true);
+  });
+});
+
+describe('optional live FoxESS seed user', () => {
+  test('builds a local-only live user with sane defaults', () => {
+    const seedUser = buildOptionalLiveFoxessSeedUser({
+      email: 'live.test@example.com',
+      deviceSn: 'LIVE-SN-001',
+      foxessToken: 'LIVE-TOKEN-001',
+      amberApiKey: 'amber-live-001',
+      location: 'Roselands, Australia',
+      inverterCapacityW: 10000,
+      batteryCapacityKWh: 41.93
+    });
+
+    expect(seedUser).toEqual(expect.objectContaining({
+      uid: 'seed-live-live-test-example-com',
+      email: 'live.test@example.com',
+      password: TEST_PASSWORD,
+      provider: 'foxess',
+      role: 'user'
+    }));
+    expect(seedUser.seedOptions).toEqual(expect.objectContaining({
+      skipRuntimeCache: true
+    }));
+    expect(seedUser.config).toEqual(expect.objectContaining({
+      deviceProvider: 'foxess',
+      deviceSn: 'LIVE-SN-001',
+      foxessToken: 'LIVE-TOKEN-001',
+      amberApiKey: 'amber-live-001',
+      weatherPlace: 'Roselands',
+      location: 'Roselands, Australia',
+      timezone: 'Australia/Sydney',
+      inverterCapacityW: 10000,
+      batteryCapacityKWh: 41.93,
+      setupComplete: true,
+      tourComplete: true
+    }));
+    expect(seedUser.config).not.toHaveProperty('amberSiteId');
+    expect(seedUser.config).not.toHaveProperty('siteIdOrRegion');
+  });
+
+  test('requires the live seed credentials when a local seed file is configured', () => {
+    expect(() => buildOptionalLiveFoxessSeedUser({
+      email: 'live.test@example.com',
+      deviceSn: 'LIVE-SN-001',
+      location: 'Roselands, Australia'
+    })).toThrow(/missing "foxessToken"/i);
+  });
+
+  test('builds multiple live users from shared credentials and preserves admin behavior', () => {
+    const seedUsers = buildOptionalLiveFoxessSeedUsers({
+      deviceSn: 'LIVE-SN-001',
+      foxessToken: 'LIVE-TOKEN-001',
+      amberApiKey: 'amber-live-001',
+      location: 'Roselands, Australia',
+      timezone: 'Australia/Sydney',
+      inverterCapacityW: 10000,
+      batteryCapacityKWh: 41.93,
+      users: [
+        {
+          email: 'live.test@example.com',
+          displayName: 'Live Test FoxESS',
+          role: 'user'
+        },
+        {
+          email: 'live.test.admin@example.com',
+          displayName: 'Live Test FoxESS Admin',
+          role: 'admin'
+        }
+      ]
+    });
+
+    expect(seedUsers).toHaveLength(2);
+    expect(seedUsers[0]).toEqual(expect.objectContaining({
+      email: 'live.test@example.com',
+      role: 'user'
+    }));
+    expect(seedUsers[1]).toEqual(expect.objectContaining({
+      email: 'live.test.admin@example.com',
+      role: 'admin'
+    }));
+    expect(seedUsers[1].seedOptions).toEqual(expect.objectContaining({
+      skipRuntimeCache: true
+    }));
+  });
+
+  test('derives a stable admin uid for the admin live user email', () => {
+    expect(buildOptionalLiveFoxessSeedUid('live.test.admin@gmail.com', 'admin')).toBe('seed-live-foxess-admin');
   });
 });

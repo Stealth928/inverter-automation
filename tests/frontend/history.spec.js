@@ -177,13 +177,22 @@ test.describe('History Page', () => {
     expect(refErrors).toHaveLength(0);
   });
 
-  test('shows AlphaESS report limitation notice when configured for AlphaESS', async ({ page }) => {
+  test('keeps month picker visible for daily view and hides it for yearly view', async ({ page }) => {
+    await expect(page.locator('#reportMonthGroup')).toBeVisible();
+    await page.selectOption('#reportDimension', 'year');
+    await expect(page.locator('#reportMonthGroup')).toBeHidden();
+    await page.selectOption('#reportDimension', 'month');
+    await expect(page.locator('#reportMonthGroup')).toBeVisible();
+  });
+
+  test('shows AlphaESS report limitation notice and disables yearly breakdown when configured for AlphaESS', async ({ page }) => {
     await page.route('**/api/config', async (route) => {
       await route.fulfill(jsonResponse({
         errno: 0,
         result: {
           deviceProvider: 'alphaess',
-          deviceSn: 'ALPHA-SN-001'
+          deviceSn: 'ALPHA-SN-001',
+          pricingProvider: 'amber'
         }
       }, 200));
     });
@@ -191,7 +200,51 @@ test.describe('History Page', () => {
     await page.reload();
 
     await expect(page.locator('#reportProviderNotice')).toBeVisible();
-    await expect(page.locator('#reportProviderNotice')).toContainText(/yearly view is estimated/i);
+    await expect(page.locator('#reportProviderNotice')).toContainText(/yearly view is hidden/i);
     await expect(page.locator('#reportProviderNotice')).toContainText(/AC-coupled auto-detect is disabled/i);
+    await expect(page.locator('#reportDimension option[value="year"]')).toBeDisabled();
+    await expect(page.locator('#reportControlHint')).toContainText(/yearly view is hidden/i);
+  });
+
+  test('disables device reporting surfaces for Sigenergy while leaving the page usable', async ({ page }) => {
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          deviceProvider: 'sigenergy',
+          deviceSn: 'SIGEN-001',
+          pricingProvider: 'amber'
+        }
+      }, 200));
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#btnFetchHistory')).toBeDisabled();
+    await expect(page.locator('#btnFetchReport')).toBeDisabled();
+    await expect(page.locator('#btnFetchGeneration')).toBeDisabled();
+    await expect(page.locator('#historyContent')).toContainText(/not yet available for SigenEnergy/i);
+    await expect(page.locator('#reportContent')).toContainText(/not yet available for SigenEnergy/i);
+    await expect(page.locator('#generationContent')).toContainText(/not yet available for SigenEnergy/i);
+  });
+
+  test('updates pricing presentation when configured for AEMO pricing', async ({ page }) => {
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          deviceProvider: 'foxess',
+          deviceSn: 'FOX-001',
+          pricingProvider: 'aemo',
+          aemoRegion: 'NSW1'
+        }
+      }, 200));
+    });
+
+    await page.reload();
+
+    await expect(page.locator('#pricingCardTitle')).toContainText(/Pricing History/i);
+    await expect(page.locator('#pricingCardSubtitle')).toContainText(/AEMO/i);
+    await expect(page.locator('#reportsCoverageText')).toContainText(/AEMO/i);
   });
 });

@@ -324,15 +324,10 @@
         }
         .overview-brief-insights {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             gap: 6px;
-            overflow-x: auto;
+            overflow-x: visible;
             padding-bottom: 2px;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-        .overview-brief-insights::-webkit-scrollbar {
-            display: none;
         }
         .overview-brief-chip {
             display: inline-flex;
@@ -433,10 +428,6 @@
             }
             .overview-brief-left {
                 grid-column: auto;
-            }
-            .overview-brief-insights {
-                flex-wrap: wrap;
-                overflow-x: visible;
             }
         }
         @media (max-width: 640px) {

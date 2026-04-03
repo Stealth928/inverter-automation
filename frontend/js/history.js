@@ -13,6 +13,8 @@
         let deviceSn = null;
         let deviceProvider = '';
         let providerCapabilities = resolveHistoryProviderCapabilities('foxess');
+        let pricingContextCache = null;
+        let pricingContextLoadedFromConfig = false;
         let cachedTopologyContext = null;
         let cachedTopologyFetchedAt = 0;
 
@@ -20,9 +22,7 @@
         const DEFAULT_TOPOLOGY_REFRESH_MS = 4 * 60 * 60 * 1000;
         const HISTORY_DEBUG_STORAGE_KEY = 'debug:history';
 
-        async function getPricingContext() {
-            const configResp = await apiClient.getConfig();
-            const config = configResp?.result || {};
+        function derivePricingContext(config = {}) {
             const provider = String(config.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
             const storedSelection = window.sharedUtils && typeof window.sharedUtils.getStoredPricingSelection === 'function'
                 ? window.sharedUtils.getStoredPricingSelection(provider)
@@ -30,7 +30,143 @@
             const selection = storedSelection || (provider === 'aemo'
                 ? (config.aemoRegion || config.siteIdOrRegion || 'NSW1')
                 : (config.amberSiteId || config.siteIdOrRegion || ''));
-            return { provider, selection, config };
+            return { provider, selection, config, hasConfig: Object.keys(config || {}).length > 0 };
+        }
+
+        async function getPricingContext(forceRefresh = false) {
+            if (!forceRefresh && pricingContextCache && pricingContextLoadedFromConfig) {
+                return pricingContextCache;
+            }
+
+            const configResp = await apiClient.getConfig();
+            pricingContextCache = derivePricingContext(configResp?.result || {});
+            pricingContextLoadedFromConfig = true;
+            return pricingContextCache;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function pricingProviderLabel(provider) {
+            return String(provider || '').toLowerCase() === 'aemo' ? 'AEMO' : 'Amber';
+        }
+
+        function renderCapabilityBadge(level, label) {
+            return `<span class="capability-badge ${escapeHtml(level)}">${escapeHtml(label)}</span>`;
+        }
+
+        function renderQualityBadge(level, label) {
+            return `<span class="quality-badge ${escapeHtml(level)}">${escapeHtml(label)}</span>`;
+        }
+
+        function renderCoverageCard(title, level, detail) {
+            return `
+                <div class="coverage-card">
+                    <div class="label">${escapeHtml(title)}</div>
+                    ${renderCapabilityBadge(level, level)}
+                    <div class="meta">${escapeHtml(detail)}</div>
+                </div>
+            `;
+        }
+
+        function renderInsightCard(label, value, note) {
+            return `
+                <div class="insight-card">
+                    <div class="label">${escapeHtml(label)}</div>
+                    <div class="value">${value}</div>
+                    ${note ? `<div class="note">${escapeHtml(note)}</div>` : ''}
+                </div>
+            `;
+        }
+
+        function renderEmptyState(icon, message) {
+            return `<div class="empty-state"><div class="icon">${escapeHtml(icon)}</div><p>${escapeHtml(message)}</p></div>`;
+        }
+
+        function updatePricingPresentation(pricingContext = pricingContextCache) {
+            const titleEl = document.getElementById('pricingCardTitle');
+            const subtitleEl = document.getElementById('pricingCardSubtitle');
+            if (!titleEl || !subtitleEl) return;
+
+            const provider = String(pricingContext?.provider || 'amber').toLowerCase();
+            if (provider === 'aemo') {
+                titleEl.textContent = '⚡ Pricing History';
+                subtitleEl.textContent = 'Actual NEM spot prices from AEMO with the same presentation used for retailer tariff history.';
+                return;
+            }
+
+            titleEl.textContent = '💰 Pricing History';
+            subtitleEl.textContent = 'Actual Amber buy and export prices in a presentation matched to the rest of the reports page.';
+        }
+
+        function getSurfaceCoverage(pricingContext = pricingContextCache) {
+            const provider = providerCapabilities.provider;
+            const pricingProvider = pricingProviderLabel(pricingContext?.provider);
+            return [
+                {
+                    title: 'Real-time history',
+                    level: provider === 'sigenergy' ? 'unavailable' : 'exact',
+                    detail: provider === 'sigenergy'
+                        ? 'Not yet exposed for this provider in SoCrates.'
+                        : 'Power-series history suitable for trend and load analysis.'
+                },
+                {
+                    title: 'Daily reports',
+                    level: provider === 'sigenergy' ? 'unavailable' : 'exact',
+                    detail: provider === 'sigenergy'
+                        ? 'Daily energy reports are pending adapter parity.'
+                        : 'Day-by-day energy totals for the selected month.'
+                },
+                {
+                    title: 'Yearly breakdown',
+                    level: provider === 'sigenergy'
+                        ? 'unavailable'
+                        : (providerCapabilities.supportsReliableYearlyReport ? 'exact' : 'estimated'),
+                    detail: provider === 'sigenergy'
+                        ? 'Month-by-month yearly totals are not yet available.'
+                        : (providerCapabilities.supportsReliableYearlyReport
+                            ? 'Reliable month-by-month totals for the selected year.'
+                            : 'Hidden in the UI until month-by-month parity is available.')
+                },
+                {
+                    title: 'Generation summary',
+                    level: provider === 'sigenergy' ? 'unavailable' : 'exact',
+                    detail: provider === 'sigenergy'
+                        ? 'Summary generation stats are not live yet.'
+                        : 'Current period totals plus provider-reported year/lifetime data where supported.'
+                },
+                {
+                    title: 'Pricing history',
+                    level: 'exact',
+                    detail: `${pricingProvider} price history is shown with the same layout regardless of device provider.`
+                },
+                {
+                    title: 'Data provenance',
+                    level: 'derived',
+                    detail: 'Badges call out when a value is exact, estimated, derived, or unavailable.'
+                }
+            ];
+        }
+
+        function renderCoverageSummary(pricingContext = pricingContextCache) {
+            const titleEl = document.getElementById('reportsCoverageTitle');
+            const textEl = document.getElementById('reportsCoverageText');
+            const gridEl = document.getElementById('reportsCoverageGrid');
+            if (!titleEl || !textEl || !gridEl) return;
+
+            const providerLabel = providerCapabilities.label || 'FoxESS';
+            const pricingLabel = pricingProviderLabel(pricingContext?.provider);
+            titleEl.textContent = `${providerLabel} reporting coverage`;
+            textEl.innerHTML = `Showing <strong>${escapeHtml(providerLabel)}</strong> device reporting with <strong>${escapeHtml(pricingLabel)}</strong> pricing context. Values stay comparable across providers because the page labels exact, estimated, derived, and unavailable data explicitly.`;
+            gridEl.innerHTML = getSurfaceCoverage(pricingContext)
+                .map(surface => renderCoverageCard(surface.title, surface.level, surface.detail))
+                .join('');
         }
 
         function historyDebugLog(...args) {
@@ -78,18 +214,102 @@
                 noticeEl.style.display = 'block';
                 noticeEl.innerHTML =
                     '<strong style="color:var(--accent-blue);">AlphaESS report note</strong><br>' +
-                    'Monthly view is usable, but the <strong>yearly view is estimated</strong> rather than a true month-by-month breakdown.<br>' +
+                    'Daily reports and generation summary are live, but the <strong>yearly view is hidden</strong> until AlphaESS exposes a reliable month-by-month breakdown.<br>' +
                     '<strong>AC-coupled auto-detect is disabled</strong> on AlphaESS history/report remapping unless topology is manually stored.';
             } else if (providerCapabilities.provider === 'sigenergy') {
                 noticeEl.style.display = 'block';
                 noticeEl.innerHTML =
                     '<strong style="color:var(--accent-blue);">SigenEnergy report note</strong><br>' +
                     'The current Sigenergy adapter does <strong>not yet implement full history/report/generation parity</strong> in this UI.<br>' +
-                    'Expect report views to be incomplete until the adapter is finished and telemetry mappings are verified.';
+                    'Pricing history stays available, while device reporting surfaces remain disabled until adapter parity is finished.';
             } else {
                 noticeEl.style.display = 'none';
                 noticeEl.innerHTML = '';
             }
+        }
+
+        function syncReportDimensionControls() {
+            const dimensionEl = document.getElementById('reportDimension');
+            const monthGroup = document.getElementById('reportMonthGroup');
+            const hintEl = document.getElementById('reportControlHint');
+            if (!dimensionEl || !monthGroup) return;
+
+            const yearlyOption = dimensionEl.querySelector('option[value="year"]');
+            if (yearlyOption) {
+                yearlyOption.disabled = !providerCapabilities.supportsReliableYearlyReport;
+                yearlyOption.textContent = providerCapabilities.supportsReliableYearlyReport
+                    ? 'Monthly (this year)'
+                    : 'Monthly (this year) - unavailable';
+            }
+
+            if (!providerCapabilities.supportsReliableYearlyReport && dimensionEl.value === 'year') {
+                dimensionEl.value = 'month';
+            }
+
+            monthGroup.style.display = dimensionEl.value === 'month' ? 'flex' : 'none';
+
+            if (!hintEl) return;
+
+            if (providerCapabilities.provider === 'alphaess') {
+                hintEl.textContent = 'AlphaESS daily reports are live. The month-by-month yearly view is hidden until provider parity is available.';
+            } else if (providerCapabilities.provider === 'sigenergy') {
+                hintEl.textContent = 'Historical device reports are not yet available for SigenEnergy on this page.';
+            } else {
+                hintEl.textContent = 'Daily view shows day-by-day totals for one month. Monthly view shows month-by-month totals for one year.';
+            }
+        }
+
+        function setSurfaceDisabled(controlIds, disabled) {
+            controlIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.disabled = disabled;
+                }
+            });
+        }
+
+        function applySurfaceAvailability() {
+            const historyUnavailable = providerCapabilities.provider === 'sigenergy';
+            const reportUnavailable = providerCapabilities.provider === 'sigenergy';
+            const generationUnavailable = providerCapabilities.provider === 'sigenergy';
+
+            setSurfaceDisabled(['historyRange', 'btnFetchHistory'], historyUnavailable);
+            setSurfaceDisabled(['reportDimension', 'reportYear', 'reportMonth', 'btnFetchReport'], reportUnavailable);
+            setSurfaceDisabled(['btnFetchGeneration'], generationUnavailable);
+
+            const toggleVariablesBtn = document.getElementById('btnToggleVariables');
+            if (toggleVariablesBtn && historyUnavailable) {
+                toggleVariablesBtn.style.display = 'none';
+            }
+
+            if (historyUnavailable) {
+                const historyContent = document.getElementById('historyContent');
+                if (historyContent) {
+                    historyContent.innerHTML = renderEmptyState('🧩', 'Real-time history is not yet available for SigenEnergy on this page.');
+                }
+            }
+
+            if (reportUnavailable) {
+                const reportContent = document.getElementById('reportContent');
+                if (reportContent) {
+                    reportContent.innerHTML = renderEmptyState('🧩', 'Energy reports are not yet available for SigenEnergy on this page.');
+                }
+            }
+
+            if (generationUnavailable) {
+                const generationContent = document.getElementById('generationContent');
+                if (generationContent) {
+                    generationContent.innerHTML = renderEmptyState('🧩', 'Generation summary is not yet available for SigenEnergy on this page.');
+                }
+            }
+        }
+
+        function applyHistoryPagePresentation() {
+            updatePricingPresentation(pricingContextCache);
+            renderCoverageSummary(pricingContextCache);
+            syncReportDimensionControls();
+            renderReportProviderNotice();
+            applySurfaceAvailability();
         }
 
         // Initialize page (NO automatic API calls - those happen after auth)
@@ -106,14 +326,10 @@
             
             // Set current month
             document.getElementById('reportMonth').value = new Date().getMonth() + 1;
-            
-            // Initialize month group visibility (show by default since default is "Daily")
-            const monthGroup = document.getElementById('reportMonthGroup');
-            monthGroup.style.display = 'flex';
-            
+
             // Handle dimension change
-            document.getElementById('reportDimension').addEventListener('change', (e) => {
-                monthGroup.style.display = e.target.value === 'month' ? 'none' : 'flex';
+            document.getElementById('reportDimension').addEventListener('change', () => {
+                syncReportDimensionControls();
             });
             
             // Try to get device SN from localStorage (no API call)
@@ -123,6 +339,10 @@
                     deviceSn = savedSn;
                 }
             } catch (e) {}
+
+            pricingContextCache = derivePricingContext({});
+            pricingContextLoadedFromConfig = false;
+            applyHistoryPagePresentation();
             // NOTE: loadDeviceSn() is called from initFirebaseAuth after auth is ready
         });
 
@@ -130,6 +350,10 @@
             try {
                 const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
+                if (data.errno === 0) {
+                    pricingContextCache = derivePricingContext(data.result || {});
+                    pricingContextLoadedFromConfig = true;
+                }
                 if (data.errno === 0 && data.result?.deviceProvider) {
                     deviceProvider = normalizeHistoryProvider(data.result.deviceProvider);
                     providerCapabilities = resolveHistoryProviderCapabilities(deviceProvider);
@@ -138,7 +362,7 @@
                     deviceSn = data.result.deviceSn;
                     try { localStorage.setItem('deviceSn', deviceSn); } catch (e) {}
                 }
-                renderReportProviderNotice();
+                applyHistoryPagePresentation();
             } catch (e) {
                 console.warn('Could not load device SN:', e);
             }
@@ -440,6 +664,13 @@
             const status = document.getElementById('historyStatus');
             const content = document.getElementById('historyContent');
             const timestamp = document.getElementById('historyTimestamp');
+
+            if (providerCapabilities.provider === 'sigenergy') {
+                status.className = 'status error';
+                status.textContent = '✗ Real-time history is not yet available for SigenEnergy on this page.';
+                content.innerHTML = renderEmptyState('🧩', 'Real-time history is not yet available for SigenEnergy on this page.');
+                return;
+            }
             
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading...';
@@ -661,12 +892,13 @@
                 // For better clarity, show date + time for boundary crossing
                 if (typeof d.time === 'string') {
                     const parts = d.time.split(' ');
-                    const [year, month, day] = parts[0].split('-');
+                    const [, month, day] = parts[0].split('-');
                     const timeStr = parts[1];
-                    // Just show HH:MM, date is implicit from chart context
-                    return timeStr.substring(0, 5);
+                    return hours > 24
+                        ? `${day}/${month} ${timeStr.substring(0, 5)}`
+                        : timeStr.substring(0, 5);
                 }
-                return formatTime(d.time);
+                return hours > 24 ? formatDateTime(d.time) : formatTime(d.time);
             });
             
             // Use actual house loads power from inverter instead of calculated value
@@ -763,6 +995,13 @@
             const status = document.getElementById('reportStatus');
             const content = document.getElementById('reportContent');
             const timestamp = document.getElementById('reportTimestamp');
+
+            if (providerCapabilities.provider === 'sigenergy') {
+                status.className = 'status error';
+                status.textContent = '✗ Energy reports are not yet available for SigenEnergy on this page.';
+                content.innerHTML = renderEmptyState('🧩', 'Energy reports are not yet available for SigenEnergy on this page.');
+                return;
+            }
             
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading...';
@@ -773,6 +1012,11 @@
                 const dimension = document.getElementById('reportDimension').value;
                 const year = document.getElementById('reportYear').value;
                 const month = document.getElementById('reportMonth').value;
+
+                if (dimension === 'year' && !providerCapabilities.supportsReliableYearlyReport) {
+                    throw new Error(`${providerCapabilities.label} does not yet expose a reliable month-by-month yearly report in SoCrates. Use the daily view instead.`);
+                }
+
                 const acContext = await detectAcCoupledContext();
                 
                 let url = `/api/inverter/report?dimension=${dimension}&year=${year}&month=${month}`;
@@ -785,8 +1029,8 @@
                 }
 
                 const reportOptions = {};
-                if (providerCapabilities.provider === 'alphaess' && dimension === 'year') {
-                    reportOptions.note = 'AlphaESS yearly report is estimated by the current integration and should not be treated as a true month-by-month history.';
+                if (data.estimated) {
+                    reportOptions.note = 'This report includes estimated values from the provider integration rather than a fully native month-by-month breakdown.';
                 }
                 if (acContext.isLikelyAcCoupled) {
                     if (dimension === 'month') {
@@ -839,7 +1083,7 @@
             
             const result = data.result || data;
             if (!result || !Array.isArray(result) || result.length === 0) {
-                content.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No report data available</p></div>';
+                content.innerHTML = renderEmptyState('📭', 'No report data available');
                 return;
             }
             
@@ -879,11 +1123,55 @@
             const totalGrid = gridData.reduce((s, d) => s + (d.value || 0), 0);
             const totalCharge = chargeData.reduce((s, d) => s + (d.value || 0), 0);
             const totalDischarge = dischargeData.reduce((s, d) => s + (d.value || 0), 0);
-            
-            const labelMap = { day: 'Day', month: 'Month', year: 'Year' };
-            const periodLabel = labelMap[dimension] || 'Period';
+            const solarKeptOnsite = Math.max(totalGen - totalFeed, 0);
+            const exportRatio = totalGen > 0 ? ((totalFeed / totalGen) * 100) : 0;
+            const selfConsumptionRatio = totalGen > 0 ? ((solarKeptOnsite / totalGen) * 100) : 0;
+            const batteryThroughput = totalCharge + totalDischarge;
+
+            const qualityBadges = [
+                renderQualityBadge(
+                    Array.isArray(options.generationValues) && options.generationValues.length > 0
+                        ? 'derived'
+                        : (data.estimated ? 'estimated' : 'exact'),
+                    Array.isArray(options.generationValues) && options.generationValues.length > 0
+                        ? 'Generation derived'
+                        : (data.estimated ? 'Generation estimated' : 'Generation exact')
+                ),
+                renderQualityBadge('exact', 'Feed-in exact'),
+                renderQualityBadge('exact', 'Grid import exact'),
+                renderQualityBadge(
+                    chargeData.length > 0 || dischargeData.length > 0 ? 'exact' : 'unavailable',
+                    chargeData.length > 0 || dischargeData.length > 0 ? 'Battery flow exact' : 'Battery flow unavailable'
+                )
+            ];
             
             let html = `
+                <div class="quality-row">
+                    ${qualityBadges.join('')}
+                </div>
+                <div class="insights-grid">
+                    ${renderInsightCard(
+                        'Solar kept onsite',
+                        `${solarKeptOnsite.toFixed(1)}<span class="unit">kWh</span>`,
+                        totalGen > 0
+                            ? `${selfConsumptionRatio.toFixed(0)}% of reported solar stayed onsite.`
+                            : 'No solar generation was reported for this period.'
+                    )}
+                    ${renderInsightCard(
+                        'Export ratio',
+                        `${exportRatio.toFixed(0)}<span class="unit">%</span>`,
+                        totalGen > 0
+                            ? `${totalFeed.toFixed(1)} kWh was exported to the grid.`
+                            : 'Export ratio becomes available once generation is reported.'
+                    )}
+                    ${renderInsightCard(
+                        'Battery throughput',
+                        `${batteryThroughput.toFixed(1)}<span class="unit">kWh</span>`,
+                        chargeData.length > 0 || dischargeData.length > 0
+                            ? `${totalCharge.toFixed(1)} charged and ${totalDischarge.toFixed(1)} discharged.`
+                            : 'Battery energy flow is not available for this report.'
+                    )}
+                </div>
                 <div class="stats-grid">
                     <div class="stat-box generation">
                         <div class="label">Total Generation${options.generationSourceLabel ? ' (AC est.)' : ''}</div>
@@ -912,10 +1200,16 @@
             `;
 
             if (options.generationSourceLabel || options.note) {
+                const sourceParts = [];
+                if (options.generationSourceLabel) {
+                    sourceParts.push(`Source: <strong>${escapeHtml(options.generationSourceLabel)}</strong>.`);
+                }
+                if (options.note) {
+                    sourceParts.push(escapeHtml(options.note));
+                }
                 html += `
                     <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:${cssVar('--accent-blue-bg')};border:1px solid ${cssVar('--border-primary')};color:${cssVar('--accent-blue')};font-size:12px;">
-                        ${options.generationSourceLabel ? `Source: <strong>${options.generationSourceLabel}</strong>. ` : ''}
-                        ${options.note ? options.note : ''}
+                        ${sourceParts.join(' ')}
                     </div>
                 `;
             }
@@ -1030,6 +1324,13 @@
             const status = document.getElementById('generationStatus');
             const content = document.getElementById('generationContent');
             const timestamp = document.getElementById('generationTimestamp');
+
+            if (providerCapabilities.provider === 'sigenergy') {
+                status.className = 'status error';
+                status.textContent = '✗ Generation summary is not yet available for SigenEnergy on this page.';
+                content.innerHTML = renderEmptyState('🧩', 'Generation summary is not yet available for SigenEnergy on this page.');
+                return;
+            }
             
             btn.disabled = true;
             btn.innerHTML = '⏳ Loading...';
@@ -1098,7 +1399,7 @@
             
             const result = data.result || data;
             if (!result) {
-                content.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No generation data available</p></div>';
+                content.innerHTML = renderEmptyState('📭', 'No generation data available');
                 return;
             }
             
@@ -1107,8 +1408,17 @@
             const month = options.month ?? result.month ?? result.monthGeneration ?? 0;
             const year = result.year || result.yearGeneration || 0;
             const total = result.cumulative || result.cumulativeGeneration || result.total || 0;
+            const lifetimeAvailable = providerCapabilities.provider !== 'sungrow';
+            const qualityBadges = [
+                renderQualityBadge(options.sourceLabel ? 'derived' : 'exact', options.sourceLabel ? 'Today/month derived' : 'Today/month exact'),
+                renderQualityBadge('exact', 'Year total exact'),
+                renderQualityBadge(lifetimeAvailable ? 'exact' : 'unavailable', lifetimeAvailable ? 'Lifetime total exact' : 'Lifetime total unavailable')
+            ];
             
             let html = `
+                <div class="quality-row">
+                    ${qualityBadges.join('')}
+                </div>
                 <div class="stats-grid">
                     <div class="stat-box generation">
                         <div class="label">Today</div>
@@ -1119,16 +1429,27 @@
                         <div class="value">${Number(month).toFixed(1)}<span class="unit">kWh</span></div>
                     </div>
                     <div class="stat-box generation">
+                        <div class="label">This Year</div>
+                        <div class="value">${Number(year).toFixed(1)}<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="stat-box generation">
                         <div class="label">Lifetime Total</div>
-                        <div class="value">${Number(total).toFixed(0)}<span class="unit">kWh</span></div>
+                        <div class="value">${lifetimeAvailable ? `${Number(total).toFixed(0)}<span class="unit">kWh</span>` : 'Unavailable'}</div>
                     </div>
                 </div>
             `;
 
-            if (options.sourceLabel) {
+            if (options.sourceLabel || !lifetimeAvailable) {
+                const notes = [];
+                if (options.sourceLabel) {
+                    notes.push(`Source: <strong>${escapeHtml(options.sourceLabel)}</strong>. Year and lifetime values remain provider-reported.`);
+                }
+                if (!lifetimeAvailable) {
+                    notes.push('Lifetime cumulative generation is not currently exposed by Sungrow in this surface, so only the year total is shown.');
+                }
                 html += `
                     <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:${cssVar('--accent-blue-bg')};border:1px solid ${cssVar('--border-primary')};color:${cssVar('--accent-blue')};font-size:12px;">
-                        Source: <strong>${options.sourceLabel}</strong>. Year and lifetime values are from the inverter generation API.
+                        ${notes.join(' ')}
                     </div>
                 `;
             }
@@ -1146,8 +1467,8 @@
                         <tbody>
                             ${extraFields.map(([k, v]) => `
                                 <tr>
-                                    <td>${k}</td>
-                                    <td class="value">${typeof v === 'number' ? v.toFixed(2) : v}</td>
+                                    <td>${escapeHtml(k)}</td>
+                                    <td class="value">${typeof v === 'number' ? v.toFixed(2) : escapeHtml(v)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -1384,6 +1705,8 @@
                 await ensureChartJs();
                 
                 const pricingContext = await getPricingContext();
+                updatePricingPresentation(pricingContext);
+                renderCoverageSummary(pricingContext);
                 const sitesResp = await apiClient.getPricingSites(pricingContext.provider);
                 historyDebugLog('[Prices] getPricingSites response:', pricingContext.provider, sitesResp);
                 

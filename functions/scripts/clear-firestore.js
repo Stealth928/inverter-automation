@@ -74,7 +74,7 @@ async function main() {
         seenEmails.add(email);
         const byEmail = await getUserByEmailOrNull(auth, email);
         if (byEmail) {
-          console.log(`Deleting auth user by email: ${byEmail.uid} (${email})`);
+          console.log(`Deleting auth user by duplicate email for uid=${byEmail.uid}...`);
           await auth.deleteUser(byEmail.uid).catch(() => {});
         }
       }

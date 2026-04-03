@@ -10,7 +10,7 @@
   const NORMALIZED_MODE_TO_RULE_TYPE = Object.freeze({
     forcecharge: 'Charge',
     forcedischarge: 'Discharge',
-    feedin: 'Discharge',
+    feedin: 'Feed In',
     selfuse: 'Self Use',
     backup: 'Backup'
   });
@@ -27,7 +27,9 @@
 
     return {
       isChargeRule: token === 'forcecharge',
-      isFeedinRule: token === 'forcedischarge' || token === 'feedin',
+      isDischargeRule: token === 'forcedischarge' || token === 'feedin',
+      isExportMode: token === 'feedin',
+      isFeedinRule: token === 'feedin',
       ruleType
     };
   }
@@ -45,26 +47,30 @@
     }
 
     if (text.includes('self use') || text.includes('self-use') || text.includes('selfuse')) {
-      return { isChargeRule: false, isFeedinRule: false, ruleType: 'Self Use' };
+      return { isChargeRule: false, isDischargeRule: false, isExportMode: false, isFeedinRule: false, ruleType: 'Self Use' };
     }
     if (text.includes('backup')) {
-      return { isChargeRule: false, isFeedinRule: false, ruleType: 'Backup' };
+      return { isChargeRule: false, isDischargeRule: false, isExportMode: false, isFeedinRule: false, ruleType: 'Backup' };
     }
     if (
-      text.includes('discharge') ||
       text.includes('feed in') ||
       text.includes('feed-in') ||
       text.includes('feedin') ||
-      text.includes('export') ||
+      text.includes('export')
+    ) {
+      return { isChargeRule: false, isDischargeRule: true, isExportMode: true, isFeedinRule: true, ruleType: 'Feed In' };
+    }
+    if (
+      text.includes('discharge') ||
       text.includes('empty')
     ) {
-      return { isChargeRule: false, isFeedinRule: true, ruleType: 'Discharge' };
+      return { isChargeRule: false, isDischargeRule: true, isExportMode: false, isFeedinRule: false, ruleType: 'Discharge' };
     }
     if (text.includes('charge')) {
-      return { isChargeRule: true, isFeedinRule: false, ruleType: 'Charge' };
+      return { isChargeRule: true, isDischargeRule: false, isExportMode: false, isFeedinRule: false, ruleType: 'Charge' };
     }
 
-    return { isChargeRule: false, isFeedinRule: false, ruleType: 'Unknown' };
+    return { isChargeRule: false, isDischargeRule: false, isExportMode: false, isFeedinRule: false, ruleType: 'Unknown' };
   }
 
   function resolveRoiEventClassification(event = {}) {
@@ -86,6 +92,8 @@
 
     return {
       isChargeRule: false,
+      isDischargeRule: false,
+      isExportMode: false,
       isFeedinRule: false,
       ruleType: 'Unknown'
     };

@@ -109,6 +109,7 @@
             .roi-backtest-metric { background: var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:10px; }
             .roi-backtest-metric strong { display:block; margin-bottom:4px; color: var(--text); }
             .roi-backtest-metric span { color: var(--text-muted); font-size:12px; line-height:1.45; }
+            .roi-backtest-limit { margin:10px 0; padding:10px 12px; border-radius:10px; border:1px solid color-mix(in srgb, var(--accent-blue) 18%, transparent); background: color-mix(in srgb, var(--accent-blue) 10%, transparent); color: var(--text-muted); font-size:12px; line-height:1.55; }
             .roi-backtest-details { margin-top:10px; border:1px solid var(--border); border-radius:10px; background: color-mix(in srgb, var(--bg-card) 92%, transparent); }
             .roi-backtest-details summary { cursor:pointer; padding:12px; font-weight:600; }
             .roi-backtest-details div { padding:0 12px 12px; color: var(--text-muted); font-size:12px; line-height:1.55; }
@@ -153,7 +154,7 @@
         const visibleRuns = filteredRuns();
         host.innerHTML = `
             <div class="card-header">
-                <div class="card-title">Backtests</div>
+                <div class="card-title">Compare Against Baseline</div>
                 <div style="display:flex;gap:8px;">
                     <button class="btn" type="button" data-action="refresh-backtests">Refresh</button>
                 </div>
@@ -166,7 +167,6 @@
                             <option value="all" ${state.filters.period === 'all' ? 'selected' : ''}>All</option>
                             <option value="30" ${state.filters.period === '30' ? 'selected' : ''}>30 days</option>
                             <option value="90" ${state.filters.period === '90' ? 'selected' : ''}>90 days</option>
-                            <option value="365" ${state.filters.period === '365' ? 'selected' : ''}>365 days</option>
                         </select>
                     </div>
                     <div class="control-group" style="min-width:180px;flex:1;">
@@ -194,7 +194,8 @@
                 ` : `
                     <div class="empty-state">
                         <div class="icon">Results</div>
-                        <p>No backtests match your filters yet.</p>
+                        <p>No saved baseline comparisons match your filters yet.</p>
+                        <p style="font-size:12px;margin-top:8px">Run a backtest in Automation Lab to compare a rule set against passive self-use.</p>
                     </div>
                 `}
             </div>
@@ -207,6 +208,10 @@
         const comparisons = Array.isArray(run?.result?.comparisons) ? run.result.comparisons : [];
         const limitations = Array.isArray(run?.result?.limitations || run?.limitations) ? (run.result?.limitations || run.limitations) : [];
         const bestScenario = run.bestScenario;
+        const topLimitation = limitations[0] || '';
+        const deltaSummary = bestScenario?.deltaVsBaseline
+            ? `Bill vs passive self-use: ${formatCurrency(bestScenario.deltaVsBaseline.billAud)}`
+            : 'Baseline comparison not available.';
         return `
             <div class="roi-backtest-card">
                 <div class="roi-backtest-head">
@@ -220,15 +225,16 @@
                     ${run.scenarioNames.map((name) => `<span class="roi-backtest-badge">${escHtml(name)}</span>`).join('')}
                     ${run.tariffNames.map((name) => `<span class="roi-backtest-badge">${escHtml(name)}</span>`).join('')}
                 </div>
+                ${topLimitation ? `<div class="roi-backtest-limit"><strong>Most important limitation:</strong> ${escHtml(topLimitation)}</div>` : ''}
                 ${bestScenario ? `
                     <div class="roi-backtest-summary">
                         <div class="roi-backtest-metric">
                             <strong>Headline outcome</strong>
-                            <span>${escHtml(bestScenario.scenarioName)} finished at ${formatCurrency(bestScenario.totalBillAud)}.</span>
+                            <span>${escHtml(bestScenario.scenarioName)} finished at ${formatCurrency(bestScenario.totalBillAud)} vs passive self-use.</span>
                         </div>
                         <div class="roi-backtest-metric">
                             <strong>What changed most</strong>
-                            <span>${bestScenario.deltaVsBaseline ? `Bill vs baseline: ${formatCurrency(bestScenario.deltaVsBaseline.billAud)}` : 'Baseline comparison not available.'}</span>
+                            <span>${escHtml(deltaSummary)}</span>
                         </div>
                         <div class="roi-backtest-metric">
                             <strong>Trade-off snapshot</strong>

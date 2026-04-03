@@ -14,6 +14,8 @@ describe('ROI event classification', () => {
 
     expect(result).toEqual({
       isChargeRule: false,
+      isDischargeRule: false,
+      isExportMode: false,
       isFeedinRule: false,
       ruleType: 'Self Use'
     });
@@ -26,8 +28,24 @@ describe('ROI event classification', () => {
 
     expect(result).toEqual({
       isChargeRule: false,
-      isFeedinRule: true,
+      isDischargeRule: true,
+      isExportMode: false,
+      isFeedinRule: false,
       ruleType: 'Discharge'
+    });
+  });
+
+  test('classifies Feedin from action workMode as export mode', () => {
+    const result = resolveRoiEventClassification({
+      action: { workMode: 'Feedin' }
+    });
+
+    expect(result).toEqual({
+      isChargeRule: false,
+      isDischargeRule: true,
+      isExportMode: true,
+      isFeedinRule: true,
+      ruleType: 'Feed In'
     });
   });
 
@@ -38,6 +56,8 @@ describe('ROI event classification', () => {
 
     expect(result).toEqual({
       isChargeRule: false,
+      isDischargeRule: false,
+      isExportMode: false,
       isFeedinRule: false,
       ruleType: 'Unknown'
     });
@@ -50,8 +70,24 @@ describe('ROI event classification', () => {
 
     expect(result).toEqual({
       isChargeRule: false,
-      isFeedinRule: true,
+      isDischargeRule: true,
+      isExportMode: false,
+      isFeedinRule: false,
       ruleType: 'Discharge'
+    });
+  });
+
+  test('classifies export names before generic discharge fallback', () => {
+    const result = resolveRoiEventClassification({
+      ruleName: 'High export feed-in window'
+    });
+
+    expect(result).toEqual({
+      isChargeRule: false,
+      isDischargeRule: true,
+      isExportMode: true,
+      isFeedinRule: true,
+      ruleType: 'Feed In'
     });
   });
 
@@ -65,6 +101,8 @@ describe('ROI event classification', () => {
 
     expect(result).toEqual({
       isChargeRule: false,
+      isDischargeRule: false,
+      isExportMode: false,
       isFeedinRule: false,
       ruleType: 'Self Use'
     });

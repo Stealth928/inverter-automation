@@ -125,28 +125,49 @@ function calculateRoiEstimate(options = {}) {
 
   const isChargeRule = workMode === 'ForceCharge';
   const isDischargeRule = workMode === 'ForceDischarge' || workMode === 'Feedin';
+  const isExportMode = workMode === 'Feedin';
 
+  let estimatedChargeW = null;
+  let estimatedChargeRevenue = 0;
+  let estimatedImportAvoidanceW = null;
+  let estimatedImportAvoidanceRevenue = 0;
   let estimatedGridExportW = null;
+  let estimatedExportRevenue = 0;
   let estimatedRevenue = 0;
 
   if (isChargeRule) {
-    const gridDrawW = houseLoadW !== null && Number.isFinite(houseLoadW)
-      ? fdPwr + houseLoadW
-      : fdPwr;
+    estimatedChargeW = fdPwr;
     const pricePerKwh = buyPrice / 100;
-    estimatedRevenue = -(gridDrawW * pricePerKwh * durationHours);
+    estimatedChargeRevenue = -(estimatedChargeW * pricePerKwh * durationHours);
+    estimatedRevenue = estimatedChargeRevenue;
   } else if (isDischargeRule) {
-    estimatedGridExportW = houseLoadW !== null && Number.isFinite(houseLoadW)
-      ? Math.max(0, fdPwr - houseLoadW)
-      : fdPwr;
-    const pricePerKwh = feedInPrice / 100;
-    estimatedRevenue = estimatedGridExportW * pricePerKwh * durationHours;
+    if (houseLoadW !== null && Number.isFinite(houseLoadW)) {
+      estimatedImportAvoidanceW = Math.min(fdPwr, Math.max(0, houseLoadW));
+      estimatedGridExportW = Math.max(0, fdPwr - houseLoadW);
+    } else if (isExportMode) {
+      estimatedImportAvoidanceW = 0;
+      estimatedGridExportW = fdPwr;
+    } else {
+      estimatedImportAvoidanceW = fdPwr;
+      estimatedGridExportW = 0;
+    }
+
+    const buyPricePerKwh = buyPrice / 100;
+    const feedInPricePerKwh = feedInPrice / 100;
+    estimatedImportAvoidanceRevenue = estimatedImportAvoidanceW * buyPricePerKwh * durationHours;
+    estimatedExportRevenue = estimatedGridExportW * feedInPricePerKwh * durationHours;
+    estimatedRevenue = estimatedImportAvoidanceRevenue + estimatedExportRevenue;
   }
 
   return {
     buyPrice,
     durationMinutes,
+    estimatedChargeRevenue,
+    estimatedChargeW,
+    estimatedExportRevenue,
     estimatedGridExportW,
+    estimatedImportAvoidanceRevenue,
+    estimatedImportAvoidanceW,
     estimatedRevenue,
     fdPwr,
     feedInPrice,
@@ -170,7 +191,12 @@ function buildRoiSnapshot(options = {}) {
   return {
     roiSnapshot: {
       houseLoadW,
+      estimatedChargeRevenue: roiEstimate.estimatedChargeRevenue,
+      estimatedChargeW: roiEstimate.estimatedChargeW,
+      estimatedExportRevenue: roiEstimate.estimatedExportRevenue,
       estimatedGridExportW: roiEstimate.estimatedGridExportW,
+      estimatedImportAvoidanceRevenue: roiEstimate.estimatedImportAvoidanceRevenue,
+      estimatedImportAvoidanceW: roiEstimate.estimatedImportAvoidanceW,
       feedInPrice: roiEstimate.feedInPrice,
       buyPrice: roiEstimate.buyPrice,
       workMode: roiEstimate.workMode,

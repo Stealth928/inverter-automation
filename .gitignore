@@ -40,6 +40,7 @@ logs/
 recent_logs_full.txt
 functions/test-output.txt
 functions/quick-control-test-output.txt
+functions/scripts/emulator-live-user.local.json
 deployed-index.html
 restore-config.json
 api_500s.txt

@@ -772,6 +772,29 @@ function validateRequiredConfig(seedUser, config) {
   }
 }
 
+function shouldSkipRuntimeCacheSeeding(seedUser) {
+  return seedUser?.seedOptions?.skipRuntimeCache === true;
+}
+
+async function clearSeededRuntimeCache(userRef) {
+  const cacheCollection = userRef.collection('cache');
+  const cacheSnapshot = await cacheCollection.get().catch(() => null);
+  const cacheDocs = Array.isArray(cacheSnapshot?.docs) ? cacheSnapshot.docs : [];
+
+  for (const doc of cacheDocs) {
+    const docId = String(doc.id || '');
+    if (
+      docId === 'inverter' ||
+      docId === 'inverter-realtime' ||
+      docId === 'amber_sites' ||
+      docId.startsWith('amber_current_')
+    ) {
+      await doc.ref.delete().catch(() => {});
+      console.log('Deleted users/%s/cache/%s', userRef.id, docId);
+    }
+  }
+}
+
 async function seedSingleUser({ db, auth, seedUser, ts }) {
   const uid = seedUser.uid;
   const userRef = db.collection('users').doc(uid);
@@ -815,6 +838,15 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
     updatedAt: ts
   };
 
+  if (shouldSkipRuntimeCacheSeeding(seedUser)) {
+    if (!seedUser?.config || !Object.prototype.hasOwnProperty.call(seedUser.config, 'amberSiteId')) {
+      configPayload.amberSiteId = admin.firestore.FieldValue.delete();
+    }
+    if (!seedUser?.config || !Object.prototype.hasOwnProperty.call(seedUser.config, 'siteIdOrRegion')) {
+      configPayload.siteIdOrRegion = admin.firestore.FieldValue.delete();
+    }
+  }
+
   await userRef.collection('config').doc('main').set(configPayload, { merge: true });
   console.log('Wrote users/%s/config/main', uid);
 
@@ -836,6 +868,12 @@ async function seedSingleUser({ db, auth, seedUser, ts }) {
     updatedAt: ts
   }, { merge: true });
   console.log('Wrote users/%s/automation/state', uid);
+
+  if (shouldSkipRuntimeCacheSeeding(seedUser)) {
+    await clearSeededRuntimeCache(userRef);
+    console.log('Skipped seeded runtime cache for users/%s', uid);
+    return userRecord;
+  }
 
   const inverterCachePayload = buildInverterDataFrame(seedUser, deviceSN, cacheNowIso, false);
   await userRef.collection('cache').doc('inverter').set({
@@ -978,7 +1016,7 @@ async function main() {
     console.log('Seed verification passed.');
     console.log('Seeded users:');
     for (const { seedUser } of seededUsers) {
-      console.log(`  ${seedUser.provider}: ${seedUser.email} / ${seedUser.password} / role=${seedUser.role}`);
+      console.log(`  uid=${seedUser.uid} provider=${seedUser.provider} role=${seedUser.role}`);
     }
     process.exit(0);
   } catch (err) {

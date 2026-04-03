@@ -101,8 +101,13 @@ describe('automation roi service', () => {
     expect(result).toEqual(expect.objectContaining({
       buyPrice: 30,
       durationMinutes: 30,
+      estimatedChargeRevenue: -300,
+      estimatedChargeW: 2000,
+      estimatedExportRevenue: 0,
       estimatedGridExportW: null,
-      estimatedRevenue: -450,
+      estimatedImportAvoidanceRevenue: 0,
+      estimatedImportAvoidanceW: null,
+      estimatedRevenue: -300,
       feedInPrice: 0,
       workMode: 'ForceCharge'
     }));
@@ -115,19 +120,57 @@ describe('automation roi service', () => {
       result: { buyPrice: -20 }
     });
 
-    expect(result.estimatedRevenue).toBe(700);
+    expect(result.estimatedChargeRevenue).toBe(600);
+    expect(result.estimatedRevenue).toBe(600);
   });
 
-  test('calculateRoiEstimate clamps discharge export at zero when house load is higher', () => {
+  test('calculateRoiEstimate values discharge as import avoidance when house load is higher', () => {
     const result = calculateRoiEstimate({
       action: { durationMinutes: 30, fdPwr: 1000, workMode: 'ForceDischarge' },
       houseLoadW: 1500,
-      result: { feedInPrice: 18 }
+      result: { buyPrice: 32, feedInPrice: 18 }
     });
 
     expect(result).toEqual(expect.objectContaining({
+      estimatedExportRevenue: 0,
       estimatedGridExportW: 0,
-      estimatedRevenue: 0
+      estimatedImportAvoidanceRevenue: 160,
+      estimatedImportAvoidanceW: 1000,
+      estimatedRevenue: 160
+    }));
+  });
+
+  test('calculateRoiEstimate splits discharge revenue into home usage and export', () => {
+    const result = calculateRoiEstimate({
+      action: { durationMinutes: 30, fdPwr: 3000, workMode: 'ForceDischarge' },
+      houseLoadW: 1200,
+      result: { buyPrice: 40, feedInPrice: 20 }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      estimatedChargeRevenue: 0,
+      estimatedChargeW: null,
+      estimatedExportRevenue: 180,
+      estimatedGridExportW: 1800,
+      estimatedImportAvoidanceRevenue: 240,
+      estimatedImportAvoidanceW: 1200,
+      estimatedRevenue: 420
+    }));
+  });
+
+  test('calculateRoiEstimate treats feed-in mode without house load as export-only', () => {
+    const result = calculateRoiEstimate({
+      action: { durationMinutes: 15, fdPwr: 4000, workMode: 'Feedin' },
+      houseLoadW: null,
+      result: { buyPrice: 35, feedInPrice: 12 }
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      estimatedGridExportW: 4000,
+      estimatedImportAvoidanceRevenue: 0,
+      estimatedImportAvoidanceW: 0,
+      estimatedExportRevenue: 120,
+      estimatedRevenue: 120
     }));
   });
 
@@ -161,7 +204,12 @@ describe('automation roi service', () => {
 
     expect(roiSnapshot).toEqual({
       houseLoadW: 1200,
+      estimatedChargeRevenue: 0,
+      estimatedChargeW: null,
+      estimatedExportRevenue: 180,
       estimatedGridExportW: 1800,
+      estimatedImportAvoidanceRevenue: 0,
+      estimatedImportAvoidanceW: 1200,
       feedInPrice: 20,
       buyPrice: 0,
       workMode: 'ForceDischarge',
@@ -188,7 +236,12 @@ describe('automation roi service', () => {
 
     expect(roiSnapshot).toEqual({
       houseLoadW: null,
+      estimatedChargeRevenue: -375,
+      estimatedChargeW: 2500,
+      estimatedExportRevenue: 0,
       estimatedGridExportW: null,
+      estimatedImportAvoidanceRevenue: 0,
+      estimatedImportAvoidanceW: null,
       feedInPrice: 0,
       buyPrice: 15,
       workMode: 'ForceCharge',

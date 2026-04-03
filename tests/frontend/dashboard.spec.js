@@ -2547,6 +2547,147 @@ test.describe('Dashboard Page', () => {
     expect(summaryModel.chips.find((chip) => chip.label === 'Weather')?.tone).toBe('muted');
   });
 
+  test('should wrap overview summary pills instead of clipping them at reduced desktop widths', async ({ page }) => {
+    await page.setViewportSize({ width: 760, height: 1200 });
+
+    await expect.poll(async () => {
+      return page.evaluate(() => Boolean(window.__dashboardTestHooks?.renderOverviewSummary));
+    }).toBe(true);
+
+    const renderedSummary = await page.evaluate((payload) => {
+      try {
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(payload.weatherData));
+        localStorage.setItem('cachedPricesFull', JSON.stringify(payload.pricingIntervals));
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+
+      window.__latestOverviewInverterPayload = payload.inverterPayload;
+      window.lastAmberResponse = payload.pricingIntervals;
+      window.__latestWeatherForDashboard = payload.weatherData;
+      window.automationStatus = payload.automationStatus;
+      window.__latestQuickControlStatus = null;
+      window.__latestSchedulerState = null;
+
+      const hooks = window.__dashboardTestHooks || {};
+      if (typeof hooks.renderOverviewSummary === 'function') {
+        hooks.renderOverviewSummary();
+      }
+
+      const model = typeof hooks.buildOverviewSummaryModel === 'function'
+        ? hooks.buildOverviewSummaryModel()
+        : null;
+      const container = document.getElementById('overviewSummaryChips');
+      if (!container) {
+        return { model, layout: null };
+      }
+
+      const chips = Array.from(container.querySelectorAll('.overview-brief-chip'));
+      const containerRect = container.getBoundingClientRect();
+      const chipTopOffsets = chips.map((chip) => Math.round(chip.getBoundingClientRect().top - containerRect.top));
+      const rowCount = new Set(chipTopOffsets).size;
+      const overflowingChips = chips.filter((chip) => {
+        const rect = chip.getBoundingClientRect();
+        return rect.left < containerRect.left - 1 || rect.right > containerRect.right + 1;
+      }).length;
+
+      return {
+        model,
+        layout: {
+          chipCount: chips.length,
+          flexWrap: window.getComputedStyle(container).flexWrap,
+          clientWidth: Math.round(container.clientWidth),
+          scrollWidth: Math.round(container.scrollWidth),
+          rowCount,
+          overflowingChips
+        }
+      };
+    }, {
+      inverterPayload: {
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-RESPONSIVE-001',
+            time: '2026-04-03T08:00:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 40, unit: '%' },
+              { variable: 'pvPower', value: 0, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.7, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.59, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0.11, unit: 'kW' }
+            ]
+          }
+        ]
+      },
+      pricingIntervals: [
+        {
+          channelType: 'general',
+          type: 'CurrentInterval',
+          startTime: '2026-04-03T08:00:00.000Z',
+          perKwh: 16.1,
+          spotPerKwh: 16.1,
+          renewables: 42,
+          descriptor: 'ok',
+          spikeStatus: 'none'
+        },
+        {
+          channelType: 'feedIn',
+          type: 'CurrentInterval',
+          startTime: '2026-04-03T08:00:00.000Z',
+          perKwh: 6.37,
+          spotPerKwh: 6.37,
+          spikeStatus: 'none'
+        }
+      ],
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-04-03T19:00',
+          temperature: 17,
+          weathercode: 3,
+          shortwave_radiation: 0,
+          cloudcover: 94,
+          is_day: 0
+        },
+        daily: {
+          time: ['2026-04-03', '2026-04-04'],
+          sunrise: ['2026-04-03T06:29', '2026-04-04T06:30'],
+          sunset: ['2026-04-03T17:59', '2026-04-04T17:58'],
+          weathercode: [3, 2],
+          precipitation_sum: [0.1, 0]
+        },
+        hourly: {
+          time: ['2026-04-03T19:00', '2026-04-04T09:00'],
+          shortwave_radiation: [0, 180],
+          cloudcover: [94, 62]
+        }
+      },
+      automationStatus: {
+        enabled: true,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        activeRuleName: 'Grid Support Overnight Recovery',
+        rules: {}
+      }
+    });
+
+    expect(renderedSummary.model).toBeTruthy();
+    expect(renderedSummary.model.chips).toHaveLength(6);
+    expect(renderedSummary.layout).not.toBeNull();
+    expect(renderedSummary.layout.chipCount).toBe(6);
+    expect(renderedSummary.layout.flexWrap).toBe('wrap');
+    expect(renderedSummary.layout.rowCount).toBeGreaterThan(1);
+    expect(renderedSummary.layout.overflowingChips).toBe(0);
+    expect(renderedSummary.layout.scrollWidth).toBeLessThanOrEqual(renderedSummary.layout.clientWidth + 1);
+  });
+
   test('should hide selected cards and keep remaining priority cards visible', async ({ page }) => {
     const inverterToggle = page.locator('[data-dashboard-toggle="inverter"]');
     const pricesToggle = page.locator('[data-dashboard-toggle="prices"]');
