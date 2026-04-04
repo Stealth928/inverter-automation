@@ -7634,6 +7634,21 @@
             return capitalize ? 'Today' : 'today';
         }
 
+        function buildOverviewLowReserveNightText(inverterSocPct, weather) {
+            const socPct = Math.round(Number(inverterSocPct) || 0);
+            const lightPhase = String(weather?.lightPhase || '').trim();
+            const weatherTimeContext = describeOverviewWeatherTimeContext(weather);
+
+            if (lightPhase === 'after-sunset' || lightPhase === 'before-sunrise') {
+                const coverWindow = lightPhase === 'after-sunset'
+                    ? 'for the night ahead'
+                    : 'into daylight';
+                return `Battery reserve is down to ${socPct}% ${weatherTimeContext}, so cover ${coverWindow} looks tighter.`;
+            }
+
+            return `Battery reserve is down to ${socPct}%, so cover for the rest of the night looks tighter.`;
+        }
+
         function describeOverviewActiveSolarWindow(weather) {
             const lightPhase = String(weather?.lightPhase || '').trim();
             if (lightPhase === 'before-sunrise') return 'after sunrise';
@@ -8394,7 +8409,7 @@
                     return {
                         focus: 'battery',
                         usedKeys: ['battery', 'weather'],
-                        text: `Battery reserve is down to ${Math.round(inverterSocPct)}% ${weatherTimeContext}, so overnight cover looks tighter.`
+                        text: buildOverviewLowReserveNightText(inverterSocPct, weather)
                     };
                 }
                 return {

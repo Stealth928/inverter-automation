@@ -1173,7 +1173,7 @@
                             : 'Battery energy flow is not available for this report.'
                     )}
                 </div>
-                <div class="stats-grid">
+                <div class="stats-grid stats-grid--report-summary">
                     <div class="stat-box generation">
                         <div class="label">Total Generation${options.generationSourceLabel ? ' (AC est.)' : ''}</div>
                         <div class="value">${totalGen.toFixed(1)}<span class="unit">kWh</span></div>

@@ -18,15 +18,6 @@
         };
     }
 
-    function resetFilters() {
-        state.filters = defaultFilters();
-    }
-
-    function getRoiDemoHelpers() {
-        if (typeof window === 'undefined') return null;
-        return window.RoiDemoData || null;
-    }
-
     function escHtml(value) {
         return String(value || '')
             .replace(/&/g, '&amp;')
@@ -149,14 +140,6 @@
         state.loading = true;
         render();
         try {
-            const demoHelpers = getRoiDemoHelpers();
-            if (demoHelpers && typeof demoHelpers.isEnabled === 'function' && demoHelpers.isEnabled()) {
-                const scenario = typeof demoHelpers.getScenario === 'function' ? demoHelpers.getScenario() : null;
-                state.runs = Array.isArray(scenario?.backtestRuns) ? scenario.backtestRuns : [];
-                state.tariffPlans = Array.isArray(scenario?.tariffPlans) ? scenario.tariffPlans : [];
-                state.error = '';
-                return;
-            }
             await waitForAPIClient(5000);
             const [runsResponse, plansResponse] = await Promise.all([
                 window.apiClient.listBacktestRuns(20),
@@ -192,7 +175,7 @@
                         </span>
                         <div>
                             <div class="card-title">Compare Against Baseline</div>
-                            <div class="section-subtitle">Saved replays stay beside live ROI so you can compare rule performance against passive self-use.</div>
+                            <div class="section-subtitle">Saved replays vs passive self-use.</div>
                         </div>
                     </div>
                 </div>
@@ -226,7 +209,7 @@
                 ${state.loading ? `
                     <div class="empty-state">
                         <div class="icon">Loading...</div>
-                        <p>Fetching saved backtests</p>
+                        <p>Loading saved backtests</p>
                     </div>
                 ` : visibleRuns.length ? `
                     <div class="roi-backtests-grid">
@@ -235,8 +218,8 @@
                 ` : `
                     <div class="empty-state">
                         <div class="icon">Results</div>
-                        <p>No saved baseline comparisons match your filters yet.</p>
-                        <p style="font-size:12px;margin-top:8px">Run a backtest in Automation Lab to compare a rule set against passive self-use.</p>
+                        <p>No saved baseline comparisons yet.</p>
+                        <p style="font-size:12px;margin-top:8px">Run a backtest in Automation Lab.</p>
                     </div>
                 `}
             </div>
@@ -321,11 +304,5 @@
 
     if (typeof window !== 'undefined') {
         window.loadRoiBacktests = loadBacktests;
-        window.addEventListener('roi-demo-data-changed', (event) => {
-            if (event && event.detail && Object.prototype.hasOwnProperty.call(event.detail, 'enabled')) {
-                resetFilters();
-            }
-            loadBacktests();
-        });
     }
 })();

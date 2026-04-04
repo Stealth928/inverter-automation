@@ -2747,6 +2747,190 @@ test.describe('Dashboard Page', () => {
     expect(summaryModel.lead).not.toContain('Buy pricing is');
   });
 
+  test('should avoid repeated overnight wording when low battery reserve carries through the night', async ({ page }) => {
+    const fixedNowIso = '2026-03-23T11:28:00.000Z';
+
+    await page.addInitScript(({ nowIso, weatherData }) => {
+      const RealDate = Date;
+      const fixedNow = RealDate.parse(nowIso);
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(fixedNow);
+            return;
+          }
+          super(...args);
+        }
+
+        static now() {
+          return fixedNow;
+        }
+      }
+
+      MockDate.parse = RealDate.parse;
+      MockDate.UTC = RealDate.UTC;
+      window.Date = MockDate;
+
+      try {
+        localStorage.setItem('dashboardLocalMockMode', '0');
+        localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+        localStorage.removeItem('cachedPrices');
+        localStorage.removeItem('cachedPricesFull');
+        localStorage.removeItem('cacheState');
+        localStorage.removeItem('amberSiteId');
+      } catch (e) {
+        // ignore storage failures in tests
+      }
+    }, {
+      nowIso: fixedNowIso,
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T22:28',
+          temperature: 17,
+          weathercode: 1,
+          shortwave_radiation: 0,
+          cloudcover: 82,
+          is_day: 0
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24'],
+          sunrise: ['2026-03-23T06:58', '2026-03-24T06:57'],
+          sunset: ['2026-03-23T19:08', '2026-03-24T19:07'],
+          weathercode: [1, 1],
+          precipitation_sum: [0, 0]
+        },
+        hourly: {
+          time: ['2026-03-23T22:00', '2026-03-24T09:00'],
+          shortwave_radiation: [0, 420],
+          cloudcover: [82, 34]
+        }
+      }
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-NIGHT-003',
+      batteryCapacityKWh: 13.5
+    });
+    await mockEvApis(page, { vehicles: [] });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/pricing/sites*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          { id: 'site-nsw-1', nmi: 'NMI-1234567890', network: 'Ausgrid' }
+        ]
+      }, 200));
+    });
+
+    await page.route('**/api/pricing/current*', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: [] }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          rules: {}
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: { active: false }
+      }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          groups: []
+        }
+      }, 200));
+    });
+
+    await page.reload();
+    const summaryModel = await seedOverviewSummaryState(page, {
+      weatherData: {
+        place: {
+          resolvedName: 'Sydney',
+          country: 'Australia',
+          latitude: -33.8688,
+          longitude: 151.2093
+        },
+        current: {
+          time: '2026-03-23T22:28',
+          temperature: 17,
+          weathercode: 1,
+          shortwave_radiation: 0,
+          cloudcover: 82,
+          is_day: 0
+        },
+        daily: {
+          time: ['2026-03-23', '2026-03-24'],
+          sunrise: ['2026-03-23T06:58', '2026-03-24T06:57'],
+          sunset: ['2026-03-23T19:08', '2026-03-24T19:07'],
+          weathercode: [1, 1],
+          precipitation_sum: [0, 0]
+        },
+        hourly: {
+          time: ['2026-03-23T22:00', '2026-03-24T09:00'],
+          shortwave_radiation: [0, 420],
+          cloudcover: [82, 34]
+        }
+      },
+      inverterPayload: {
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-NIGHT-003',
+            time: fixedNowIso,
+            datas: [
+              { variable: 'SoC', value: 39, unit: '%' },
+              { variable: 'pvPower', value: 0.02, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.03, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.01, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      },
+      pricingIntervals: [],
+      automationStatus: {
+        enabled: false,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        rules: {}
+      },
+      automationLastCheck: Date.parse(fixedNowIso)
+    });
+
+    expect(summaryModel).toBeTruthy();
+    expect(summaryModel.badgeText).toBe('Partial summary');
+    expect(summaryModel.headline).toBe('Battery reserve is down to 39%, so cover for the rest of the night looks tighter.');
+    expect(summaryModel.headline.toLowerCase()).not.toContain('overnight, so overnight');
+  });
+
   test('should wrap overview summary pills instead of clipping them at reduced desktop widths', async ({ page }) => {
     await page.setViewportSize({ width: 760, height: 1200 });
 

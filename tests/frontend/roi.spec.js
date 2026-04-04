@@ -138,6 +138,15 @@ test.describe('ROI Page', () => {
     await expect(page.locator('#roiContent')).toContainText(/Accuracy for AlphaESS:\s*Indicative/i);
   });
 
+  test('describes live ROI as triggered-rule value and points baseline comparison to backtests', async ({ page }) => {
+    await mockRoiApi(page, { deviceProvider: 'foxess' });
+    await page.goto('/roi.html');
+
+    await expect(page.locator('[data-card="roi-calculator"]')).toContainText(/Gross value of triggered charge and discharge events/i);
+    await expect(page.locator('[data-card="roi-calculator"]')).toContainText(/not a passive self-use delta/i);
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/passive self-use/i);
+  });
+
   test('matches AEMO settled prices on exact 5-minute boundaries without Amber timestamp offset', async ({ page }) => {
     const eventStartIso = '2026-03-26T10:00:00.000Z';
     const eventStartMs = Date.parse(eventStartIso);
@@ -479,23 +488,40 @@ test.describe('ROI Page', () => {
     await expect(page.locator('#roiBacktestsCard select[data-filter="period"]')).not.toContainText('365 days');
   });
 
-  test('can populate ROI, timeline, and backtests with sample data from the page control', async ({ page }) => {
+  test('does not expose local sample-data controls on the ROI page', async ({ page }) => {
     await mockRoiApi(page, { deviceProvider: 'foxess' });
     await page.goto('/roi.html');
 
-    const toggleButton = page.locator('#btnToggleRoiDemo');
-    await expect(toggleButton).toHaveText(/Load sample data/i);
-    await toggleButton.click();
-
-    await expect(toggleButton).toHaveText(/Use live data/i);
-    await expect(page.locator('#roiDemoNote')).toHaveClass(/is-visible/);
-    await expect(page.locator('#roiTable')).toContainText(/Night Charge Window/i);
-    await expect(page.locator('#automationHistoryContent')).toContainText(/Peak Saver Discharge/i);
-    await expect(page.locator('#roiBacktestsCard')).toContainText(/Peak Saver/i);
-    await expect(page.locator('#roiBacktestsCard')).toContainText(/Export Shield/i);
+    await expect(page.locator('#btnToggleRoiDemo')).toHaveCount(0);
+    await expect(page.locator('#roiDemoNote')).toHaveCount(0);
+    await expect.poll(async () => page.evaluate(() => typeof window.RoiDemoData)).toBe('undefined');
   });
 
-  test('keeps desktop ROI cards aligned as a composed two-column stack', async ({ page }) => {
+  test('keeps ROI masthead signal cards in a compact desktop row', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await mockRoiApi(page, { deviceProvider: 'foxess' });
+    await page.goto('/roi.html');
+
+    const signalLayout = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('.page-signal-card')).map((card) => {
+        const rect = card.getBoundingClientRect();
+        return {
+          top: Math.round(rect.top),
+          bottom: Math.round(rect.bottom),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right)
+        };
+      });
+    });
+
+    expect(signalLayout).toHaveLength(3);
+    for (let index = 1; index < signalLayout.length; index += 1) {
+      expect(Math.abs(signalLayout[index].top - signalLayout[0].top)).toBeLessThanOrEqual(1);
+      expect(signalLayout[index].left).toBeGreaterThan(signalLayout[index - 1].right);
+    }
+  });
+
+  test('stacks desktop ROI cards as full-width vertical sections', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 980 });
     await mockRoiApi(page, { deviceProvider: 'foxess' });
     await page.goto('/roi.html');
@@ -513,18 +539,29 @@ test.describe('ROI Page', () => {
 
       return {
         roiTop: roiRect ? Math.round(roiRect.top) : 0,
+        roiBottom: roiRect ? Math.round(roiRect.bottom) : 0,
+        roiLeft: roiRect ? Math.round(roiRect.left) : 0,
+        roiRight: roiRect ? Math.round(roiRect.right) : 0,
         backtestsTop: backtestsRect ? Math.round(backtestsRect.top) : 0,
+        backtestsBottom: backtestsRect ? Math.round(backtestsRect.bottom) : 0,
         backtestsLeft: backtestsRect ? Math.round(backtestsRect.left) : 0,
         backtestsRight: backtestsRect ? Math.round(backtestsRect.right) : 0,
+        historyTop: historyRect ? Math.round(historyRect.top) : 0,
         historyLeft: historyRect ? Math.round(historyRect.left) : 0,
         historyRight: historyRect ? Math.round(historyRect.right) : 0,
+        roiToBacktestsGap: roiRect && backtestsRect ? Math.round(backtestsRect.top - roiRect.bottom) : 0,
         stackGap: backtestsRect && historyRect ? Math.round(historyRect.top - backtestsRect.bottom) : 0
       };
     });
 
-    expect(Math.abs(desktopLayout.roiTop - desktopLayout.backtestsTop)).toBeLessThanOrEqual(1);
+    expect(desktopLayout.backtestsTop).toBeGreaterThan(desktopLayout.roiBottom);
+    expect(desktopLayout.historyTop).toBeGreaterThan(desktopLayout.backtestsBottom);
+    expect(Math.abs(desktopLayout.roiLeft - desktopLayout.backtestsLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(desktopLayout.roiRight - desktopLayout.backtestsRight)).toBeLessThanOrEqual(1);
     expect(Math.abs(desktopLayout.backtestsLeft - desktopLayout.historyLeft)).toBeLessThanOrEqual(1);
     expect(Math.abs(desktopLayout.backtestsRight - desktopLayout.historyRight)).toBeLessThanOrEqual(1);
+    expect(desktopLayout.roiToBacktestsGap).toBeGreaterThanOrEqual(16);
+    expect(desktopLayout.roiToBacktestsGap).toBeLessThanOrEqual(24);
     expect(desktopLayout.stackGap).toBeGreaterThanOrEqual(12);
     expect(desktopLayout.stackGap).toBeLessThanOrEqual(20);
   });

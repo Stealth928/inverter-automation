@@ -74,7 +74,7 @@ not ship a separate native mobile app.
 | `app.html` | Dashboard | Monitor telemetry, prices, automation state, EV summary, quick control |
 | `control.html` | Control and diagnostics | Manual actions, scheduler editing, advanced diagnostics |
 | `history.html` | Reporting/history | Review automation and energy history |
-| `roi.html` | Member ROI analysis | Review automation savings and ROI views |
+| `roi.html` | Member ROI analysis | Review gross triggered-rule value estimates, rule history, and passive self-use backtests |
 | `rules-library.html` | Rules library | Browse and import rule templates |
 | `market-insights.html` | Full market workspace | Member market analysis experience |
 | `settings.html` | Configuration hub | Provider credentials, automation config, curtailment, Tesla |
@@ -213,7 +213,7 @@ Current reporting and analysis surfaces include:
 
 - automation history
 - inverter history and generation views
-- member ROI analysis in `roi.html`
+- member ROI analysis in `roi.html` for gross triggered-rule value estimates; saved backtests provide passive self-use baseline comparison
 - public ROI calculator
 - public battery wear estimator
 
