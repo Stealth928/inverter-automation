@@ -235,6 +235,76 @@ async function seedOverviewSummaryState(page, state = {}) {
   }, state);
 }
 
+function buildSunnyOverviewWeatherData() {
+  return {
+    place: {
+      resolvedName: 'Sydney',
+      country: 'Australia',
+      latitude: -33.8688,
+      longitude: 151.2093
+    },
+    current: {
+      time: '2026-03-23T19:00',
+      temperature: 24,
+      weathercode: 1,
+      shortwave_radiation: 620,
+      cloudcover: 18,
+      is_day: 1
+    },
+    daily: {
+      time: ['2026-03-23', '2026-03-24', '2026-03-25'],
+      weathercode: [1, 61, 3],
+      precipitation_sum: [0.2, 6.4, 0.4],
+      temperature_2m_max: [29, 23, 25],
+      temperature_2m_min: [18, 17, 16]
+    },
+    hourly: {
+      time: ['2026-03-23T19:00', '2026-03-24T19:00', '2026-03-25T19:00'],
+      shortwave_radiation: [620, 120, 260],
+      cloudcover: [18, 88, 46]
+    }
+  };
+}
+
+async function mockOverviewSummaryTimeAndWeather(page, { nowIso, weatherData }) {
+  await page.addInitScript(({ nowIso, weatherData }) => {
+    const RealDate = Date;
+    const fixedNow = RealDate.parse(nowIso);
+
+    class MockDate extends RealDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(fixedNow);
+          return;
+        }
+        super(...args);
+      }
+
+      static now() {
+        return fixedNow;
+      }
+    }
+
+    MockDate.parse = RealDate.parse;
+    MockDate.UTC = RealDate.UTC;
+    window.Date = MockDate;
+
+    try {
+      localStorage.setItem('dashboardLocalMockMode', '0');
+      localStorage.setItem('cachedWeatherFull', JSON.stringify(weatherData));
+      localStorage.removeItem('cachedPrices');
+      localStorage.removeItem('cachedPricesFull');
+      localStorage.removeItem('cacheState');
+      localStorage.removeItem('amberSiteId');
+    } catch (e) {
+      // ignore storage failures in tests
+    }
+  }, {
+    nowIso,
+    weatherData
+  });
+}
+
 test.describe('Dashboard Page', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -398,6 +468,57 @@ test.describe('Dashboard Page', () => {
       return window.getComputedStyle(el).backgroundImage;
     });
     expect(sceneBackground).toContain('house-3d-iso.png');
+  });
+
+  test('should slow low-power inverter cable flow animation cadence', async ({ page }) => {
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'FLOW-SLOW-LOW-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.route('**/api/inverter/real-time*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'FLOW-SLOW-LOW-001',
+            time: '2026-03-28T09:05:00.000Z',
+            datas: [
+              { variable: 'SoC', value: 54, unit: '%' },
+              { variable: 'pvPower', value: 0.34, unit: 'kW' },
+              { variable: 'loadsPower', value: 0.22, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0.12, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      }, 200));
+    });
+
+    await page.goto('about:blank');
+    await page.goto('/app.html?energyFlowScene=1', { waitUntil: 'domcontentloaded' });
+
+    const homeFlow = page.locator('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-home)"]').first();
+    await expect(homeFlow).toHaveClass(/is-active/);
+
+    const animationState = await page.evaluate(() => {
+      const flow = document.querySelector('#inverterCard .energy-flow-path[style*="--flow-color:var(--energy-home)"]');
+      const packetBegins = Array.from(document.querySelectorAll('#inverterCard .energy-flow-packet[style*="--flow-color:var(--energy-home)"] animateMotion'))
+        .map((el) => parseFloat(el.getAttribute('begin') || '0'));
+
+      return {
+        flowSpeedMs: parseFloat(flow?.style.getPropertyValue('--flow-speed') || '0'),
+        packetBegins
+      };
+    });
+
+    expect(animationState.flowSpeedMs).toBeGreaterThanOrEqual(7000);
+    expect(animationState.packetBegins).toHaveLength(3);
+    expect(animationState.packetBegins[1]).toBeLessThanOrEqual(-1.8);
+    expect(animationState.packetBegins[2]).toBeLessThanOrEqual(-3.2);
   });
 
   test('should position the inverter scene sky from weather daylight data', async ({ page }) => {
@@ -1819,11 +1940,125 @@ test.describe('Dashboard Page', () => {
     expect(summaryModel.headline).toContain('Battery is 68% ahead of a');
     expect(summaryModel.headline).toContain('export window tomorrow at 21:00');
     expect(summaryModel.headline).not.toContain('broadly steady');
-    expect(summaryModel.lead).toContain('Solar is covering the home and leaving about 2.4 kW spare.');
+    expect(summaryModel.lead).toContain('Solar is covering the home, with about 0.28 kW charging the battery and 1.6 kW going to the grid.');
     expect(summaryModel.lead).not.toContain('Battery is at 68% and charging at 0.28 kW.');
     expect(summaryModel.nowCopy).toContain('Automation is paused');
     expect(summaryModel.nextItems.map((item) => item.text).join(' ')).toContain('Best export window tomorrow at 21:00');
     expect(summaryModel.chips.map((chip) => chip.label)).toEqual(expect.arrayContaining(['Battery', 'Buy']));
+  });
+
+  test('should describe solar surplus as charging the battery when the excess is not being exported', async ({ page }) => {
+    const fixedNowIso = '2026-03-23T08:00:00.000Z';
+    const weatherData = buildSunnyOverviewWeatherData();
+
+    await mockOverviewSummaryTimeAndWeather(page, {
+      nowIso: fixedNowIso,
+      weatherData
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-SOLAR-CHARGE-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.reload();
+    const summaryModel = await seedOverviewSummaryState(page, {
+      weatherData,
+      inverterPayload: {
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-SOLAR-CHARGE-001',
+            time: fixedNowIso,
+            datas: [
+              { variable: 'SoC', value: 64, unit: '%' },
+              { variable: 'pvPower', value: 2.34, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.5, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 0, unit: 'kW' },
+              { variable: 'batChargePower', value: 0.84, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      },
+      pricingIntervals: [],
+      automationStatus: {
+        enabled: false,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        rules: {}
+      },
+      automationLastCheck: Date.parse(fixedNowIso)
+    });
+
+    expect(summaryModel).toBeTruthy();
+    expect(summaryModel.headline).toBe('Solar is covering the home and sending about 0.84 kW of surplus into the battery.');
+    expect(summaryModel.headline.toLowerCase()).not.toContain('spare');
+  });
+
+  test('should describe solar surplus as export when the battery is not charging', async ({ page }) => {
+    const fixedNowIso = '2026-03-23T08:00:00.000Z';
+    const weatherData = buildSunnyOverviewWeatherData();
+
+    await mockOverviewSummaryTimeAndWeather(page, {
+      nowIso: fixedNowIso,
+      weatherData
+    });
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'OVERVIEW-SUMMARY-SOLAR-EXPORT-001',
+      batteryCapacityKWh: 13.5
+    });
+
+    await page.reload();
+    const summaryModel = await seedOverviewSummaryState(page, {
+      weatherData,
+      inverterPayload: {
+        errno: 0,
+        result: [
+          {
+            deviceSN: 'OVERVIEW-SUMMARY-SOLAR-EXPORT-001',
+            time: fixedNowIso,
+            datas: [
+              { variable: 'SoC', value: 64, unit: '%' },
+              { variable: 'pvPower', value: 3.15, unit: 'kW' },
+              { variable: 'loadsPower', value: 1.9, unit: 'kW' },
+              { variable: 'gridConsumptionPower', value: 0, unit: 'kW' },
+              { variable: 'feedinPower', value: 1.25, unit: 'kW' },
+              { variable: 'batChargePower', value: 0, unit: 'kW' },
+              { variable: 'batDischargePower', value: 0, unit: 'kW' }
+            ]
+          }
+        ]
+      },
+      pricingIntervals: [
+        {
+          channelType: 'general',
+          type: 'CurrentInterval',
+          startTime: fixedNowIso,
+          perKwh: 9,
+          spotPerKwh: 9,
+          renewables: 82,
+          descriptor: 'great',
+          spikeStatus: 'none'
+        }
+      ],
+      automationStatus: {
+        enabled: false,
+        inBlackout: false,
+        telemetryFailsafePaused: false,
+        rules: {}
+      },
+      automationLastCheck: Date.parse(fixedNowIso)
+    });
+
+    expect(summaryModel).toBeTruthy();
+    expect(summaryModel.headline).toContain('Buy pricing is sitting at 9.0');
+    expect(summaryModel.lead).toContain('Solar is covering the home and exporting about 1.3 kW to the grid.');
+    expect(summaryModel.lead.toLowerCase()).not.toContain('spare');
   });
 
   test('should surface active automation context and smarter upcoming outlook in the overview summary', async ({ page }) => {

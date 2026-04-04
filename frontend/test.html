@@ -35,10 +35,10 @@
             /* top padding handled by body.has-fixed-nav in shared-styles (64px) */
             padding: 0;
         }
-        .container {
-            max-width: 1400px;
+        .container.page-shell {
+            width: min(1400px, calc(100% - 32px));
             margin: 0 auto;
-            padding: 20px 20px 40px;
+            padding: var(--space-3xl) 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
         }
 
         /* ---- Card header pattern: matches shared-styles ---- */
@@ -133,7 +133,7 @@
             .card { margin-bottom: 8px; }
         }
         @media (max-width: 640px) {
-            .container { padding: 12px 12px 32px; }
+            .container.page-shell { width: min(100% - 24px, 100%); padding: 18px 0 32px; }
             header { flex-wrap: wrap; gap: 8px; }
             header h1 { font-size: 1.1rem; }
             .sim-grid { grid-template-columns: 1fr 1fr !important; }
@@ -700,7 +700,7 @@
         <button class="btn btn-sm" onclick="loadApiMetrics(1)" title="Refresh metrics">🔄</button>
     </div>
 
-    <div class="container">
+    <div class="container page-shell">
         <header>
             <h1>
                 🧪 Automation Lab

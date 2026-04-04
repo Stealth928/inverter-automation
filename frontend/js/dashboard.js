@@ -1583,7 +1583,9 @@
 
                 const INVERTER_FLOW_SLOWDOWN = 1.25;
                 const INVERTER_FLOW_LOW_POWER_WINDOW_KW = 2.2;
-                const INVERTER_FLOW_LOW_POWER_BONUS_MS = 1400;
+                const INVERTER_FLOW_LOW_POWER_BONUS_MS = 1800;
+                const INVERTER_FLOW_VERY_LOW_POWER_WINDOW_KW = 0.65;
+                const INVERTER_FLOW_VERY_LOW_POWER_BONUS_MS = 1700;
 
                 function scaleInverterFlowDuration(ms) {
                     return Math.round(ms * INVERTER_FLOW_SLOWDOWN);
@@ -1594,16 +1596,30 @@
                     return `${scaledSeconds.toFixed(3).replace(/\.?0+$/, '')}s`;
                 }
 
-                function flowSpeedForKw(kW) {
-                    if (!Number.isFinite(kW) || kW < 0.05) return `${scaleInverterFlowDuration(3000)}ms`;
+                function flowSpeedMsForKw(kW) {
+                    if (!Number.isFinite(kW) || kW < 0.05) {
+                        return scaleInverterFlowDuration(3000)
+                            + INVERTER_FLOW_LOW_POWER_BONUS_MS
+                            + INVERTER_FLOW_VERY_LOW_POWER_BONUS_MS;
+                    }
                     const clamped = Math.max(0.1, Math.min(8, Math.abs(kW)));
                     const lowPowerRatio = Math.max(0, 1 - ((clamped - 0.1) / INVERTER_FLOW_LOW_POWER_WINDOW_KW));
-                    const lowPowerBonus = Math.round(lowPowerRatio * INVERTER_FLOW_LOW_POWER_BONUS_MS);
-                    const speed = scaleInverterFlowDuration(
+                    const lowPowerBonus = Math.round(Math.pow(lowPowerRatio, 1.4) * INVERTER_FLOW_LOW_POWER_BONUS_MS);
+                    const veryLowPowerRatio = Math.max(0, 1 - ((clamped - 0.1) / INVERTER_FLOW_VERY_LOW_POWER_WINDOW_KW));
+                    const veryLowPowerBonus = Math.round(Math.pow(veryLowPowerRatio, 2.2) * INVERTER_FLOW_VERY_LOW_POWER_BONUS_MS);
+                    return scaleInverterFlowDuration(
                         Math.round(3800 - ((clamped - 0.1) / (8 - 0.1)) * 3000)
-                    ) + lowPowerBonus;
-                    return `${speed}ms`;
+                    ) + lowPowerBonus + veryLowPowerBonus;
                 }
+
+                function flowSpeedForKw(kW) {
+                    return `${flowSpeedMsForKw(kW)}ms`;
+                }
+
+                const DEFAULT_INVERTER_FLOW_PACKET_DURATION_MS = Math.max(
+                    scaleInverterFlowDuration(1400),
+                    Math.round(scaleInverterFlowDuration(3000) * 1.08)
+                );
 
                 function reverseCurvePath(pathD) {
                     const match = typeof pathD === 'string'
@@ -1622,10 +1638,23 @@
                     ].join('');
                 }
 
+                function flowPacketDurationMsForKw(kW) {
+                    return Math.max(
+                        DEFAULT_INVERTER_FLOW_PACKET_DURATION_MS,
+                        Math.round(flowSpeedMsForKw(kW) * 1.08)
+                    );
+                }
+
                 function flowPacketDurationForKw(kW) {
-                    const baseMs = parseFloat(flowSpeedForKw(kW));
-                    const safeBaseMs = Number.isFinite(baseMs) ? baseMs : scaleInverterFlowDuration(3000);
-                    return `${Math.max(scaleInverterFlowDuration(1400), Math.round(safeBaseMs * 1.08))}ms`;
+                    return `${flowPacketDurationMsForKw(kW)}ms`;
+                }
+
+                function flowPacketOffsetsForKw(kW) {
+                    const packetSpacingRatio = Math.max(
+                        1,
+                        flowPacketDurationMsForKw(kW) / DEFAULT_INVERTER_FLOW_PACKET_DURATION_MS
+                    );
+                    return [-0.15, -0.9, -1.65].map((seconds) => scaleInverterFlowOffset(seconds * packetSpacingRatio));
                 }
 
                 function flowPathMarkup(pathD, flowColor, magnitudeKw, reverse = false) {
@@ -1641,8 +1670,8 @@
                     const motionPath = reverse ? reverseCurvePath(pathD) : pathD;
                     const packetDuration = flowPacketDurationForKw(magnitudeKw);
                     const packetOpacity = flowOpacityForKw(magnitudeKw);
-                    // Keep packet spacing proportional when the flow speed is slowed down.
-                    const packetOffsets = [-0.15, -0.9, -1.65].map(scaleInverterFlowOffset);
+                    // Spread low-power packets out as the route slows so the cable doesn't still read as busy.
+                    const packetOffsets = flowPacketOffsetsForKw(magnitudeKw);
                     const packetSizes = [
                         { haloRx: 10.5, haloRy: 5.4, coreRx: 4.6, coreRy: 2.25 },
                         { haloRx: 11.5, haloRy: 5.8, coreRx: 5.2, coreRy: 2.45 },
@@ -8295,6 +8324,33 @@
             return selected;
         }
 
+        function buildOverviewSolarSurplusText({
+            netSolarKw,
+            batteryMode,
+            batteryPowerKw,
+            exportKw
+        } = {}) {
+            const hasMeaningfulKw = (value) => Number.isFinite(value) && value > 0.05;
+            if (!hasMeaningfulKw(netSolarKw)) return null;
+
+            const chargingBattery = batteryMode === 'charging' && hasMeaningfulKw(batteryPowerKw);
+            const exportingToGrid = hasMeaningfulKw(exportKw);
+
+            if (chargingBattery && exportingToGrid) {
+                return `Solar is covering the home, with about ${formatOverviewPowerKw(batteryPowerKw)} charging the battery and ${formatOverviewPowerKw(exportKw)} going to the grid.`;
+            }
+
+            if (chargingBattery) {
+                return `Solar is covering the home and sending about ${formatOverviewPowerKw(netSolarKw)} of surplus into the battery.`;
+            }
+
+            if (exportingToGrid) {
+                return `Solar is covering the home and exporting about ${formatOverviewPowerKw(exportKw)} to the grid.`;
+            }
+
+            return `Solar is covering the home and leaving about ${formatOverviewPowerKw(netSolarKw)} of surplus.`;
+        }
+
         function buildOverviewHeadlineDescriptor({
             inverter,
             pricing,
@@ -8309,6 +8365,8 @@
             const inverterSolarKw = inverter?.solarKw;
             const inverterLoadKw = inverter?.loadKw;
             const inverterBatteryMode = inverter?.batteryMode;
+            const inverterBatteryPowerKw = inverter?.batteryPowerKw;
+            const inverterExportKw = inverter?.exportKw;
             const pricingCurrentBuyCents = pricing?.currentBuyCents;
             const pricingBestFeedFuture = pricing?.bestFeedFuture || null;
             const pricingCheapestFuture = pricing?.cheapestFuture || null;
@@ -8384,7 +8442,12 @@
                 return {
                     focus: 'solar',
                     usedKeys: ['battery', 'solar'],
-                    text: `Solar surplus is charging the battery and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`
+                    text: buildOverviewSolarSurplusText({
+                        netSolarKw,
+                        batteryMode: inverterBatteryMode,
+                        batteryPowerKw: inverterBatteryPowerKw,
+                        exportKw: inverterExportKw
+                    })
                 };
             }
 
@@ -8538,6 +8601,7 @@
             const inverterLoadKw = inverter?.loadKw;
             const inverterBatteryMode = inverter?.batteryMode;
             const inverterBatteryPowerKw = inverter?.batteryPowerKw;
+            const inverterExportKw = inverter?.exportKw;
             const inverterGridMode = inverter?.gridMode;
             const pricingCurrentBuyCents = pricing?.currentBuyCents;
             const pricingCurrentFeedCents = pricing?.currentFeedCents;
@@ -8606,7 +8670,12 @@
                 if (netSolarKw > 0.35) {
                     leadCandidates.push({
                         key: 'solar',
-                        text: `Solar is covering the home and leaving about ${formatOverviewPowerKw(netSolarKw)} spare.`
+                        text: buildOverviewSolarSurplusText({
+                            netSolarKw,
+                            batteryMode: inverterBatteryMode,
+                            batteryPowerKw: inverterBatteryPowerKw,
+                            exportKw: inverterExportKw
+                        })
                     });
                 } else if (netSolarKw < -0.35) {
                     const fallbackSource = inverterBatteryMode === 'discharging'
