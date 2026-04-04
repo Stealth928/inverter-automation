@@ -542,6 +542,20 @@ paths:
                         type: object
                       tariff:
                         type: object
+                        description: Optional scenario tariff override. Use a manual `plan` or `planId`, and optionally provide `fallbackPlan` to continue when provider-backed history is unavailable.
+                        properties:
+                          kind:
+                            type: string
+                          provider:
+                            type: string
+                          planId:
+                            type: string
+                          plan:
+                            type: object
+                          fallbackPlanId:
+                            type: string
+                          fallbackPlan:
+                            type: object
       responses:
         "200":
           description: Backtest run created (status queued)

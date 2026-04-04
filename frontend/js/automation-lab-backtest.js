@@ -7,6 +7,7 @@
     const MAX_BACKTEST_HISTORY = 5;
     const BACKTEST_HISTORY_FETCH_LIMIT = 50;
     const rootId = 'automationLabWorkbench';
+    const LAB_TITLE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 3v5l-5.5 9.5A2 2 0 0 0 6.2 20h11.6a2 2 0 0 0 1.7-2.5L14 8V3"/><path d="M9 8h6"/><path d="M9 14h6"/><path d="M11 16.5h2"/></svg>';
     const state = {
         loading: true,
         bootstrapped: false,
@@ -128,31 +129,26 @@
         style.id = 'automationLabWorkbenchStyles';
         style.textContent = `
             .lab-workbench { margin: 0 0 20px; position: relative; z-index: 2; }
-            .lab-mode-shell { display: grid; gap: 18px; }
-            .lab-mode-head { position: relative; display: grid; gap: 16px; padding: 22px 24px; border-radius: 22px; border: 1px solid rgba(148, 163, 184, 0.16); background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 42%), linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(8, 47, 73, 0.88)); box-shadow: 0 24px 56px rgba(2, 6, 23, 0.28); overflow: hidden; }
-            .lab-mode-head::before { content: ''; position: absolute; inset: auto -44px -86px auto; width: 210px; height: 210px; border-radius: 50%; background: rgba(14, 165, 233, 0.16); filter: blur(24px); opacity: 0.76; pointer-events: none; }
+            .lab-mode-shell { display: grid; gap: 16px; }
+            .lab-mode-head { display: grid; gap: 12px; }
             .lab-mode-copy, .lab-mode-tabs { position: relative; z-index: 1; }
-            .lab-mode-copy { display: grid; gap: 12px; min-width: 0; }
-            .lab-mode-copy-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; }
-            .lab-mode-title-group { flex: 1 1 360px; min-width: 0; }
-            .lab-mode-kicker { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 6px 11px; border-radius: 999px; border: 1px solid rgba(125, 211, 252, 0.32); background: rgba(14, 165, 233, 0.12); color: #d6ecff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+            .lab-mode-copy { min-width: 0; }
+            .lab-mode-page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px 18px; }
+            .lab-mode-page-copy { flex: 1 1 420px; min-width: 0; }
             .lab-mode-title { margin: 0; line-height: 1.15; color: #f8fafc; }
-            .lab-mode-subtitle { margin: 0; max-width: 760px; color: rgba(226, 232, 240, 0.86); font-size: 13px; line-height: 1.6; }
-            .lab-mode-note { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(125, 211, 252, 0.22); background: linear-gradient(180deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.18)); color: rgba(226, 232, 240, 0.86); font-size: 12px; line-height: 1.55; }
-            .lab-mode-note strong { color: #f8fafc; font-weight: 600; }
-            .lab-mode-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: min(520px, 100%); flex: 1 1 420px; }
-            .lab-mode-stat { display: block; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.2); background: linear-gradient(180deg, rgba(15, 23, 42, 0.32), rgba(15, 23, 42, 0.24)); color: #f8fafc; font-size: 12px; font-weight: 600; line-height: 1.4; }
-            .lab-mode-tabs { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .lab-mode-tab { text-align: left; display: grid; gap: 6px; padding: 16px; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(15, 23, 42, 0.35); color: #cbd5e1; cursor: pointer; transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease; }
-            .lab-mode-tab:not(:disabled):hover { transform: translateY(-1px); border-color: rgba(125, 211, 252, 0.42); }
-            .lab-mode-tab.active { background: linear-gradient(145deg, rgba(14, 165, 233, 0.18), rgba(16, 185, 129, 0.14)); border-color: rgba(125, 211, 252, 0.56); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14); color: #f8fafc; }
+            .lab-mode-subtitle { margin: 4px 0 0; max-width: none; color: rgba(226, 232, 240, 0.86); font-size: 13px; line-height: 1.55; }
+            .lab-mode-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+            .lab-mode-stat { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border-primary); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
+            .lab-mode-tabs { display: flex; flex-wrap: wrap; gap: 10px; }
+            .lab-mode-tab { flex: 1 1 260px; min-width: min(100%, 240px); text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border-primary); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease; }
+            .lab-mode-tab:not(:disabled):hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent-blue) 42%, transparent); box-shadow: var(--shadow-sm); }
+            .lab-mode-tab.active { border-color: color-mix(in srgb, var(--accent-blue) 52%, transparent); background: var(--bg-secondary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 16%, transparent); color: var(--text-primary); }
             .lab-mode-tab:disabled { cursor: not-allowed; opacity: 0.76; transform: none; box-shadow: none; }
             .lab-mode-tab:disabled.active { box-shadow: none; }
-            .lab-mode-tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-            .lab-mode-tab-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-            .lab-mode-tab-label { display: block; font-size: 0.95rem; font-weight: 700; }
-            .lab-mode-tab-copy { display: block; font-size: 0.84rem; line-height: 1.55; color: inherit; opacity: 0.9; }
-            .lab-mode-tab-note { display: block; font-size: 0.76rem; line-height: 1.45; color: rgba(226, 232, 240, 0.74); }
+            .lab-mode-tab-head { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+            .lab-mode-tab-badges { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: 8px; flex-shrink: 0; white-space: nowrap; }
+            .lab-mode-tab-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; font-weight: 700; }
+            .lab-mode-tab-copy, .lab-mode-tab-note { display: none; }
             .lab-mode-panel { display: block; }
             .lab-mode-panel.hidden { display: none; }
             .lab-shell { display: grid; gap: 18px; }
@@ -215,18 +211,11 @@
             .lab-empty, .lab-loading { padding: 24px; text-align: center; border: 1px dashed rgba(148, 163, 184, 0.18); border-radius: 14px; }
             .lab-quick-shell { display: grid; gap: 18px; }
 
-            [data-theme="light"] .lab-mode-head { border-color: rgba(208, 215, 222, 0.96); background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.14), transparent 42%), linear-gradient(145deg, rgba(248, 250, 252, 0.98), rgba(226, 239, 255, 0.94)); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
-            [data-theme="light"] .lab-mode-head::before { background: rgba(14, 165, 233, 0.12); }
-            [data-theme="light"] .lab-mode-kicker { border-color: rgba(9, 105, 218, 0.16); background: rgba(255, 255, 255, 0.82); color: #155a9c; }
             [data-theme="light"] .lab-mode-title { color: #0f172a; }
             [data-theme="light"] .lab-mode-subtitle { color: #475569; }
-            [data-theme="light"] .lab-mode-note { border-color: rgba(9, 105, 218, 0.14); background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.92)); color: #475569; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8); }
-            [data-theme="light"] .lab-mode-note strong { color: #0f172a; }
-            [data-theme="light"] .lab-mode-stat { background: rgba(255, 255, 255, 0.92); border-color: rgba(9, 105, 218, 0.14); color: #1e293b; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8); }
-            [data-theme="light"] .lab-mode-tab { background: rgba(255, 255, 255, 0.88); border-color: rgba(208, 215, 222, 0.96); color: #475569; box-shadow: 0 8px 20px rgba(148, 163, 184, 0.08); }
+            [data-theme="light"] .lab-mode-tab { color: #475569; box-shadow: 0 8px 20px rgba(148, 163, 184, 0.08); }
             [data-theme="light"] .lab-mode-tab:not(:disabled):hover { border-color: rgba(9, 105, 218, 0.4); box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08); }
-            [data-theme="light"] .lab-mode-tab.active { background: linear-gradient(145deg, rgba(14, 165, 233, 0.14), rgba(16, 185, 129, 0.12)); border-color: rgba(9, 105, 218, 0.44); box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12), 0 14px 28px rgba(15, 23, 42, 0.08); color: #0f172a; }
-            [data-theme="light"] .lab-mode-tab-note { color: #64748b; }
+            [data-theme="light"] .lab-mode-tab.active { background: #ffffff; border-color: rgba(9, 105, 218, 0.44); box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12), 0 12px 24px rgba(15, 23, 42, 0.08); color: #0f172a; }
             [data-theme="light"] .lab-hero { background: radial-gradient(circle at top left, rgba(16, 185, 129, 0.1), transparent 42%), linear-gradient(135deg, rgba(224, 247, 242, 0.95), rgba(239, 246, 255, 0.98)), var(--bg-card); border-color: rgba(14, 165, 233, 0.2); box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08); }
             [data-theme="light"] .lab-eyebrow { background: rgba(255, 255, 255, 0.8); border-color: rgba(9, 105, 218, 0.16); color: #475569; }
             [data-theme="light"] .lab-badge { background: rgba(255, 255, 255, 0.84); border-color: rgba(208, 215, 222, 0.96); color: #475569; }
@@ -297,19 +286,24 @@
             @keyframes labPulse { 0%,100% { opacity: 0.4; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
             .lab-progress-text { font-size: 0.88rem; color: var(--text-secondary); }
 
+            .lab-guidance-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+            .lab-faq-section { display: grid; gap: 12px; }
             .lab-faq-card { background: var(--bg-secondary); border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 14px; overflow: hidden; }
+            .lab-faq-card[open] { border-color: rgba(56, 189, 248, 0.28); box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.08); }
+            .lab-faq-card summary { list-style: none; }
+            .lab-faq-card summary::-webkit-details-marker { display: none; }
             .lab-faq-q { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; cursor: pointer; font-weight: 700; font-size: 0.86rem; }
             .lab-faq-q:hover { background: rgba(148, 163, 184, 0.06); }
-            .lab-faq-a { display: none; padding: 0 14px 14px; font-size: 0.84rem; line-height: 1.6; color: var(--text-secondary); }
-            .lab-faq-card.open .lab-faq-a { display: block; }
+            .lab-faq-a { padding: 0 14px 14px; font-size: 0.84rem; line-height: 1.6; color: var(--text-secondary); }
+            .lab-faq-card:not([open]) .lab-faq-a { display: none; }
             .lab-faq-chevron { transition: transform 0.2s; font-size: 0.7rem; }
-            .lab-faq-card.open .lab-faq-chevron { transform: rotate(180deg); }
+            .lab-faq-card[open] .lab-faq-chevron { transform: rotate(180deg); }
 
             .lab-highlight-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 6px 0; font-size: 0.82rem; border-bottom: 1px solid rgba(148, 163, 184, 0.06); }
             .lab-highlight-row:last-child { border-bottom: none; }
 
-            @media (max-width: 960px) { .lab-summary-bar, .lab-columns { grid-template-columns: 1fr; } .lab-view-toggle { display: flex; } .lab-panel.lab-mobile-hidden { display: none; } .lab-mode-copy-heading { align-items: flex-start; } .lab-mode-stats, .lab-mode-tabs { width: 100%; } .lab-mode-tabs { grid-template-columns: 1fr; } .lab-summary-bar { top: 68px; } .lab-summary-bar { grid-template-columns: repeat(2, 1fr); } }
-            @media (max-width: 720px) { .lab-mode-head, .lab-hero, .lab-card { padding: 16px; } .lab-plan-row { grid-template-columns: 1fr; } .lab-mode-stats { grid-template-columns: 1fr; } .lab-summary-bar { top: auto; bottom: 12px; left: 0; right: 0; position: fixed; margin: 0 12px; box-shadow: 0 20px 32px rgba(0, 0, 0, 0.25); grid-template-columns: repeat(2, 1fr); } .lab-shell, .lab-quick-shell { padding-bottom: 116px; } .lab-comparison-metric { grid-template-columns: 70px 1fr 56px; } .lab-rule-bar-label { min-width: 80px; max-width: 100px; } .lab-choice-grid { grid-template-columns: 1fr; } }
+            @media (max-width: 960px) { .lab-summary-bar, .lab-columns { grid-template-columns: 1fr; } .lab-view-toggle { display: flex; } .lab-panel.lab-mobile-hidden { display: none; } .lab-mode-summary, .lab-mode-tabs { width: 100%; } .lab-mode-summary { justify-content: flex-start; } .lab-summary-bar { top: 68px; } .lab-summary-bar { grid-template-columns: repeat(2, 1fr); } }
+            @media (max-width: 720px) { .lab-hero, .lab-card { padding: 16px; } .lab-plan-row { grid-template-columns: 1fr; } .lab-mode-tab { flex-basis: 100%; min-width: 0; } .lab-summary-bar { top: auto; bottom: 12px; left: 0; right: 0; position: fixed; margin: 0 12px; box-shadow: 0 20px 32px rgba(0, 0, 0, 0.25); grid-template-columns: repeat(2, 1fr); } .lab-shell, .lab-quick-shell { padding-bottom: 116px; } .lab-comparison-metric { grid-template-columns: 70px 1fr 56px; } .lab-rule-bar-label { min-width: 80px; max-width: 100px; } .lab-choice-grid { grid-template-columns: 1fr; } }
         `;
         document.head.appendChild(style);
     }
@@ -395,6 +389,65 @@
 
     function canDeleteRun(entry) {
         return !!entry && entry.status !== 'queued' && entry.status !== 'running';
+    }
+
+    function getSelectedTariffPlan() {
+        return state.tariffPlans.find((plan) => String(plan.id) === String(state.selectedPlanId)) || null;
+    }
+
+    function cloneTariffPlan(plan) {
+        if (!plan || typeof plan !== 'object') return null;
+        return deepClone({
+            id: plan.id,
+            name: plan.name,
+            timezone: plan.timezone,
+            dailySupplyCharge: plan.dailySupplyCharge,
+            importWindows: Array.isArray(plan.importWindows) ? plan.importWindows : [],
+            exportWindows: Array.isArray(plan.exportWindows) ? plan.exportWindows : []
+        });
+    }
+
+    function getSelectedFallbackTariffPlan(compareMode = state.compareMode) {
+        if (compareMode === 'current_vs_plan') return null;
+        return cloneTariffPlan(getSelectedTariffPlan());
+    }
+
+    function buildScenarioTariffConfig(primaryTariff = null, compareMode = state.compareMode) {
+        const nextTariff = primaryTariff && typeof primaryTariff === 'object' ? deepClone(primaryTariff) : {};
+        const fallbackPlan = getSelectedFallbackTariffPlan(compareMode);
+        if (fallbackPlan && !nextTariff.plan && !nextTariff.planId && nextTariff.kind !== 'manual') {
+            nextTariff.fallbackPlan = fallbackPlan;
+        }
+        return Object.keys(nextTariff).length ? nextTariff : null;
+    }
+
+    function getTariffSummaryLabel(compareMode = state.compareMode, selectedPlan = getSelectedTariffPlan()) {
+        if (compareMode === 'current_vs_plan') {
+            return selectedPlan ? `Current vs ${selectedPlan.name}` : 'Manual plan required';
+        }
+        return selectedPlan ? `Current tariff with ${selectedPlan.name} fallback` : 'Current tariff only';
+    }
+
+    function getScenarioTariffCopy(scenario) {
+        const tariff = scenario?.tariff;
+        if (!tariff || typeof tariff !== 'object') return '';
+        const matchedPlan = state.tariffPlans.find((plan) => (
+            String(plan.id) === String(tariff.planId || tariff.fallbackPlanId || '')
+        )) || null;
+        if (tariff.plan?.name) return `tariff: ${tariff.plan.name}`;
+        if (tariff.planId && matchedPlan?.name) return `tariff: ${matchedPlan.name}`;
+        if (tariff.kind === 'manual') return 'tariff: manual plan';
+        if (tariff.fallbackPlan?.name) return `fallback: ${tariff.fallbackPlan.name}`;
+        if (tariff.fallbackPlanId && matchedPlan?.name) return `fallback: ${matchedPlan.name}`;
+        return '';
+    }
+
+    function getRunLimitations(run) {
+        return Array.isArray(run?.result?.limitations || run?.limitations) ? (run.result?.limitations || run.limitations) : [];
+    }
+
+    function isHistoricalPricingFailureMessage(message) {
+        return /Historical pricing was unavailable|Historical pricing requires|Historical pricing is not available/i.test(String(message || ''));
     }
 
     function buildSvgLinePath(points, getX, getY) {
@@ -553,7 +606,8 @@
             scenarios.push({
                 id: 'current',
                 name: 'Current rules',
-                ruleSetSnapshot: deepClone(state.currentRulesSnapshot)
+                ruleSetSnapshot: deepClone(state.currentRulesSnapshot),
+                tariff: buildScenarioTariffConfig()
             });
         } else if (state.compareMode === 'current_vs_candidate') {
             if (currentRulesCount === 0) return { error: 'Your current rule set is empty.' };
@@ -561,23 +615,26 @@
             scenarios.push({
                 id: 'current',
                 name: 'Current rules',
-                ruleSetSnapshot: deepClone(state.currentRulesSnapshot)
+                ruleSetSnapshot: deepClone(state.currentRulesSnapshot),
+                tariff: buildScenarioTariffConfig()
             });
             scenarios.push({
                 id: 'candidate',
                 name: state.candidateSnapshot.name || 'Candidate rules',
-                ruleSetSnapshot: deepClone(state.candidateSnapshot)
+                ruleSetSnapshot: deepClone(state.candidateSnapshot),
+                tariff: buildScenarioTariffConfig()
             });
         } else if (state.compareMode === 'candidate_vs_baseline') {
             if (candidateRulesCount === 0) return { error: 'Choose at least one candidate rule from Rules Library first.' };
             scenarios.push({
                 id: 'candidate',
                 name: state.candidateSnapshot.name || 'Candidate rules',
-                ruleSetSnapshot: deepClone(state.candidateSnapshot)
+                ruleSetSnapshot: deepClone(state.candidateSnapshot),
+                tariff: buildScenarioTariffConfig()
             });
         } else if (state.compareMode === 'current_vs_plan') {
             if (currentRulesCount === 0) return { error: 'You need at least one enabled current rule to compare tariffs.' };
-            const selectedPlan = state.tariffPlans.find((plan) => String(plan.id) === String(state.selectedPlanId));
+            const selectedPlan = getSelectedTariffPlan();
             if (!selectedPlan) return { error: 'Choose or create a manual tariff plan first.' };
             scenarios.push({
                 id: 'current_tariff',
@@ -708,37 +765,36 @@
             return {
                 mode: 'quick',
                 title: 'Quick Simulation',
-                copy: 'Model one decision moment, inspect the winning rule, and preview the scheduler payload before anything goes live.',
+                copy: 'Single decision moment with live or mocked inputs.',
                 stats: [
                     `${currentRuleCount} live rule${currentRuleCount === 1 ? '' : 's'} ready`,
-                    'Single-moment rule evaluation',
-                    'Live conditions or mocked inputs'
+                    'Single decision moment',
+                    'Live or mocked inputs'
                 ]
             };
         }
         return {
             mode: 'backtest',
             title: 'Backtesting / Optimisation',
-            copy: 'Replay weeks or months of history, compare tariffs or rule sets, then ask for explainable tuning suggestions backed by the same evidence.',
+            copy: 'Historical replay with tariff comparison and rule tuning.',
             stats: [
                 `${candidateRuleCount ? `${candidateRuleCount} candidate rule${candidateRuleCount === 1 ? '' : 's'}` : 'Rules Library ready'}`,
-                'Historical tariff comparison',
-                'Explainable optimisation variants'
+                'Historical replay',
+                'Measured tuning variants'
             ]
         };
     }
 
     function renderModeChrome() {
-        const modeDefinition = getModeDefinition(state.labMode);
+        const quickDefinition = getModeDefinition('quick');
+        const backtestDefinition = getModeDefinition('backtest');
+        const modeDefinition = state.labMode === 'backtest' ? backtestDefinition : quickDefinition;
         const backtestAccessState = getBacktestAccessState();
         const backtestDisabled = backtestAccessState !== 'enabled';
         const backtestBadges = [
             '<span class="lab-badge lab-badge-testing">Testing</span>',
-            backtestAccessState === 'restricted' ? '<span class="lab-badge">Admin only</span>' : ''
+            backtestAccessState === 'restricted' ? '<span class="lab-badge">Admin</span>' : ''
         ].filter(Boolean).join('');
-        const backtestNote = backtestAccessState === 'restricted'
-            ? '<span class="lab-mode-tab-note">Visible to everyone. Enabled for admins while this area is in testing.</span>'
-            : '';
         const backtestTitle = backtestAccessState === 'restricted'
             ? 'Admins only while backtesting is in testing.'
             : backtestAccessState === 'checking'
@@ -750,36 +806,35 @@
         }
         if (shellMetaHost) {
             shellMetaHost.innerHTML = `
-                <div class="lab-mode-copy-heading">
-                    <div class="lab-mode-title-group">
-                        <div class="lab-mode-kicker">Simulation and validation</div>
-                        <h1 class="page-title lab-mode-title">Automation Lab</h1>
+                <div class="page-header lab-mode-page-header">
+                    <div class="page-header__left lab-mode-page-copy">
+                        <h1 class="page-title page-title--with-icon lab-mode-title" data-page-title-icon="lab">
+                            <span class="page-title__icon" aria-hidden="true">${LAB_TITLE_ICON}</span>
+                            <span class="page-title__label">Automation Lab</span>
+                        </h1>
+                        <p class="page-subtitle lab-mode-subtitle">Simulate decisions, compare rule sets, and validate outcomes before applying changes.</p>
                     </div>
-                    <div class="lab-mode-stats" aria-label="Automation Lab highlights">
+                    <div class="page-header__right lab-mode-summary" aria-label="Automation Lab highlights">
                         ${modeDefinition.stats.map((item) => `<span class="lab-mode-stat">${escHtml(item)}</span>`).join('')}
                     </div>
-                </div>
-                <p class="page-subtitle lab-mode-subtitle">Compare live rules, candidate rules, and measured history in one place. Inspect outcomes, schedules, and savings before you apply changes.</p>
-                <div class="lab-mode-note">
-                    <strong>Current mode:</strong>
-                    <span>${escHtml(modeDefinition.title)}. ${escHtml(modeDefinition.copy)}</span>
                 </div>
             `;
         }
         if (shellTabsHost) {
             shellTabsHost.innerHTML = `
-                <button type="button" class="lab-mode-tab ${state.labMode === 'backtest' ? 'active' : ''}" data-action="set-lab-mode" data-mode="backtest" ${backtestDisabled ? 'disabled aria-disabled="true"' : ''} title="${backtestTitle}">
-                    <span class="lab-mode-tab-head">
-                        <span class="lab-mode-tab-label">Backtesting / Optimisation</span>
+                <div class="lab-mode-tabs" aria-label="Automation Lab modes">
+                    <button type="button" class="lab-mode-tab ${state.labMode === 'backtest' ? 'active' : ''}" data-action="set-lab-mode" data-mode="backtest" ${backtestDisabled ? 'disabled aria-disabled="true"' : ''} title="${backtestTitle}" aria-pressed="${state.labMode === 'backtest'}">
+                        <span class="lab-mode-tab-head">
+                            <span class="lab-mode-tab-label">Backtesting / Optimisation</span>
+                        </span>
                         <span class="lab-mode-tab-badges">${backtestBadges}</span>
-                    </span>
-                    <span class="lab-mode-tab-copy">Replay real history, compare plans, and generate measured rule variants.</span>
-                    ${backtestNote}
-                </button>
-                <button type="button" class="lab-mode-tab ${state.labMode === 'quick' ? 'active' : ''}" data-action="set-lab-mode" data-mode="quick">
-                    <span class="lab-mode-tab-label">Quick Simulation</span>
-                    <span class="lab-mode-tab-copy">Test one decision moment with mocked or live inputs and inspect the exact rule outcome.</span>
-                </button>
+                    </button>
+                    <button type="button" class="lab-mode-tab ${state.labMode === 'quick' ? 'active' : ''}" data-action="set-lab-mode" data-mode="quick" title="${quickDefinition.copy}" aria-pressed="${state.labMode === 'quick'}">
+                        <span class="lab-mode-tab-head">
+                            <span class="lab-mode-tab-label">Quick Simulation</span>
+                        </span>
+                    </button>
+                </div>
             `;
         }
         if (backtestHost?.parentElement) {
@@ -843,7 +898,7 @@
         const host = ensureRoot();
         if (!host) return;
         const preview = buildPayloadPreview();
-        const selectedPlan = state.tariffPlans.find((plan) => String(plan.id) === String(state.selectedPlanId)) || null;
+        const selectedPlan = getSelectedTariffPlan();
         const run = state.activeRun;
         syncOptimizerScenario(run);
         renderModeChrome();
@@ -861,7 +916,7 @@
                     </div>
                     <div class="lab-summary-item">
                         <span class="lab-summary-label">Tariff</span>
-                        <span class="lab-summary-value">${escHtml(selectedPlan ? selectedPlan.name : 'Current tariff')}</span>
+                        <span class="lab-summary-value">${escHtml(getTariffSummaryLabel(state.compareMode, selectedPlan))}</span>
                     </div>
                     <div class="lab-summary-item">
                         <span class="lab-summary-label">Candidate</span>
@@ -877,7 +932,7 @@
                         ${renderSetupColumn(preview, selectedPlan)}
                     </section>
                     <section class="lab-panel ${state.view === 'setup' ? 'lab-mobile-hidden' : ''}">
-                        ${renderResultsColumn(run)}
+                        ${renderResultsColumn(run, selectedPlan)}
                     </section>
                 </div>
             </div>
@@ -912,7 +967,7 @@
             </section>
             <section class="lab-card">
                 <h3>Period and tariff</h3>
-                <p class="lab-card-copy">Shorter periods run faster and are great for recent rule changes. Longer periods give more statistical confidence.</p>
+                <p class="lab-card-copy">Shorter periods run faster and are great for recent rule changes. Longer periods give more statistical confidence, while saved manual plans can act as a direct comparison or a pricing-history fallback.</p>
                 <div class="lab-pills">
                     ${['30', '60', '90'].map((preset) => `
                         <button type="button" class="lab-pill ${state.periodPreset === preset ? 'active' : ''}" data-action="set-period-preset" data-preset="${preset}">${preset}d</button>
@@ -932,7 +987,7 @@
                 <div class="lab-note" style="margin-top:14px;">
                     Backtests are capped to the last 90 days and use a fixed 5-minute replay grid with historical pricing, weather, and provider history where available.
                 </div>
-                ${state.compareMode === 'current_vs_plan' ? renderTariffPanel(selectedPlan) : ''}
+                ${renderTariffPanel(selectedPlan)}
             </section>
             <section class="lab-card">
                 <h3>Review and run</h3>
@@ -944,7 +999,7 @@
                     ${(preview.scenarios || []).map((scenario) => `
                         <div class="lab-scenario-card">
                             <strong>${escHtml(scenario.name)}</strong>
-                            <div class="lab-run-meta">${getRuleCount(scenario.ruleSetSnapshot)} rule${getRuleCount(scenario.ruleSetSnapshot) === 1 ? '' : 's'} in replay${scenario.tariff ? ` • tariff: ${escHtml(selectedPlan?.name || 'manual plan')}` : ''}</div>
+                            <div class="lab-run-meta">${getRuleCount(scenario.ruleSetSnapshot)} rule${getRuleCount(scenario.ruleSetSnapshot) === 1 ? '' : 's'} in replay${getScenarioTariffCopy(scenario) ? ` • ${escHtml(getScenarioTariffCopy(scenario))}` : ''}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -957,13 +1012,24 @@
 
     function renderTariffPanel(selectedPlan) {
         const draft = state.tariffDraft || createTariffDraft(state.currentTimezone);
+        const usingPlanComparison = state.compareMode === 'current_vs_plan';
+        const selectionLabel = usingPlanComparison ? 'Manual plan' : 'Fallback plan';
+        const selectionNote = usingPlanComparison
+            ? 'The selected plan is replayed side by side against your connected tariff.'
+            : selectedPlan
+                ? `Provider pricing is used first. If historical prices are missing, Automation Lab falls back to ${escHtml(selectedPlan.name)} so the replay can still complete.`
+                : 'Provider pricing is used first. Choose a saved manual plan if you want new runs to survive missing tariff history.';
+        const selectedPlanCopy = selectedPlan
+            ? `${usingPlanComparison ? 'Selected comparison plan' : 'Selected fallback plan'}: <strong>${escHtml(selectedPlan.name)}</strong> with ${selectedPlan.importWindows?.length || 0} import window(s) and ${selectedPlan.exportWindows?.length || 0} export window(s).`
+            : '';
         return `
             <div class="lab-stack" style="margin-top:16px;">
+                <div class="lab-note">${selectionNote}</div>
                 <div class="lab-inline-fields">
                     <div class="lab-field">
-                        <label>Manual plan</label>
+                        <label>${selectionLabel}</label>
                         <select data-field="selectedPlanId">
-                            <option value="">Choose a saved plan</option>
+                            <option value="">${usingPlanComparison ? 'Choose a saved plan' : 'No fallback plan selected'}</option>
                             ${state.tariffPlans.map((plan) => `<option value="${escHtml(plan.id)}" ${String(plan.id) === String(state.selectedPlanId) ? 'selected' : ''}>${escHtml(plan.name)}</option>`).join('')}
                         </select>
                     </div>
@@ -972,11 +1038,11 @@
                         ${selectedPlan ? `<button type="button" class="btn btn-secondary" data-action="delete-plan" data-plan-id="${escHtml(selectedPlan.id)}">Delete plan</button>` : ''}
                     </div>
                 </div>
-                ${selectedPlan ? `<div class="lab-note">Selected plan: <strong>${escHtml(selectedPlan.name)}</strong> with ${selectedPlan.importWindows?.length || 0} import window(s) and ${selectedPlan.exportWindows?.length || 0} export window(s).</div>` : ''}
+                ${selectedPlanCopy ? `<div class="lab-note">${selectedPlanCopy}</div>` : ''}
                 ${state.tariffDraftMessage ? `<div class="lab-message ${state.tariffDraftMessage.startsWith('Saved') || state.tariffDraftMessage === 'Plan deleted.' ? 'success' : 'error'}">${escHtml(state.tariffDraftMessage)}</div>` : ''}
                 ${state.tariffDraftOpen ? `
                     <details class="lab-details" open>
-                        <summary>Manual tariff plan builder</summary>
+                        <summary>${usingPlanComparison ? 'Manual tariff plan builder' : 'Fallback tariff plan builder'}</summary>
                         <div class="lab-details-content lab-stack">
                             <div class="lab-inline-fields">
                                 <div class="lab-field">
@@ -1035,7 +1101,7 @@
         `;
     }
 
-    function renderResultsColumn(run) {
+    function renderResultsColumn(run, selectedPlan) {
         if (state.loading) {
             return `<section class="lab-card"><div class="lab-loading">Loading backtest surface...</div></section>`;
         }
@@ -1060,13 +1126,13 @@
                     ${state.backtestRuns.length ? state.backtestRuns.map((entry) => renderRunCard(entry)).join('') : '<div class="lab-empty">No backtests saved yet. Your first run will appear here.</div>'}
                 </div>
             </section>
+            ${renderBottomHelpSection(run, selectedPlan)}
         `;
     }
 
     function renderActiveRun(run) {
         const summaries = selectedRunSummaries(run);
         const comparisons = Array.isArray(run?.result?.comparisons) ? run.result.comparisons : [];
-        const limitations = Array.isArray(run?.result?.limitations || run?.limitations) ? (run.result?.limitations || run.limitations) : [];
         const confidence = run?.result?.confidence || run?.confidence || 'n/a';
         const completed = run.status === 'completed';
         const failed = run.status === 'failed';
@@ -1085,6 +1151,7 @@
                     </div>
                 </div>
                 ${failed ? `<div class="lab-message error">${escHtml(run.error || 'Backtest failed. Try again or shorten the period.')}</div>` : ''}
+                ${failed ? renderFailureGuidance(run) : ''}
                 ${running ? `
                     <div class="lab-progress-pulse">
                         <div class="lab-progress-dot"></div>
@@ -1101,7 +1168,6 @@
                     ${baselineSummary ? renderBaselineCard(baselineSummary) : ''}
                     ${comparisons.length ? renderComparisonSection(comparisons) : ''}
                     ${renderOptimizationPanel(run)}
-                    ${renderResultsFaq(limitations, confidence)}
                 ` : ''}
             </div>
         `;
@@ -1119,6 +1185,24 @@
                         <li><strong>Comparisons</strong> — side-by-side metric bars showing relative performance between scenarios</li>
                     </ul>
                 </div>
+            </div>
+        `;
+    }
+
+    function renderFailureGuidance(run) {
+        const errorMessage = String(run?.error || '');
+        const selectedPlan = getSelectedTariffPlan();
+        const note = isHistoricalPricingFailureMessage(errorMessage)
+            ? selectedPlan
+                ? `Historical tariff data was missing for this saved report. The selected fallback plan <strong>${escHtml(selectedPlan.name)}</strong> is ready for new runs, so rerunning now will use it automatically if provider-backed history is still unavailable.`
+                : 'Historical tariff data was missing for this saved report. Create or select a manual plan in setup so new runs can keep going even when provider-backed pricing is unavailable.'
+            : 'This saved report failed before the replay completed. Review the setup, then retry with the same period or a shorter window.';
+        return `
+            <div class="lab-note">${note}</div>
+            <div class="lab-guidance-actions">
+                <button type="button" class="btn btn-secondary" data-action="switch-view" data-view="setup">Review setup</button>
+                <button type="button" class="btn btn-secondary" data-action="open-tariff-builder">${selectedPlan ? 'Manage tariff plan' : 'Create manual plan'}</button>
+                <button type="button" class="btn btn-primary" data-action="retry-backtest" ${state.runningBacktest ? 'disabled' : ''}>${state.runningBacktest ? 'Retrying...' : 'Retry backtest'}</button>
             </div>
         `;
     }
@@ -1402,48 +1486,77 @@
         `;
     }
 
-    function renderResultsFaq(limitations, confidence) {
+    function buildResultsFaqItems(run, selectedPlan) {
+        const confidence = run?.result?.confidence || run?.confidence || 'n/a';
         const confidenceColor = confidence === 'high' ? '#86efac' : (confidence === 'medium' ? '#fbbf24' : '#fca5a5');
-        const faqItems = [
+        const fallbackAnswer = selectedPlan
+            ? `If provider-backed historical pricing is missing, Automation Lab can fall back to your selected manual plan <strong>${escHtml(selectedPlan.name)}</strong>. Save the plan once, then rerun the report.`
+            : 'If provider-backed historical pricing is missing, save a manual tariff plan in the setup column. New runs can use it as a fallback instead of failing outright.';
+        return [
             {
                 q: 'What does the confidence level mean?',
-                a: `Confidence reflects how complete the historical data was. <strong style="color:${confidenceColor}">${escHtml(confidence)}</strong> confidence means ${confidence === 'high' ? 'SoC, weather, and pricing data were all available with minimal gaps.' : confidence === 'medium' ? 'some data points (typically SoC history) were reconstructed from nearby values.' : 'significant data gaps affected the simulation. Consider a shorter period or check your data connections.'}`
+                a: `Confidence reflects how complete the historical data was. <strong style="color:${confidenceColor}">${escHtml(confidence)}</strong> confidence means ${confidence === 'high' ? 'SoC, weather, and pricing data were all available with minimal gaps.' : confidence === 'medium' ? 'some data points were reconstructed from nearby values or truncated near the edge of the replay window.' : 'significant gaps affected the replay. Use the result directionally and prefer a rerun after fixing inputs.'}`
             },
             {
-                q: 'Why might the scenario cost more than baseline?',
-                a: 'Rules can hurt during periods where forced charging or discharging happens at worse prices than passive self-use would have achieved. This is common with rules that charge overnight when solar would have been sufficient the next day.'
+                q: 'What should I do if historical pricing is unavailable?',
+                a: `${fallbackAnswer} Older failed reports stay failed because they are snapshots; create a fresh run after fixing provider access or saving a manual plan.`
+            },
+            {
+                q: 'What does the "No automation" baseline mean?',
+                a: 'It is passive self-use only: the inverter follows its default behaviour and none of your automation rules intervene. Every savings number on this page is measured against that baseline.'
             },
             {
                 q: 'What is the interval impact bar?',
-                a: 'Each 5-minute replay interval is classified: <strong style="color:#86efac">helped</strong> if the scenario saved money vs baseline that interval, <strong style="color:#fca5a5">hurt</strong> if it cost more, and <strong>neutral</strong> if no meaningful difference. A high helped percentage with few hurt intervals indicates a well-tuned rule set.'
+                a: 'Each 5-minute replay interval is classified as <strong style="color:#86efac">helped</strong>, <strong style="color:#fca5a5">hurt</strong>, or neutral versus the baseline. A good rule set usually has a large helped share and only a small hurt tail.'
+            },
+            {
+                q: 'Why can a scenario save money overall but still hurt some intervals?',
+                a: 'Because optimisation is uneven. A rule can miss on a handful of intervals yet still win over the full period by capturing bigger price spreads or better solar timing elsewhere.'
             },
             {
                 q: 'How are battery cycles calculated?',
-                a: 'Equivalent cycles = total battery throughput (charge + discharge kWh) divided by twice the battery capacity. One full charge-then-discharge equals one cycle. More cycles mean more battery wear but potentially more value extracted.'
+                a: 'Equivalent cycles = total battery throughput (charge + discharge kWh) divided by twice the usable battery capacity. One full charge-then-discharge is one equivalent cycle.'
             },
             {
-                q: 'Can I trust the exact dollar amounts?',
-                a: 'The simulation uses real historical tariffs and inverter data, but small timing differences (the 5-minute grid vs real-time decisions) mean real-world results will differ slightly. Use the direction and magnitude of savings as a guide, not exact predictions.'
+                q: 'How exact are the dollar amounts and when should I rerun?',
+                a: 'The replay uses historical telemetry and tariffs, but it still runs on a fixed 5-minute grid. Treat the dollar output as decision support, not accounting-grade settlement. Rerun after changing rules, changing tariffs, reconnecting pricing, or when a previous report failed.'
             }
         ];
+    }
+
+    function renderBottomHelpSection(run, selectedPlan) {
+        const limitations = getRunLimitations(run);
+        const faqItems = buildResultsFaqItems(run, selectedPlan);
+        const openIndex = run?.status === 'failed' ? 1 : 0;
+        const runIntro = !run
+            ? 'This section answers the common questions people hit before their first replay: tariffs, fallback plans, confidence, and how to read the outcome.'
+            : run.status === 'failed'
+                ? 'The latest saved report did not complete. Start here before you rerun so the next report has the tariff and history inputs it needs.'
+                : run.status === 'completed'
+                    ? 'The latest report is complete. Use these answers to interpret confidence, interval impact, battery wear, and when a rerun is worth it.'
+                    : 'The latest report is still running. These notes explain what the replay is doing and how to interpret the final output.';
 
         return `
-            <details class="lab-details">
-                <summary>Understanding your results</summary>
-                <div class="lab-details-content lab-stack">
-                    ${limitations.length ? `
-                        <div style="font-weight:700;font-size:0.86rem;margin-bottom:4px;">Limitations for this run</div>
+            <section class="lab-card" id="labResultsFaqCard">
+                <h3>FAQ and troubleshooting</h3>
+                <p class="lab-card-copy">Comprehensive answers about replay confidence, fallback tariffs, failed runs, interval impact, and how to read the report.</p>
+                <div class="lab-stack">
+                    <div class="lab-note">${runIntro}</div>
+                    ${run?.status === 'failed' ? `<div class="lab-note"><strong>Latest failure:</strong> ${escHtml(run.error || 'Backtest failed.')}</div>` : ''}
+                    ${run?.status === 'completed' && limitations.length ? `
+                        <div style="font-weight:700;font-size:0.86rem;">Latest run caveats</div>
                         <div class="lab-limitation-list">${limitations.map((item) => `<div class="lab-note">${escHtml(item)}</div>`).join('')}</div>
                     ` : ''}
-                    <div style="font-weight:700;font-size:0.86rem;margin-bottom:4px;margin-top:${limitations.length ? '12px' : '0'};">Frequently asked questions</div>
-                    ${faqItems.map((item) => `
-                        <div class="lab-faq-card" onclick="this.classList.toggle('open')">
-                            <div class="lab-faq-q"><span>${escHtml(item.q)}</span><span class="lab-faq-chevron">▼</span></div>
-                            <div class="lab-faq-a">${item.a}</div>
-                        </div>
-                    `).join('')}
+                    <div class="lab-faq-section" id="labResultsFaq">
+                        ${faqItems.map((item, index) => `
+                            <details class="lab-faq-card" ${index === openIndex ? 'open' : ''}>
+                                <summary class="lab-faq-q"><span>${escHtml(item.q)}</span><span class="lab-faq-chevron">▼</span></summary>
+                                <div class="lab-faq-a">${item.a}</div>
+                            </details>
+                        `).join('')}
+                    </div>
                 </div>
-            </details>
+            </section>
         `;
     }
 
@@ -1860,12 +1973,18 @@
             render();
         } else if (action === 'run-backtest') {
             runBacktest();
+        } else if (action === 'retry-backtest') {
+            runBacktest();
         } else if (action === 'delete-run') {
             deleteBacktestRun(actionEl.dataset.runId);
         } else if (action === 'select-run') {
             selectRun(actionEl.dataset.runId);
         } else if (action === 'switch-view') {
             state.view = actionEl.dataset.view || 'setup';
+            render();
+        } else if (action === 'open-tariff-builder') {
+            state.view = 'setup';
+            state.tariffDraftOpen = true;
             render();
         } else if (action === 'toggle-tariff-draft') {
             state.tariffDraftOpen = !state.tariffDraftOpen;

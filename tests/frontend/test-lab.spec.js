@@ -6,6 +6,98 @@ const { test, expect } = require('@playwright/test');
  * Tests the automation testing lab at test.html
  */
 
+async function mockAutomationLabBacktestApis(page, options = {}) {
+  const nowMs = options.nowMs || Date.now();
+  const tariffPlans = Array.isArray(options.tariffPlans) ? options.tariffPlans.slice() : [];
+  const runStore = Array.isArray(options.backtestRuns) ? options.backtestRuns.slice() : [];
+  const requestLog = { createBacktestPayloads: [] };
+  const automationRules = options.automationRules || {
+    peak_saver: {
+      name: 'Peak Saver',
+      enabled: true,
+      priority: 1,
+      conditions: {},
+      action: { type: 'charge' }
+    }
+  };
+
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    const method = route.request().method();
+    let status = 200;
+    let body = { errno: 0, result: {} };
+
+    if (path === '/api/admin/check') {
+      status = options.admin === false ? 401 : 200;
+      body = status === 200
+        ? { errno: 0, result: { isAdmin: true } }
+        : { errno: 401, error: 'Unauthorized' };
+    } else if (path === '/api/config/setup-status') {
+      body = { errno: 0, result: { setupComplete: true } };
+    } else if (path === '/api/user/init-profile') {
+      body = { errno: 0, result: { initialized: true } };
+    } else if (path === '/api/config') {
+      body = {
+        errno: 0,
+        result: {
+          timezone: 'Australia/Sydney',
+          inverterCapacityW: 10000,
+          ...(options.config || {})
+        }
+      };
+    } else if (path === '/api/automation/status') {
+      body = {
+        errno: 0,
+        result: {
+          enabled: true,
+          rules: automationRules,
+          config: {
+            automation: { intervalMs: 60000 },
+            cache: { amber: 60000, inverter: 300000, weather: 1800000 },
+            defaults: { cooldownMinutes: 5, durationMinutes: 30 }
+          }
+        }
+      };
+    } else if (path === '/api/backtests/tariff-plans') {
+      body = { errno: 0, result: tariffPlans };
+    } else if (path === '/api/backtests/runs' && method === 'GET') {
+      body = { errno: 0, result: runStore };
+    } else if (path === '/api/backtests/runs' && method === 'POST') {
+      const payload = route.request().postDataJSON();
+      requestLog.createBacktestPayloads.push(payload);
+      const createdRun = typeof options.createRunResult === 'function'
+        ? options.createRunResult(payload)
+        : {
+            id: `run-${requestLog.createBacktestPayloads.length}`,
+            requestedAtMs: nowMs,
+            status: 'queued',
+            request: payload
+          };
+      runStore.unshift(createdRun);
+      body = { errno: 0, result: createdRun };
+    } else if (/^\/api\/backtests\/runs\/[^/]+$/.test(path) && method === 'GET') {
+      const runId = decodeURIComponent(path.split('/').pop());
+      const matched = runStore.find((entry) => entry.id === runId) || {
+        id: runId,
+        requestedAtMs: nowMs,
+        status: 'failed',
+        error: 'Run not mocked',
+        request: { period: { startDate: '2026-03-01', endDate: '2026-03-30' }, scenarios: [] }
+      };
+      body = { errno: 0, result: matched };
+    }
+
+    await route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(body)
+    });
+  });
+
+  return requestLog;
+}
+
 test.describe('Test Lab Page', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -72,6 +164,29 @@ test.describe('Test Lab Page', () => {
     expect(styles.modeStat?.backgroundBrightness).toBeGreaterThan(200);
     expect(styles.quickPanel?.backgroundBrightness).toBeGreaterThan(200);
     expect(styles.quickRunButton?.colorBrightness).toBeLessThan(80);
+  });
+
+  test('should keep Automation Lab chrome compact', async ({ page }) => {
+    await page.goto('/test.html?mode=quick');
+    await expect(page.locator('.lab-mode-head')).toBeVisible();
+    await expect(page.locator('.lab-mode-note')).toHaveCount(0);
+    await expect(page.locator('.lab-mode-tab-copy')).toHaveCount(0);
+
+    const chromeMetrics = await page.evaluate(() => {
+      const head = document.querySelector('.lab-mode-head');
+      const subtitle = document.querySelector('.lab-mode-subtitle');
+      const tabs = Array.from(document.querySelectorAll('.lab-mode-tab'));
+
+      return {
+        headHeight: Math.round(head?.getBoundingClientRect().height || 0),
+        subtitleHeight: Math.round(subtitle?.getBoundingClientRect().height || 0),
+        maxTabHeight: tabs.reduce((max, tab) => Math.max(max, Math.round(tab.getBoundingClientRect().height)), 0)
+      };
+    });
+
+    expect(chromeMetrics.headHeight).toBeLessThan(180);
+    expect(chromeMetrics.subtitleHeight).toBeLessThan(28);
+    expect(chromeMetrics.maxTabHeight).toBeLessThan(64);
   });
 
   test('should unlock Backtesting / Optimisation for promoted admins after AppShell is ready', async ({ page }) => {
@@ -175,6 +290,68 @@ test.describe('Test Lab Page', () => {
     const backtestButton = page.getByRole('button', { name: /Backtesting \/ Optimisation/i });
     await expect(backtestButton).toBeVisible({ timeout: 10000 });
     await expect(backtestButton).toBeEnabled({ timeout: 10000 });
+  });
+
+  test('adds the selected fallback manual plan to provider-backed backtest payloads', async ({ page }) => {
+    await page.goto('about:blank');
+    const requestLog = await mockAutomationLabBacktestApis(page, {
+      tariffPlans: [{
+        id: 'plan-fallback',
+        name: 'Fallback Saver',
+        timezone: 'Australia/Sydney',
+        dailySupplyCharge: 110,
+        importWindows: [{ startTime: '00:00', endTime: '23:59', centsPerKwh: 18 }],
+        exportWindows: [{ startTime: '00:00', endTime: '23:59', centsPerKwh: 8 }]
+      }]
+    });
+
+    await page.goto('/test.html');
+
+    await expect(page.locator('.lab-summary-bar')).toContainText('Current tariff with Fallback Saver fallback');
+    await expect(page.locator('.lab-scenario-list')).toContainText('fallback: Fallback Saver');
+
+    await page.getByRole('button', { name: /Run historical backtest/i }).click();
+
+    await expect.poll(() => requestLog.createBacktestPayloads.length).toBe(1);
+    expect(requestLog.createBacktestPayloads[0].scenarios[0].tariff.fallbackPlan).toEqual(expect.objectContaining({
+      id: 'plan-fallback',
+      name: 'Fallback Saver',
+      dailySupplyCharge: 110
+    }));
+    expect(requestLog.createBacktestPayloads[0].scenarios[0].tariff.fallbackPlan.importWindows[0].centsPerKwh).toBe(18);
+  });
+
+  test('shows pricing failure guidance and a collapsible FAQ at the bottom of results', async ({ page }) => {
+    const nowMs = Date.parse('2026-04-05T08:03:00Z');
+    await page.goto('about:blank');
+    await mockAutomationLabBacktestApis(page, {
+      nowMs,
+      backtestRuns: [{
+        id: 'run-failed-1',
+        requestedAtMs: nowMs,
+        status: 'failed',
+        request: {
+          period: { startDate: '2026-03-06', endDate: '2026-04-04' },
+          comparisonMode: 'current_vs_baseline',
+          scenarios: [{ id: 'current', name: 'Current rules', ruleSetSnapshot: { source: 'current', rules: {} } }]
+        },
+        error: 'Historical pricing was unavailable for scenario "No automation" during 2026-03-06 to 2026-04-04. Reconnect your tariff provider or use a manual tariff plan.'
+      }]
+    });
+
+    await page.goto('/test.html');
+
+    await expect(page.locator('.lab-message.error')).toContainText('Historical pricing was unavailable');
+    await expect(page.locator('.lab-guidance-actions')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Create manual plan/i })).toBeVisible();
+    await expect(page.locator('#labResultsFaqCard')).toContainText('FAQ and troubleshooting');
+
+    const pricingFaq = page.locator('#labResultsFaq details').nth(1);
+    await expect(pricingFaq).toHaveAttribute('open', '');
+    await pricingFaq.locator('summary').click();
+    await expect(pricingFaq).not.toHaveAttribute('open', '');
+    await pricingFaq.locator('summary').click();
+    await expect(pricingFaq.locator('.lab-faq-a')).toContainText('manual tariff plan');
   });
 
   test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {

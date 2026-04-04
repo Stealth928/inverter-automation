@@ -169,6 +169,7 @@ Behavior notes:
 - Results include per-scenario summaries, interval impact analysis, and pairwise comparisons
 - Delta convention: positive `billAud` = scenario saved money vs baseline
 - Tariff plans support time-of-use windows with separate import/export rates
+- Scenario tariffs can include an optional fallback manual plan so runs can continue when provider-backed historical pricing is unavailable
 
 Behavior notes:
 

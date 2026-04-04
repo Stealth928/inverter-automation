@@ -765,6 +765,105 @@ describe('backtest service helpers', () => {
     expect(emptyTariffProvider.getHistoricalPrices).toHaveBeenCalled();
   });
 
+  test('runBacktestAnalysis falls back to a manual plan when provider history is unavailable', async () => {
+    const emptyTariffProvider = {
+      getHistoricalPrices: jest.fn(async () => ({
+        buyCentsPerKwh: null,
+        feedInCentsPerKwh: null,
+        intervals: []
+      }))
+    };
+    const db = {
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({
+          collection: jest.fn(() => ({
+            doc: jest.fn(() => ({
+              collection: jest.fn(() => ({
+                orderBy: jest.fn(() => ({
+                  get: jest.fn(async () => ({ docs: [] }))
+                }))
+              }))
+            }))
+          }))
+        }))
+      }))
+    };
+    const service = createBacktestService({
+      adapterRegistry: {
+        getTariffProvider: jest.fn(() => emptyTariffProvider),
+        getDeviceProvider: jest.fn(() => null)
+      },
+      db,
+      foxessAPI: {
+        callFoxESSAPI: jest.fn(async () => ({
+          errno: 0,
+          result: [{ datas: [] }]
+        }))
+      },
+      getConfig: () => ({
+        automation: {
+          backtesting: {
+            replayIntervalMinutes: 5,
+            maxLookbackDays: 365,
+            maxScenarios: 3,
+            maxActiveRuns: 2,
+            runTtlMs: 30 * 24 * 60 * 60 * 1000
+          }
+        }
+      }),
+      getHistoricalWeather: jest.fn(async () => ({
+        hourly: { time: [] },
+        daily: { time: [] }
+      })),
+      getUserConfig: jest.fn(async () => ({
+        timezone: 'Australia/Sydney',
+        deviceProvider: 'foxess',
+        deviceSn: 'FOX-SEED-1001',
+        pricingProvider: 'amber',
+        location: 'Sydney',
+        batteryCapacityKWh: 10,
+        inverterCapacityW: 5000,
+        defaults: { minSocOnGrid: 20 },
+        automation: { blackoutWindows: [] }
+      })),
+      getUserRules: jest.fn(async () => ({}))
+    });
+
+    const result = await service.runBacktestAnalysis('user-1', {
+      period: {
+        startDate: '2026-03-04',
+        endDate: '2026-03-04'
+      },
+      includeBaseline: true,
+      scenarios: [{
+        id: 'current',
+        name: 'Current rules',
+        ruleSetSnapshot: { source: 'current', rules: {} },
+        tariff: {
+          fallbackPlan: {
+            name: 'Flat plan',
+            timezone: 'Australia/Sydney',
+            dailySupplyCharge: 95,
+            importWindows: [{ startTime: '00:00', endTime: '23:59', centsPerKwh: 20 }],
+            exportWindows: [{ startTime: '00:00', endTime: '23:59', centsPerKwh: 5 }]
+          }
+        }
+      }]
+    });
+
+    expect(result.summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ scenarioId: 'baseline' }),
+      expect.objectContaining({ scenarioId: 'current' })
+    ]));
+    expect(result.limitations).toContain(
+      'Historical Amber pricing was unavailable for scenario "No automation"; used manual tariff plan "Flat plan" instead.'
+    );
+    expect(result.limitations).toContain(
+      'Historical Amber pricing was unavailable for scenario "Current rules"; used manual tariff plan "Flat plan" instead.'
+    );
+    expect(emptyTariffProvider.getHistoricalPrices).toHaveBeenCalled();
+  });
+
   test('runBacktestAnalysis clamps weather look-ahead to the latest historical day', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-04T13:00:00Z'));
     const getHistoricalWeather = jest.fn(async () => ({

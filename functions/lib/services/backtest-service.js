@@ -537,6 +537,13 @@ function buildIntervalTariffLookup(intervals = [], options = {}) {
   };
 }
 
+function formatPricingProviderLabel(providerType = '') {
+  const normalized = String(providerType || '').trim().toLowerCase();
+  if (normalized === 'aemo') return 'AEMO';
+  if (normalized === 'amber') return 'Amber';
+  return normalized ? normalized.toUpperCase() : 'provider';
+}
+
 function buildWeatherIndices(weather = {}, timezone, gridMs = []) {
   const hourly = weather?.result?.hourly || weather?.hourly || {};
   const daily = weather?.result?.daily || weather?.daily || {};
@@ -1292,17 +1299,46 @@ function createBacktestService(deps = {}) {
 
   async function buildScenarioTariffLookup(userId, userConfig, scenario, planIndex, startDate, pricingEndDate) {
     const tariff = scenario.tariff && typeof scenario.tariff === 'object' ? scenario.tariff : {};
+    const fallbackTimezone = userConfig?.timezone || 'Australia/Sydney';
+    const resolvePlanModel = (inlinePlan, planId) => {
+      if (inlinePlan && typeof inlinePlan === 'object') {
+        return normalizeTariffPlanModel(inlinePlan, fallbackTimezone);
+      }
+      if (planId) {
+        return normalizeTariffPlanModel(planIndex.get(String(planId)) || {}, fallbackTimezone);
+      }
+      return null;
+    };
+    const fallbackPlan = resolvePlanModel(tariff.fallbackPlan, tariff.fallbackPlanId);
+    const buildFallbackTariffResult = (providerType) => {
+      if (!fallbackPlan?.name) return null;
+      const lookup = buildManualTariffLookup(fallbackPlan);
+      return {
+        lookup: {
+          ...lookup,
+          type: 'manual-fallback',
+          fallbackProvider: providerType,
+          fallbackPlanName: fallbackPlan.name
+        },
+        limitations: [
+          `Historical ${formatPricingProviderLabel(providerType)} pricing was unavailable for scenario "${scenario.name}"; used manual tariff plan "${fallbackPlan.name}" instead.`
+        ]
+      };
+    };
     if (tariff.kind === 'manual' || tariff.planId || tariff.plan) {
-      const plan = tariff.plan
-        ? normalizeTariffPlanModel(tariff.plan, userConfig?.timezone || 'Australia/Sydney')
-        : normalizeTariffPlanModel(planIndex.get(String(tariff.planId || '')) || {}, userConfig?.timezone || 'Australia/Sydney');
+      const plan = resolvePlanModel(tariff.plan, tariff.planId);
       if (!plan.name) throw new Error(`Scenario "${scenario.name}" references a missing tariff plan`);
-      return buildManualTariffLookup(plan);
+      return {
+        lookup: buildManualTariffLookup(plan),
+        limitations: []
+      };
     }
 
     const providerType = String(tariff.provider || userConfig?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
     const tariffProvider = adapterRegistry.getTariffProvider(providerType);
     if (!tariffProvider || typeof tariffProvider.getHistoricalPrices !== 'function') {
+      const fallback = buildFallbackTariffResult(providerType);
+      if (fallback) return fallback;
       throw new Error(`Historical pricing is not available for provider: ${providerType}`);
     }
     const context = { userConfig, userId, actualOnly: true };
@@ -1312,17 +1348,29 @@ function createBacktestService(deps = {}) {
       context.siteId = tariff.siteIdOrRegion || tariff.siteId || userConfig?.amberSiteId || userConfig?.siteIdOrRegion;
     }
     const resolutionMinutes = providerType === 'aemo' ? 5 : 30;
-    const snapshot = await tariffProvider.getHistoricalPrices(
-      context,
-      `${startDate}T00:00:00.000Z`,
-      `${pricingEndDate}T23:59:59.999Z`,
-      resolutionMinutes
-    );
+    let snapshot = null;
+    try {
+      snapshot = await tariffProvider.getHistoricalPrices(
+        context,
+        `${startDate}T00:00:00.000Z`,
+        `${pricingEndDate}T23:59:59.999Z`,
+        resolutionMinutes
+      );
+    } catch (error) {
+      const fallback = buildFallbackTariffResult(providerType);
+      if (fallback) return fallback;
+      throw error;
+    }
     const intervals = Array.isArray(snapshot?.intervals) ? snapshot.intervals : [];
     if (intervals.length === 0) {
+      const fallback = buildFallbackTariffResult(providerType);
+      if (fallback) return fallback;
       throw new Error(`Historical pricing was unavailable for scenario "${scenario.name}" during ${startDate} to ${pricingEndDate}. Reconnect your tariff provider or use a manual tariff plan.`);
     }
-    return buildIntervalTariffLookup(intervals);
+    return {
+      lookup: buildIntervalTariffLookup(intervals),
+      limitations: []
+    };
   }
 
   async function fetchHistoricalInputs(userId, request) {
@@ -1412,8 +1460,13 @@ function createBacktestService(deps = {}) {
       ? [{ id: 'baseline', name: 'No automation', ruleSetSnapshot: normalizeRuleSetSnapshot({ source: 'baseline', rules: {} }), tariff: request.scenarios[0]?.tariff || null }].concat(request.scenarios)
       : request.scenarios.slice();
     const results = [];
+    const tariffLimitations = [];
     for (const scenario of scenarios) {
-      const tariffLookup = await buildScenarioTariffLookup(userId, inputs.userConfig, scenario, planIndex, request.period.startDate, inputs.pricingEndDate);
+      const tariffResult = await buildScenarioTariffLookup(userId, inputs.userConfig, scenario, planIndex, request.period.startDate, inputs.pricingEndDate);
+      const tariffLookup = tariffResult?.lookup || tariffResult;
+      if (Array.isArray(tariffResult?.limitations) && tariffResult.limitations.length > 0) {
+        tariffLimitations.push(...tariffResult.limitations);
+      }
       results.push(simulateRuleSet({
         scenario,
         userConfig: inputs.userConfig,
@@ -1428,7 +1481,7 @@ function createBacktestService(deps = {}) {
     }
     const baseline = results.find((entry) => entry.scenarioId === 'baseline') || null;
     const summaries = results.map((result) => buildScenarioSummary(result, baseline && result.scenarioId !== 'baseline' ? baseline : null));
-    const limitations = inputs.limitations.slice();
+    const limitations = inputs.limitations.slice().concat(tariffLimitations);
     if (summaries.some((entry) => entry.totalSupplyChargeAud === 0 && entry.scenarioId !== 'baseline')) {
       limitations.push('Provider-backed tariff comparisons exclude fixed daily supply charges unless you use a manual tariff plan');
     }

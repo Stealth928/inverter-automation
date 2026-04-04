@@ -62,6 +62,8 @@
             if (!tariff) return;
             if (tariff.plan?.name) names.push(tariff.plan.name);
             else if (tariff.planId && planMap.has(String(tariff.planId))) names.push(planMap.get(String(tariff.planId)));
+            else if (tariff.fallbackPlan?.name) names.push(tariff.fallbackPlan.name);
+            else if (tariff.fallbackPlanId && planMap.has(String(tariff.fallbackPlanId))) names.push(planMap.get(String(tariff.fallbackPlanId)));
         });
         return Array.from(new Set(names));
     }
