@@ -764,4 +764,104 @@ describe('backtest service helpers', () => {
 
     expect(emptyTariffProvider.getHistoricalPrices).toHaveBeenCalled();
   });
+
+  test('runBacktestAnalysis clamps weather look-ahead to the latest historical day', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-04T10:00:00Z'));
+    const getHistoricalWeather = jest.fn(async () => ({
+      hourly: { time: [] },
+      daily: { time: [] }
+    }));
+
+    try {
+      const service = createBacktestService({
+        adapterRegistry: {
+          getTariffProvider: jest.fn(() => null),
+          getDeviceProvider: jest.fn(() => null)
+        },
+        db: buildBacktestDbHarness().db,
+        foxessAPI: {
+          callFoxESSAPI: jest.fn(async () => ({
+            errno: 0,
+            result: [{ datas: [] }]
+          }))
+        },
+        getConfig: () => ({
+          automation: {
+            backtesting: {
+              replayIntervalMinutes: 5,
+              maxLookbackDays: 365,
+              maxScenarios: 3,
+              maxActiveRuns: 2,
+              maxSavedRuns: 5,
+              maxRunsPerDay: 5,
+              runTtlMs: 30 * 24 * 60 * 60 * 1000
+            }
+          }
+        }),
+        getHistoricalWeather,
+        getUserConfig: jest.fn(async () => ({
+          timezone: 'Australia/Sydney',
+          location: 'Sydney, Australia',
+          pricingProvider: 'amber',
+          deviceProvider: 'foxess',
+          deviceSn: 'FOX-SEED-1001',
+          batteryCapacityKWh: 10,
+          inverterCapacityW: 5000,
+          defaults: { minSocOnGrid: 20 },
+          automation: { blackoutWindows: [] }
+        })),
+        getUserRules: jest.fn(async () => ({}))
+      });
+
+      const result = await service.runBacktestAnalysis('user-1', {
+        period: {
+          startDate: '2026-03-06',
+          endDate: '2026-04-04'
+        },
+        includeBaseline: false,
+        scenarios: [{
+          id: 'current',
+          name: 'Current rules',
+          ruleSetSnapshot: {
+            source: 'current',
+            rules: {
+              weather_rule: {
+                name: 'Tomorrow weather check',
+                enabled: true,
+                conditions: {
+                  temperature: {
+                    enabled: true,
+                    type: 'forecastMax',
+                    operator: '>=',
+                    value: 25,
+                    dayOffset: 1
+                  }
+                }
+              }
+            }
+          },
+          tariff: {
+            kind: 'manual',
+            plan: {
+              name: 'Flat plan',
+              timezone: 'Australia/Sydney',
+              importWindows: [{ startTime: '00:00', endTime: '23:59', centsPerKwh: 20 }],
+              exportWindows: [{ startTime: '00:00', endTime: '23:59', centsPerKwh: 5 }]
+            }
+          }
+        }]
+      });
+
+      expect(getHistoricalWeather).toHaveBeenCalledWith(expect.objectContaining({
+        startDate: '2026-03-06',
+        endDate: '2026-04-04',
+        timezone: 'Australia/Sydney'
+      }));
+      expect(result.limitations).toContain(
+        'Weather forecast look-ahead near the end of the period was truncated because historical weather is only available through 2026-04-04.'
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
 });

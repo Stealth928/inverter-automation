@@ -78,6 +78,14 @@ function normalizeDateOnly(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
+function clampDateOnlyMax(dateOnly, maxDateOnly) {
+  const normalized = normalizeDateOnly(dateOnly);
+  const normalizedMax = normalizeDateOnly(maxDateOnly);
+  if (!normalized) return null;
+  if (!normalizedMax) return normalized;
+  return normalized > normalizedMax ? normalizedMax : normalized;
+}
+
 function addDaysToDateOnly(dateOnly, days = 0) {
   const normalized = normalizeDateOnly(dateOnly);
   if (!normalized) return null;
@@ -1017,6 +1025,12 @@ function summarizeConfidence(levels = []) {
   return current;
 }
 
+function resolveTimezoneOrFallback(timezone, fallbackTimezone = 'Australia/Sydney') {
+  const candidate = String(timezone || '').trim();
+  if (candidate && isValidTimezone(candidate)) return candidate;
+  return fallbackTimezone;
+}
+
 function createBacktestService(deps = {}) {
   const adapterRegistry = deps.adapterRegistry;
   const db = deps.db;
@@ -1144,7 +1158,7 @@ function createBacktestService(deps = {}) {
   async function normalizeCreateRequest(userId, request = {}) {
     const limits = getLimits();
     const userConfig = await getUserConfig(userId);
-    const timezone = String(userConfig?.timezone || 'Australia/Sydney').trim() || 'Australia/Sydney';
+    const timezone = resolveTimezoneOrFallback(userConfig?.timezone);
     const { startDate, endDate } = validateBacktestPeriod({
       startDate: request?.period?.startDate || request?.startDate,
       endDate: request?.period?.endDate || request?.endDate
@@ -1306,11 +1320,14 @@ function createBacktestService(deps = {}) {
 
   async function fetchHistoricalInputs(userId, request) {
     const userConfig = await getUserConfig(userId);
-    const timezone = String(userConfig?.timezone || request?.timezone || 'Australia/Sydney').trim() || 'Australia/Sydney';
+    const timezone = resolveTimezoneOrFallback(userConfig?.timezone || request?.timezone);
     const limits = getLimits();
     const replayGrid = buildReplayGrid(request.period, timezone, limits.replayIntervalMinutes);
-    const pricingEndDate = addDaysToDateOnly(request.period.endDate, Math.max(0, Math.ceil(Math.max(...request.scenarios.map((scenario) => getMaxForecastLookAheadMinutes(scenario.ruleSetSnapshot)), 0) / (24 * 60))));
-    const weatherEndDate = addDaysToDateOnly(request.period.endDate, Math.max(0, Math.max(...request.scenarios.map((scenario) => getMaxWeatherLookAheadDays(scenario.ruleSetSnapshot)), 1) - 1));
+    const latestHistoricalDate = localDateOnly(timezone, Date.now());
+    const rawPricingEndDate = addDaysToDateOnly(request.period.endDate, Math.max(0, Math.ceil(Math.max(...request.scenarios.map((scenario) => getMaxForecastLookAheadMinutes(scenario.ruleSetSnapshot)), 0) / (24 * 60))));
+    const rawWeatherEndDate = addDaysToDateOnly(request.period.endDate, Math.max(0, Math.max(...request.scenarios.map((scenario) => getMaxWeatherLookAheadDays(scenario.ruleSetSnapshot)), 1) - 1));
+    const pricingEndDate = clampDateOnlyMax(rawPricingEndDate, latestHistoricalDate);
+    const weatherEndDate = clampDateOnlyMax(rawWeatherEndDate, latestHistoricalDate);
     const weather = await getHistoricalWeather({
       place: userConfig?.location || userConfig?.preferences?.weatherPlace || 'Sydney, Australia',
       timezone,
@@ -1324,6 +1341,15 @@ function createBacktestService(deps = {}) {
     let historyPayload = null;
     let confidence = 'high';
     const limitations = [];
+
+    if (rawWeatherEndDate && weatherEndDate && rawWeatherEndDate > weatherEndDate) {
+      confidence = summarizeConfidence([confidence, 'medium']);
+      limitations.push(`Weather forecast look-ahead near the end of the period was truncated because historical weather is only available through ${weatherEndDate}.`);
+    }
+    if (rawPricingEndDate && pricingEndDate && rawPricingEndDate > pricingEndDate) {
+      confidence = summarizeConfidence([confidence, 'medium']);
+      limitations.push(`Price forecast look-ahead near the end of the period was truncated because historical pricing is only available through ${pricingEndDate}.`);
+    }
 
     if (provider === 'foxess') {
       const result = await fetchFoxessHistory(userConfig, userId, deviceContext.deviceId, replayGrid.startMs, replayGrid.endExclusiveMs);
