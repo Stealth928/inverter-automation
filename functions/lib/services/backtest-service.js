@@ -95,6 +95,11 @@ function addDaysToDateOnly(dateOnly, days = 0) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
+function getUtcDateOnly(timestampMs = Date.now()) {
+  const date = new Date(timestampMs);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
 function buildRequestHash(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value || {})).digest('hex').slice(0, 16);
 }
@@ -311,6 +316,7 @@ function sortedEnabledRules(ruleSetSnapshot = {}) {
 function getMaxForecastLookAheadMinutes(ruleSetSnapshot = {}) {
   let maxMinutes = 0;
   Object.values(ruleSetSnapshot.rules || {}).forEach((rule) => {
+    if (!rule || rule.enabled === false) return;
     const forecast = rule?.conditions?.forecastPrice;
     if (!forecast?.enabled) return;
     const lookAhead = toFiniteNumber(forecast.lookAhead, 30) || 30;
@@ -324,6 +330,7 @@ function getMaxForecastLookAheadMinutes(ruleSetSnapshot = {}) {
 function getMaxWeatherLookAheadDays(ruleSetSnapshot = {}) {
   let maxDays = 1;
   Object.values(ruleSetSnapshot.rules || {}).forEach((rule) => {
+    if (!rule || rule.enabled === false) return;
     const conditions = rule?.conditions || {};
     ['solarRadiation', 'cloudCover'].forEach((key) => {
       if (!conditions[key]?.enabled) return;
@@ -1323,7 +1330,7 @@ function createBacktestService(deps = {}) {
     const timezone = resolveTimezoneOrFallback(userConfig?.timezone || request?.timezone);
     const limits = getLimits();
     const replayGrid = buildReplayGrid(request.period, timezone, limits.replayIntervalMinutes);
-    const latestHistoricalDate = localDateOnly(timezone, Date.now());
+    const latestHistoricalDate = getUtcDateOnly(Date.now());
     const rawPricingEndDate = addDaysToDateOnly(request.period.endDate, Math.max(0, Math.ceil(Math.max(...request.scenarios.map((scenario) => getMaxForecastLookAheadMinutes(scenario.ruleSetSnapshot)), 0) / (24 * 60))));
     const rawWeatherEndDate = addDaysToDateOnly(request.period.endDate, Math.max(0, Math.max(...request.scenarios.map((scenario) => getMaxWeatherLookAheadDays(scenario.ruleSetSnapshot)), 1) - 1));
     const pricingEndDate = clampDateOnlyMax(rawPricingEndDate, latestHistoricalDate);
