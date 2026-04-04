@@ -1,0 +1,24 @@
+{
+  "deviceSn": "YOUR_DEVICE_SN",
+  "foxessToken": "YOUR_FOXESS_API_TOKEN",
+  "amberApiKey": "YOUR_AMBER_API_KEY",
+  "location": "Roselands, Australia",
+  "weatherPlace": "Roselands",
+  "timezone": "Australia/Sydney",
+  "inverterCapacityW": 10000,
+  "batteryCapacityKWh": 41.93,
+  "users": [
+    {
+      "uid": "seed-live-foxess",
+      "email": "live.test@gmail.com",
+      "displayName": "Live Test FoxESS",
+      "role": "user"
+    },
+    {
+      "uid": "seed-live-foxess-admin",
+      "email": "live.test.admin@gmail.com",
+      "displayName": "Live Test FoxESS Admin",
+      "role": "admin"
+    }
+  ]
+}

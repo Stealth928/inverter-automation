@@ -131,9 +131,17 @@ Useful commands:
 ```bash
 npm run emu:start
 npm run emu:seed
+npm run emu:seed:live
+npm run emu:reset:live
 npm run emu:status
 npm run emu:stop
 ```
+
+For local live FoxESS test users, copy
+`functions/scripts/emulator-live-user.local.example.json` to
+`functions/scripts/emulator-live-user.local.json`, fill in the real credentials
+locally, and use `npm run emu:reset:live`. The `.local.json` file is gitignored,
+and the `:live` commands fail fast if that file is missing.
 
 ## Verification Commands
 

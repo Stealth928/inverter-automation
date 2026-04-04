@@ -16,7 +16,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -33,44 +32,163 @@
     <link rel="stylesheet" href="css/tour.css?v=4">
     <style>
         /* Page-specific styles */
-        /* Main content */
-        .container {
-            max-width: 1400px;
+        .container.page-shell {
+            width: min(1400px, calc(100% - 32px));
             margin: 0 auto;
-            padding: 20px;
+            padding: var(--space-3xl) 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
         }
-        
+
         .page-header {
-            margin-bottom: 24px;
+            position: relative;
+            margin-bottom: 0;
+            padding: 28px;
+            border-radius: 24px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
+            background:
+                radial-gradient(circle at top left, color-mix(in srgb, var(--color-warning) 18%, transparent), transparent 34%),
+                radial-gradient(circle at bottom right, color-mix(in srgb, var(--accent-blue) 14%, transparent), transparent 42%),
+                linear-gradient(145deg, color-mix(in srgb, var(--bg-secondary) 96%, transparent), color-mix(in srgb, var(--bg-primary) 92%, transparent));
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
         }
-        .page-header h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
-            color: var(--accent);
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .page-header::before {
+            content: '';
+            position: absolute;
+            inset: auto -56px -104px auto;
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+            filter: blur(24px);
+            opacity: 0.76;
+            pointer-events: none;
         }
-        .page-header p {
-            color: var(--text-muted);
-            margin-top: 8px;
+        .page-masthead__copy,
+        .page-signal-grid {
+            position: relative;
+            z-index: 1;
+        }
+        .page-header .page-title {
+            margin: 0;
+        }
+        .page-header .page-subtitle {
+            max-width: 760px;
+            margin-top: 10px;
             font-size: 14px;
+            line-height: 1.7;
+        }
+        .page-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+            color: color-mix(in srgb, var(--color-warning) 84%, white);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .masthead-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid color-mix(in srgb, var(--color-warning) 28%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 12%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--color-warning) 12%, transparent), transparent 48%);
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+        .masthead-note__icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 11px;
+            border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+            background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+            color: var(--color-warning);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .masthead-note__icon svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .masthead-note strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+        }
+        .page-signal-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            width: min(440px, 100%);
+        }
+        .page-signal-card {
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 48%);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+        }
+        .page-signal-label {
+            margin-bottom: 8px;
+            color: var(--color-warning);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .page-signal-card strong {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .page-signal-card p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.65;
         }
         
         /* Cards */
         .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: var(--gradient-card);
+            border: 1px solid var(--border-secondary);
             border-radius: 12px;
             margin-bottom: 20px;
             overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
+            box-shadow: var(--shadow-lg);
         }
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             background: var(--bg-overlay);
         }
         .card-title {
@@ -84,20 +202,106 @@
         .card-body {
             padding: 20px;
         }
+        .section-card {
+            height: 100%;
+        }
+        .card-header-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+        }
+        .card-kicker {
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .section-title {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            min-width: 0;
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 68%, transparent);
+            background:
+                radial-gradient(circle at 24% 18%, color-mix(in srgb, white 24%, transparent), transparent 42%),
+                linear-gradient(165deg, #173661 0%, #10284a 56%, #0d203d 100%);
+            color: var(--accent-blue);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow:
+                inset 0 1px 0 color-mix(in srgb, white 18%, transparent),
+                0 10px 18px -14px rgba(9, 23, 45, 0.72);
+        }
+        .section-icon--pricing {
+            color: #ffc56d;
+            border-color: color-mix(in srgb, var(--color-warning) 32%, transparent);
+        }
+        .section-icon--reports {
+            color: #8ed0ff;
+        }
+        .section-icon--generation {
+            color: #ffe27d;
+            border-color: color-mix(in srgb, var(--color-yellow) 32%, transparent);
+        }
+        .section-icon--raw {
+            color: #d9dee7;
+        }
+        .section-icon svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .card-meta {
+            color: var(--text-muted);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .card-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .reports-grid {
+            display: grid;
+            gap: 20px;
+        }
+        .reports-grid--top {
+            grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+        }
+        .reports-grid--bottom {
+            grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+        }
+        .coverage-grid--hero {
+            margin-bottom: 0;
+        }
         
         /* Controls row */
         .controls-row {
             display: flex;
             flex-wrap: wrap;
             gap: 12px;
-            /* Align controls to the bottom so buttons line up with inputs */
             align-items: flex-end;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
         }
         .control-group {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 6px;
         }
         .control-group label {
             font-size: 11px;
@@ -109,16 +313,18 @@
         /* Inputs */
         .input, select {
             background: var(--bg-input);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-primary);
             color: var(--text);
             padding: 8px 12px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 13px;
             outline: none;
-            transition: border-color 0.2s;
+            transition: all 0.2s ease;
+            font-family: inherit;
         }
         .input:focus, select:focus {
-            border-color: var(--accent);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg);
         }
         select {
             cursor: pointer;
@@ -126,23 +332,35 @@
         
         /* Buttons */
         .btn {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+            border: 1px solid var(--border-primary);
             color: var(--text);
             padding: 10px 18px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            font-family: inherit;
         }
-        .btn:hover { background: var(--border-primary); }
+        .btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--border-accent);
+            transform: translateY(-1px);
+        }
+        .btn:active { transform: translateY(0); }
         .btn:disabled {
-            opacity: 0.5;
+            opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
+        }
+        .btn:disabled:hover {
+            background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+            border-color: var(--border-primary);
+            transform: none;
         }
         .btn-primary {
             background: var(--gradient-success);
@@ -206,7 +424,7 @@
         .data-table th, .data-table td {
             padding: 10px 12px;
             text-align: left;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--border-secondary);
         }
         .data-table th {
             background: var(--bg-overlay);
@@ -235,10 +453,14 @@
         }
         .stat-box {
             background: var(--bg-overlay);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            border: 1px solid var(--border-secondary);
+            border-radius: 10px;
             padding: 14px;
             text-align: center;
+            transition: border-color 0.2s ease;
+        }
+        .stat-box:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 24%, transparent);
         }
         .stat-box .label {
             font-size: 11px;
@@ -287,10 +509,14 @@
         }
 
         .coverage-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: var(--gradient-card);
+            border: 1px solid var(--border-secondary);
             border-radius: 10px;
             padding: 14px;
+            transition: border-color 0.2s ease;
+        }
+        .coverage-card:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 24%, transparent);
         }
 
         .coverage-card .label {
@@ -366,9 +592,13 @@
 
         .insight-card {
             background: var(--bg-overlay);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            border: 1px solid var(--border-secondary);
+            border-radius: 10px;
             padding: 14px;
+            transition: border-color 0.2s ease;
+        }
+        .insight-card:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 24%, transparent);
         }
 
         .insight-card .label {
@@ -407,54 +637,101 @@
             font-size: 14px;
         }
         
+        .context-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 22%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 9%, transparent), color-mix(in srgb, var(--bg-overlay) 94%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 14%, transparent), transparent 44%);
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.65;
+        }
+        .context-note--warning {
+            border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 10%, transparent), color-mix(in srgb, var(--bg-overlay) 94%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--color-warning) 14%, transparent), transparent 44%);
+            color: var(--text-secondary);
+        }
+        .context-note strong {
+            color: var(--text-primary);
+        }
+
         /* Tabs */
         .tabs {
             display: flex;
             gap: 4px;
             margin-bottom: 16px;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--border-secondary);
             padding-bottom: 4px;
         }
         .tab {
             padding: 8px 16px;
             background: transparent;
             border: none;
-            color: var(--text-muted);
+            color: var(--text-secondary);
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
-            border-radius: 6px 6px 0 0;
-            transition: all 0.2s;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
         }
-        .tab:hover { color: var(--text); background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+        .tab:hover {
+            color: var(--text-primary);
+            background: color-mix(in srgb, var(--accent-blue) 6%, transparent);
+        }
         .tab.active {
-            color: var(--accent);
+            color: var(--accent-blue);
             background: var(--accent-blue-bg);
-            border-bottom: 2px solid var(--accent);
+            border-bottom: 2px solid var(--accent-blue);
         }
         
         /* Responsive */
+        @media (max-width: 1100px) {
+            .page-signal-grid {
+                width: 100%;
+            }
+            .reports-grid--top,
+            .reports-grid--bottom {
+                grid-template-columns: 1fr;
+            }
+        }
         @media (max-width: 768px) {
+            .container.page-shell {
+                width: min(100% - 24px, 100%);
+                padding-top: 18px;
+            }
+            .page-header {
+                padding: 20px 18px;
+                border-radius: 20px;
+            }
+            .page-signal-grid {
+                grid-template-columns: 1fr;
+            }
+            .card-header {
+                align-items: flex-start;
+            }
+            .card-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
             .controls-row { flex-direction: column; align-items: stretch; }
             .chart-container { height: 250px; }
-            nav { flex-wrap: wrap; gap: 8px; }
         }
-        
-        /* Info banner */
-        .info-banner {
-            background: var(--accent-blue-bg);
-            border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 13px;
+        @media (max-width: 540px) {
+            .masthead-note {
+                flex-direction: column;
+            }
+            .card-meta {
+                white-space: normal;
+            }
         }
-        .info-banner .icon { font-size: 18px; }
-        .info-banner .text { color: var(--text-muted); }
-        .info-banner strong { color: var(--text); }
         
         /* Automation History Timeline */
         .automation-timeline {
@@ -713,233 +990,333 @@
     </div>
 
     <div class="container page-shell">
-        <div class="page-header">
-            <h1>📊 Reports & Insights</h1>
-            <p>Cross-provider performance, pricing, and diagnostics in one place. Data is fetched on-demand and clearly labelled when it is exact, estimated, derived, or unavailable.</p>
-        </div>
-
-        <div class="info-banner" id="reportsCoverageBanner">
-            <div class="icon">🧭</div>
-            <div class="text">
-                <strong id="reportsCoverageTitle">Cross-provider reporting</strong>
-                <span id="reportsCoverageText">Loading provider coverage and pricing context…</span>
-            </div>
-        </div>
-
-        <div id="reportsCoverageGrid" class="coverage-grid"></div>
-
-        <!-- Amber Historical Prices Section -->
-        <div class="card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title" id="pricingCardTitle">💰 Pricing History</div>
-                    <div class="card-subtitle" id="pricingCardSubtitle">Actual buy and export prices for your configured pricing provider.</div>
+        <div class="page-header page-masthead">
+            <div class="page-masthead__copy">
+                <div class="page-eyebrow">Diagnostics and reporting</div>
+                <h1 class="page-title">Reports & Insights</h1>
+                <p class="page-subtitle">Cross-provider performance, pricing, and diagnostics in one place. Data is fetched on-demand and clearly labeled when it is exact, estimated, derived, or unavailable.</p>
+                <div class="masthead-note" id="reportsCoverageBanner">
+                    <div class="masthead-note__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 21a8 8 0 1 0-8-8"></path>
+                            <path d="M12 3a8 8 0 0 1 8 8"></path>
+                            <path d="M12 11l3 3"></path>
+                            <path d="M12 11l-4 6"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <strong id="reportsCoverageTitle">Cross-provider reporting</strong>
+                        <span id="reportsCoverageText">Loading provider coverage and pricing context…</span>
+                    </div>
                 </div>
-                <div style="font-size:11px;color:var(--text-muted)" id="pricesTimestamp">Not loaded</div>
             </div>
-            <div class="card-body">
-                <div class="controls-row">
-                    <div class="control-group" style="min-width:120px">
-                        <label>Start Date</label>
-                        <input type="date" id="priceStartDate" class="input" />
+            <div class="page-signal-grid">
+                <div class="page-signal-card">
+                    <div class="page-signal-label">Pricing</div>
+                    <strong>Retail and market tariffs render with the same shell.</strong>
+                    <p>Amber and AEMO pricing stay visually comparable so trends are easier to interpret.</p>
+                </div>
+                <div class="page-signal-card">
+                    <div class="page-signal-label">Device data</div>
+                    <strong>Power history, reports, and generation stay in one workspace.</strong>
+                    <p>Move from live inverter behaviour to period summaries without jumping between tools.</p>
+                </div>
+                <div class="page-signal-card">
+                    <div class="page-signal-label">Trust layer</div>
+                    <strong>Data provenance is visible before you use the numbers.</strong>
+                    <p>Exact, estimated, derived, and unavailable values are surfaced as part of the UI rather than hidden in docs.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="reportsCoverageGrid" class="coverage-grid coverage-grid--hero"></div>
+
+        <div class="reports-grid reports-grid--top">
+            <div class="card section-card section-card--pricing">
+                <div class="card-header">
+                    <div class="card-header-group">
+                        <div class="card-kicker">Retail and market pricing</div>
+                        <div class="section-title">
+                            <span class="section-icon section-icon--pricing" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 3v18"></path>
+                                    <path d="M17 7.5c0-1.9-2.24-3.5-5-3.5s-5 1.6-5 3.5 1.8 2.9 5 3.5 5 1.6 5 3.5-2.24 3.5-5 3.5-5-1.6-5-3.5"></path>
+                                </svg>
+                            </span>
+                            <div>
+                                <div class="card-title" id="pricingCardTitle">Pricing History</div>
+                                <div class="card-subtitle" id="pricingCardSubtitle">Actual buy and export prices for your configured pricing provider.</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="control-group" style="min-width:120px">
-                        <label>End Date</label>
-                        <input type="date" id="priceEndDate" class="input" />
+                    <div class="card-meta" id="pricesTimestamp">Not loaded</div>
+                </div>
+                <div class="card-body">
+                    <div class="controls-row">
+                        <div class="control-group" style="min-width:120px">
+                            <label>Start Date</label>
+                            <input type="date" id="priceStartDate" class="input" />
+                        </div>
+                        <div class="control-group" style="min-width:120px">
+                            <label>End Date</label>
+                            <input type="date" id="priceEndDate" class="input" />
+                        </div>
+                        <div class="control-group">
+                            <label>Resolution</label>
+                            <select id="priceResolution" class="input">
+                                <option value="5">5-minute</option>
+                                <option value="30" selected>30-minute</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="fetchAmberHistoricalPrices()" id="btnFetchPrices" data-analytics-event="history_fetch_prices" data-analytics-location="amber_history_card">
+                            Load prices
+                        </button>
                     </div>
-                    <div class="control-group">
-                        <label>Resolution</label>
-                        <select id="priceResolution" class="input">
-                            <option value="5">5-minute</option>
-                            <option value="30" selected>30-minute</option>
-                        </select>
+
+                    <div id="pricesStatus" class="status"></div>
+
+                    <div id="pricesStats" style="display:none;margin-bottom:16px">
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="label">Buy Price (Min)</div>
+                                <div><span class="value" id="statBuyMin" style="color:var(--color-success)">—</span><span class="unit">¢</span></div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="label">Buy Price (Avg)</div>
+                                <div><span class="value" id="statBuyAvg">—</span><span class="unit">¢</span></div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="label">Buy Price (Max)</div>
+                                <div><span class="value" id="statBuyMax" style="color:var(--color-danger)">—</span><span class="unit">¢</span></div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="label">Feed-in (Min)</div>
+                                <div><span class="value" id="statFeedMin" style="color:var(--color-danger)">—</span><span class="unit">¢</span></div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="label">Feed-in (Avg)</div>
+                                <div><span class="value" id="statFeedAvg">—</span><span class="unit">¢</span></div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="label">Feed-in (Max)</div>
+                                <div><span class="value" id="statFeedMax" style="color:var(--color-success)">—</span><span class="unit">¢</span></div>
+                            </div>
+                        </div>
                     </div>
-                    <button class="btn btn-primary" onclick="fetchAmberHistoricalPrices()" id="btnFetchPrices" data-analytics-event="history_fetch_prices" data-analytics-location="amber_history_card">
-                        📈 Fetch Prices
+
+                    <div class="chart-container">
+                        <canvas id="amberHistoricalChart"></canvas>
+                    </div>
+
+                    <div id="pricesContent">
+                        <div class="empty-state">
+                            <div class="icon">💰</div>
+                            <p>Select a date range and click "Load prices" to view historical pricing</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card section-card section-card--history">
+                <div class="card-header">
+                    <div class="card-header-group">
+                        <div class="card-kicker">Power behaviour</div>
+                        <div class="section-title">
+                            <span class="section-icon section-icon--reports" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M4 19h16"></path>
+                                    <path d="M7 16V9"></path>
+                                    <path d="M12 16V5"></path>
+                                    <path d="M17 16v-4"></path>
+                                </svg>
+                            </span>
+                            <div>
+                                <div class="card-title">Real-time history</div>
+                                <div class="card-subtitle">Time-series power data for solar, feed-in, import, and house load, tuned for quick diagnosis.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-meta" id="historyTimestamp">Not loaded</div>
+                </div>
+                <div class="card-body">
+                    <div class="context-note context-note--warning">
+                        <strong>API usage:</strong> Ranges over 24 hours require multiple upstream calls. Results are cached for 30 days to reduce repeat fetches and keep the installed PWA responsive.
+                    </div>
+                    <div class="controls-row">
+                        <div class="control-group">
+                            <label>Time Range</label>
+                            <select id="historyRange">
+                                <option value="6">Last 6 hours</option>
+                                <option value="12">Last 12 hours</option>
+                                <option value="24" selected>Last 24 hours</option>
+                                <option value="48">Last 48 hours</option>
+                                <option value="168">Last 7 days ⚠️</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="fetchHistory()" id="btnFetchHistory" data-analytics-event="history_fetch_log" data-analytics-location="realtime_history_card">
+                            Load history
+                        </button>
+                        <button class="btn btn-secondary" onclick="toggleHistoryVariables()" id="btnToggleVariables" style="display:none;">
+                            Show all variables
+                        </button>
+                    </div>
+
+                    <div id="historyStatus" class="status"></div>
+
+                    <div id="historyContent">
+                        <div class="empty-state">
+                            <div class="icon">📊</div>
+                            <p>Click "Load history" to fetch inverter time-series data</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="reports-grid reports-grid--bottom">
+            <div class="card section-card section-card--reports">
+                <div class="card-header">
+                    <div class="card-header-group">
+                        <div class="card-kicker">Period summaries</div>
+                        <div class="section-title">
+                            <span class="section-icon section-icon--reports" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M8 2v4"></path>
+                                    <path d="M16 2v4"></path>
+                                    <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                                    <path d="M3 10h18"></path>
+                                </svg>
+                            </span>
+                            <div>
+                                <div class="card-title">Energy reports</div>
+                                <div class="card-subtitle">Normalized daily and monthly totals with quality badges and higher-level energy insights.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-meta" id="reportTimestamp">Not loaded</div>
+                </div>
+                <div class="card-body">
+                    <div class="controls-row">
+                        <div class="control-group">
+                            <label>Report Type</label>
+                            <select id="reportDimension">
+                                <option value="month">Daily (this month)</option>
+                                <option value="year">Monthly (this year)</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label>Year</label>
+                            <select id="reportYear"></select>
+                        </div>
+                        <div class="control-group" id="reportMonthGroup">
+                            <label>Month</label>
+                            <select id="reportMonth">
+                                <option value="1">January</option>
+                                <option value="2">February</option>
+                                <option value="3">March</option>
+                                <option value="4">April</option>
+                                <option value="5">May</option>
+                                <option value="6">June</option>
+                                <option value="7">July</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-accent" onclick="fetchReport()" id="btnFetchReport" data-analytics-event="history_fetch_report" data-analytics-location="energy_reports_card">
+                            Load report
+                        </button>
+                    </div>
+
+                    <div id="reportControlHint" class="section-note">Daily view shows day-by-day totals for one month. Monthly view shows month-by-month totals for one year.</div>
+
+                    <div id="reportStatus" class="status"></div>
+
+                    <div id="reportContent">
+                        <div class="empty-state">
+                            <div class="icon">📅</div>
+                            <p>Click "Load report" to fetch aggregated energy data</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card section-card section-card--generation">
+                <div class="card-header">
+                    <div class="card-header-group">
+                        <div class="card-kicker">Production totals</div>
+                        <div class="section-title">
+                            <span class="section-icon section-icon--generation" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="4"></circle>
+                                    <path d="M12 2v3"></path>
+                                    <path d="M12 19v3"></path>
+                                    <path d="M4.93 4.93l2.12 2.12"></path>
+                                    <path d="M16.95 16.95l2.12 2.12"></path>
+                                    <path d="M2 12h3"></path>
+                                    <path d="M19 12h3"></path>
+                                    <path d="M4.93 19.07l2.12-2.12"></path>
+                                    <path d="M16.95 7.05l2.12-2.12"></path>
+                                </svg>
+                            </span>
+                            <div>
+                                <div class="card-title">Generation summary</div>
+                                <div class="card-subtitle">Current period generation plus provider-reported year and lifetime totals where available.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-meta" id="generationTimestamp">Not loaded</div>
+                </div>
+                <div class="card-body">
+                    <div class="controls-row">
+                        <button class="btn btn-primary" onclick="fetchGeneration()" id="btnFetchGeneration" data-analytics-event="history_fetch_generation" data-analytics-location="generation_summary_card">
+                            Load generation
+                        </button>
+                    </div>
+
+                    <div id="generationStatus" class="status"></div>
+
+                    <div id="generationContent">
+                        <div class="empty-state">
+                            <div class="icon">🌞</div>
+                            <p>Click "Load generation" to fetch generation statistics</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card section-card section-card--raw">
+            <div class="card-header">
+                <div class="card-header-group">
+                    <div class="card-kicker">Troubleshooting surface</div>
+                    <div class="section-title">
+                        <span class="section-icon section-icon--raw" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2v4"></path>
+                                <path d="M12 18v4"></path>
+                                <path d="M4.93 4.93l2.12 2.12"></path>
+                                <path d="M16.95 16.95l2.12 2.12"></path>
+                                <path d="M2 12h4"></path>
+                                <path d="M18 12h4"></path>
+                                <path d="M4.93 19.07l2.12-2.12"></path>
+                                <path d="M16.95 7.05l2.12-2.12"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </span>
+                        <div>
+                            <div class="card-title">Diagnostics: raw data viewer</div>
+                            <div class="card-subtitle">Inspect the latest payload when you need troubleshooting detail beyond the presentation layer.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn" onclick="toggleRawData()" style="font-size:11px;padding:6px 12px">
+                        Toggle raw JSON
                     </button>
                 </div>
-
-                <div id="pricesStatus" class="status"></div>
-
-                <div id="pricesStats" style="display:none;margin-bottom:16px">
-                    <div class="stats-grid">
-                        <div class="stat-box">
-                            <div class="label">Buy Price (Min)</div>
-                            <div><span class="value" id="statBuyMin" style="color:var(--color-success)">—</span><span class="unit">¢</span></div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="label">Buy Price (Avg)</div>
-                            <div><span class="value" id="statBuyAvg">—</span><span class="unit">¢</span></div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="label">Buy Price (Max)</div>
-                            <div><span class="value" id="statBuyMax" style="color:var(--color-danger)">—</span><span class="unit">¢</span></div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="label">Feed-in (Min)</div>
-                            <div><span class="value" id="statFeedMin" style="color:var(--color-danger)">—</span><span class="unit">¢</span></div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="label">Feed-in (Avg)</div>
-                            <div><span class="value" id="statFeedAvg">—</span><span class="unit">¢</span></div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="label">Feed-in (Max)</div>
-                            <div><span class="value" id="statFeedMax" style="color:var(--color-success)">—</span><span class="unit">¢</span></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="chart-container">
-                    <canvas id="amberHistoricalChart"></canvas>
-                </div>
-
-                <div id="pricesContent">
-                    <div class="empty-state">
-                        <div class="icon">💰</div>
-                        <p>Select a date range and click "Fetch Prices" to view historical Amber prices</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- History Section (24h time-series) -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">⚡ Real-Time History (Last 24 Hours)</div>
-                <div style="font-size:11px;color:var(--text-muted)" id="historyTimestamp">Not loaded</div>
-            </div>
-            <div class="card-body">
-                <div style="padding: 12px; background: color-mix(in srgb, var(--color-warning) 15%, transparent); border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent); border-radius: 6px; margin-bottom: 16px; font-size: 13px; color: var(--color-warning);">
-                    <strong>⚠️ API Usage Note:</strong> Ranges >24h require multiple API calls (48h=2, 7 days=7). Results are cached for 30 days to minimize repeat calls.
-                </div>
-                <div class="controls-row">
-                    <div class="control-group">
-                        <label>Time Range</label>
-                        <select id="historyRange">
-                            <option value="6">Last 6 hours</option>
-                            <option value="12">Last 12 hours</option>
-                            <option value="24" selected>Last 24 hours</option>
-                            <option value="48">Last 48 hours</option>
-                            <option value="168">Last 7 days ⚠️</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-primary" onclick="fetchHistory()" id="btnFetchHistory" data-analytics-event="history_fetch_log" data-analytics-location="realtime_history_card">
-                        📈 Fetch History Data
-                    </button>
-                    <button class="btn btn-secondary" onclick="toggleHistoryVariables()" id="btnToggleVariables" style="display:none;">
-                        🔍 Show All Variables
-                    </button>
-                    <!-- Test Data button removed (mock endpoint disabled) -->
-                </div>
-                
-                <div id="historyStatus" class="status"></div>
-                
-                <div id="historyContent">
-                    <div class="empty-state">
-                        <div class="icon">📊</div>
-                        <p>Click "Fetch History Data" to load inverter time-series data</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Reports Section (Aggregated) -->
-        <div class="card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title">📅 Energy Reports</div>
-                    <div class="card-subtitle">Normalized daily and monthly energy totals with cross-provider quality badges and higher-level insights.</div>
-                </div>
-                <div style="font-size:11px;color:var(--text-muted)" id="reportTimestamp">Not loaded</div>
-            </div>
-            <div class="card-body">
-                <div class="controls-row">
-                    <div class="control-group">
-                        <label>Report Type</label>
-                        <select id="reportDimension">
-                            <option value="month">Daily (this month)</option>
-                            <option value="year">Monthly (this year)</option>
-                        </select>
-                    </div>
-                    <div class="control-group">
-                        <label>Year</label>
-                        <select id="reportYear"></select>
-                    </div>
-                    <div class="control-group" id="reportMonthGroup">
-                        <label>Month</label>
-                        <select id="reportMonth">
-                            <option value="1">January</option>
-                            <option value="2">February</option>
-                            <option value="3">March</option>
-                            <option value="4">April</option>
-                            <option value="5">May</option>
-                            <option value="6">June</option>
-                            <option value="7">July</option>
-                            <option value="8">August</option>
-                            <option value="9">September</option>
-                            <option value="10">October</option>
-                            <option value="11">November</option>
-                            <option value="12">December</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-accent" onclick="fetchReport()" id="btnFetchReport" data-analytics-event="history_fetch_report" data-analytics-location="energy_reports_card">
-                        📊 Fetch Report
-                    </button>
-                </div>
-
-                <div id="reportControlHint" class="section-note">Daily view shows day-by-day totals for one month. Monthly view shows month-by-month totals for one year.</div>
-                
-                <div id="reportStatus" class="status"></div>
-                
-                <div id="reportContent">
-                    <div class="empty-state">
-                        <div class="icon">📅</div>
-                        <p>Click "Fetch Report" to load aggregated energy data</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Generation Summary -->
-        <div class="card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title">🌞 Generation Summary</div>
-                    <div class="card-subtitle">Current-period generation plus provider-reported year and lifetime totals where available.</div>
-                </div>
-                <div style="font-size:11px;color:var(--text-muted)" id="generationTimestamp">Not loaded</div>
-            </div>
-            <div class="card-body">
-                <div class="controls-row">
-                    <button class="btn btn-primary" onclick="fetchGeneration()" id="btnFetchGeneration" data-analytics-event="history_fetch_generation" data-analytics-location="generation_summary_card">
-                        🔋 Fetch Generation Data
-                    </button>
-                </div>
-                
-                <div id="generationStatus" class="status"></div>
-                
-                <div id="generationContent">
-                    <div class="empty-state">
-                        <div class="icon">🌞</div>
-                        <p>Click "Fetch Generation Data" to load lifetime generation statistics</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-
-        <!-- Raw Data Viewer -->
-        <div class="card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title">🛠 Diagnostics: Raw Data Viewer</div>
-                    <div class="card-subtitle">Inspect the last payload when you need troubleshooting detail beyond the presentation layer.</div>
-                </div>
-                <button class="btn" onclick="toggleRawData()" style="font-size:11px;padding:6px 12px">
-                    Toggle Raw JSON
-                </button>
             </div>
             <div class="card-body">
                 <div id="rawDataContent" style="display:none">

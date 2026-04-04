@@ -468,12 +468,20 @@ async function stopEmulators() {
 }
 
 async function seedEmulators({ requireSetupStatus = false } = {}) {
+  const requireLiveUsers = /^(1|true|yes|on)$/i.test(
+    String(process.env.EMULATOR_REQUIRE_LIVE_USERS || '').trim()
+  );
   const env = {
     ...buildEmulatorEnv(),
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
     FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
-    GCLOUD_PROJECT: process.env.GCLOUD_PROJECT || DEFAULT_PROJECT
+    GCLOUD_PROJECT: process.env.GCLOUD_PROJECT || DEFAULT_PROJECT,
+    ...(requireLiveUsers ? { EMULATOR_REQUIRE_LIVE_USERS: '1' } : {})
   };
+
+  if (requireLiveUsers) {
+    log('Live-user seed file is required for this run.');
+  }
 
   runNodeScript(path.join('functions', 'scripts', 'clear-firestore.js'), env, 'clear-firestore');
   runNodeScript(path.join('functions', 'scripts', 'seed-emulator-state.js'), env, 'seed-emulator-state');
@@ -507,9 +515,15 @@ async function printStatus() {
 }
 
 async function main() {
-  const command = (process.argv[2] || 'reset').toLowerCase();
+  const args = process.argv.slice(2);
+  const command = (args.find((arg) => !String(arg).startsWith('-')) || 'reset').toLowerCase();
+  const requireLiveUsers = args.includes('--require-live-users');
 
   try {
+    if (requireLiveUsers) {
+      process.env.EMULATOR_REQUIRE_LIVE_USERS = '1';
+    }
+
     if (command === 'start') {
       await startEmulators();
       await seedEmulators({ requireSetupStatus: false });

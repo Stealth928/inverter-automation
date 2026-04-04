@@ -689,35 +689,36 @@
                     </div>
                 </div>
                 
-                <div class="info-banner" style="background: rgba(88,166,255,0.08); border-color: rgba(88,166,255,0.2);">
-                    <span class="icon">🧮</span>
-                    <div class="text">
+                <div class="roi-info-band roi-info-band--value">
+                    <span class="roi-info-band__icon" aria-hidden="true">🧮</span>
+                    <div>
                         <strong>Value breakdown:</strong> Import avoidance ${escHtml(formatSignedAud(totalImportAvoidanceAud))} • Export capture ${escHtml(formatSignedAud(totalExportCaptureAud))} • Charge cost / gain ${escHtml(formatSignedAud(totalChargeImpactAud))}
                     </div>
                 </div>
 
-                <div class="info-banner" style="background: rgba(126,231,135,0.08); border-color: rgba(126,231,135,0.2);">
-                    <span class="icon">💡</span>
-                    <div class="text">
+                <div class="roi-info-band roi-info-band--model">
+                    <span class="roi-info-band__icon" aria-hidden="true">💡</span>
+                    <div>
                         <strong>Impact model:</strong> Charge uses requested charge power only. Discharge values energy sent to the home at buy price and any exported energy at feed-in price. Accuracy for ${escHtml(providerCapabilities.label || 'this provider')}: ${escHtml(providerCapabilities.roiAccuracyLabel || 'Provisional')}.
                     </div>
                 </div>
-                
-                <table class="roi-summary-table" id="roiTable">
-                    <thead>
-                        <tr>
-                            <th data-column="ruleName">Rule</th>
-                            <th data-column="ruleType">Rule Type</th>
-                            <th data-column="rulePowerKw">Requested Power (kW)</th>
-                            <th data-column="houseLoadKw">House Load (kW)</th>
-                            <th data-column="startTime">Triggered At</th>
-                            <th data-column="duration">Duration</th>
-                            <th data-column="price">Price Basis</th>
-                            <th data-column="profit">Est. Impact</th>
-                            <th data-column="status">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+
+                <div class="roi-summary-table-shell">
+                    <table class="roi-summary-table" id="roiTable">
+                        <thead>
+                            <tr>
+                                <th data-column="ruleName">Rule</th>
+                                <th data-column="ruleType">Rule Type</th>
+                                <th data-column="rulePowerKw">Requested Power (kW)</th>
+                                <th data-column="houseLoadKw">House Load (kW)</th>
+                                <th data-column="startTime">Triggered At</th>
+                                <th data-column="duration">Duration</th>
+                                <th data-column="price">Price Basis</th>
+                                <th data-column="profit">Est. Impact</th>
+                                <th data-column="status">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
             `;            
             let priceIndex = 0;
             for (const event of events) {
@@ -775,8 +776,9 @@
             }
             
             html += `
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             `;
             
             content.innerHTML = html;
@@ -868,7 +870,7 @@
             
             if (btn) {
                 btn.disabled = true;
-                btn.innerHTML = '⏳ Loading...';
+                btn.innerHTML = 'Loading...';
             }
             
             showStatus(status, 'loading', 'Fetching automation rule history...');
@@ -912,7 +914,7 @@
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = '🔄 Refresh';
+                    btn.innerHTML = 'Refresh';
                 }
             }
         }

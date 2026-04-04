@@ -493,4 +493,33 @@ test.describe('ROI Page', () => {
     await expect(page.locator('#roiBacktestsCard')).toContainText(/Confidence:\s*medium/i);
     await expect(page.locator('#roiBacktestsCard select[data-filter="period"]')).not.toContainText('365 days');
   });
+
+  test('keeps ROI masthead and live cards within mobile viewport and preserves PWA metadata', async ({ page }) => {
+    await mockRoiApi(page, { deviceProvider: 'foxess' });
+    await page.goto('/roi.html');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForLoadState('networkidle');
+
+    const mobileLayout = await page.evaluate(() => {
+      const masthead = document.querySelector('.page-masthead');
+      const roiCard = document.querySelector('[data-card="roi-calculator"]');
+      const historyCard = document.querySelector('[data-card="automation-history"]');
+      return {
+        viewportWidth: window.innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        mastheadRight: masthead ? Math.ceil(masthead.getBoundingClientRect().right) : 0,
+        roiCardRight: roiCard ? Math.ceil(roiCard.getBoundingClientRect().right) : 0,
+        historyCardRight: historyCard ? Math.ceil(historyCard.getBoundingClientRect().right) : 0
+      };
+    });
+
+    expect(mobileLayout.pageScrollWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.mastheadRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.roiCardRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.historyCardRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+    await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+    await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+  });
 });

@@ -9,6 +9,9 @@ const TEST_PASSWORD = '123456';
 const OPTIONAL_LIVE_FOXESS_SEED_PATH = process.env.EMULATOR_LIVE_USER_CONFIG_PATH
   ? path.resolve(process.env.EMULATOR_LIVE_USER_CONFIG_PATH)
   : path.join(__dirname, 'emulator-live-user.local.json');
+const REQUIRE_OPTIONAL_LIVE_FOXESS_SEEDS = /^(1|true|yes|on)$/i.test(
+  String(process.env.EMULATOR_REQUIRE_LIVE_USERS || '').trim()
+);
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) {
@@ -170,6 +173,11 @@ function buildOptionalLiveFoxessSeedUsers(seedConfig = {}) {
 
 function loadOptionalLiveFoxessSeedUsers() {
   if (!fs.existsSync(OPTIONAL_LIVE_FOXESS_SEED_PATH)) {
+    if (REQUIRE_OPTIONAL_LIVE_FOXESS_SEEDS) {
+      throw new Error(
+        `Required local live-user seed file is missing: ${OPTIONAL_LIVE_FOXESS_SEED_PATH}`
+      );
+    }
     return [];
   }
 
@@ -192,6 +200,17 @@ function loadOptionalLiveFoxessSeedUsers() {
 function loadOptionalLiveFoxessSeedUser() {
   const users = loadOptionalLiveFoxessSeedUsers();
   return users[0] || null;
+}
+
+function getOptionalLiveFoxessSeedStatus() {
+  const exists = fs.existsSync(OPTIONAL_LIVE_FOXESS_SEED_PATH);
+  const users = exists ? loadOptionalLiveFoxessSeedUsers() : [];
+  return {
+    path: OPTIONAL_LIVE_FOXESS_SEED_PATH,
+    exists,
+    required: REQUIRE_OPTIONAL_LIVE_FOXESS_SEEDS,
+    userCount: users.length
+  };
 }
 
 const BASE_TEST_USERS = Object.freeze([
@@ -413,9 +432,11 @@ module.exports = {
   TEST_CONFIG,
   LEGACY_TEST_USERS,
   OPTIONAL_LIVE_FOXESS_SEED_PATH,
+  REQUIRE_OPTIONAL_LIVE_FOXESS_SEEDS,
   buildOptionalLiveFoxessSeedUid,
   buildOptionalLiveFoxessSeedUser,
   buildOptionalLiveFoxessSeedUsers,
+  getOptionalLiveFoxessSeedStatus,
   loadOptionalLiveFoxessSeedUsers,
   loadOptionalLiveFoxessSeedUser,
   getProjectId,

@@ -206,7 +206,8 @@
             if (!noticeEl) {
                 noticeEl = document.createElement('div');
                 noticeEl.id = 'reportProviderNotice';
-                noticeEl.style.cssText = 'display:none;padding:10px 12px;margin-bottom:12px;background:rgba(56,139,253,0.1);border:1px solid rgba(56,139,253,0.3);border-radius:6px;font-size:12px;line-height:1.6;color:var(--text-secondary);';
+                noticeEl.className = 'context-note';
+                noticeEl.style.display = 'none';
                 reportStatus.parentElement.insertBefore(noticeEl, reportStatus);
             }
 
@@ -705,7 +706,7 @@
                 content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Failed to load history: ${e.message}</p></div>`;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '📈 Fetch History Data';
+                btn.innerHTML = 'Load history';
             }
         }
 
@@ -1074,7 +1075,7 @@
                 content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Failed to load report: ${e.message}</p></div>`;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '📊 Fetch Report';
+                btn.innerHTML = 'Load report';
             }
         }
 
@@ -1389,7 +1390,7 @@
                 content.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>Failed to load generation: ${e.message}</p></div>`;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '🔋 Fetch Generation Data';
+                btn.innerHTML = 'Load generation';
             }
         }
 
@@ -1406,12 +1407,13 @@
             // FoxESS generation response includes cumulative values
             const today = options.today ?? result.today ?? result.todayGeneration ?? 0;
             const month = options.month ?? result.month ?? result.monthGeneration ?? 0;
-            const year = result.year || result.yearGeneration || 0;
+            const yearValue = Number(result.year ?? result.yearGeneration);
+            const hasYearValue = Number.isFinite(yearValue) && yearValue > 0;
             const total = result.cumulative || result.cumulativeGeneration || result.total || 0;
             const lifetimeAvailable = providerCapabilities.provider !== 'sungrow';
             const qualityBadges = [
                 renderQualityBadge(options.sourceLabel ? 'derived' : 'exact', options.sourceLabel ? 'Today/month derived' : 'Today/month exact'),
-                renderQualityBadge('exact', 'Year total exact'),
+                ...(hasYearValue ? [renderQualityBadge('exact', 'Year total exact')] : []),
                 renderQualityBadge(lifetimeAvailable ? 'exact' : 'unavailable', lifetimeAvailable ? 'Lifetime total exact' : 'Lifetime total unavailable')
             ];
             
@@ -1428,10 +1430,12 @@
                         <div class="label">This Month</div>
                         <div class="value">${Number(month).toFixed(1)}<span class="unit">kWh</span></div>
                     </div>
+                    ${hasYearValue ? `
                     <div class="stat-box generation">
                         <div class="label">This Year</div>
-                        <div class="value">${Number(year).toFixed(1)}<span class="unit">kWh</span></div>
+                        <div class="value">${yearValue.toFixed(1)}<span class="unit">kWh</span></div>
                     </div>
+                    ` : ''}
                     <div class="stat-box generation">
                         <div class="label">Lifetime Total</div>
                         <div class="value">${lifetimeAvailable ? `${Number(total).toFixed(0)}<span class="unit">kWh</span>` : 'Unavailable'}</div>
@@ -1442,10 +1446,20 @@
             if (options.sourceLabel || !lifetimeAvailable) {
                 const notes = [];
                 if (options.sourceLabel) {
-                    notes.push(`Source: <strong>${escapeHtml(options.sourceLabel)}</strong>. Year and lifetime values remain provider-reported.`);
+                    const providerReportedValues = [];
+                    if (hasYearValue) providerReportedValues.push('year');
+                    if (lifetimeAvailable) providerReportedValues.push('lifetime');
+                    const providerValueNote = providerReportedValues.length > 0
+                        ? ` ${providerReportedValues.join(' and ')} values remain provider-reported.`
+                        : '';
+                    notes.push(`Source: <strong>${escapeHtml(options.sourceLabel)}</strong>.${providerValueNote}`);
                 }
                 if (!lifetimeAvailable) {
-                    notes.push('Lifetime cumulative generation is not currently exposed by Sungrow in this surface, so only the year total is shown.');
+                    notes.push(
+                        hasYearValue
+                            ? 'Lifetime cumulative generation is not currently exposed by Sungrow in this surface, so only the year total is shown.'
+                            : 'Year and lifetime totals are not currently exposed by Sungrow in this surface, so those values are hidden.'
+                    );
                 }
                 html += `
                     <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:${cssVar('--accent-blue-bg')};border:1px solid ${cssVar('--border-primary')};color:${cssVar('--accent-blue')};font-size:12px;">
@@ -1684,7 +1698,7 @@
                 status.textContent = `✗ ${validation.error}`;
                 historyDebugLog('[Prices] Validation failed:', validation.error);
                 btn.disabled = false;
-                btn.innerHTML = '📈 Fetch Prices';
+                btn.innerHTML = 'Load prices';
                 return;
             }
 
@@ -1804,7 +1818,7 @@
                 console.error('[Prices] Error:', e);
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '📈 Fetch Prices';
+                btn.innerHTML = 'Load prices';
             }
         }
 

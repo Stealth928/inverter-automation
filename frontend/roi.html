@@ -16,7 +16,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="SoCrates">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -31,48 +30,144 @@
     <script src="js/theme-init.js"></script>
     <style>
         /* Page-specific styles */
-        /* Main content */
-        .container {
-            max-width: 1920px;
+        .container.page-shell {
+            width: min(1400px, calc(100% - 32px));
             margin: 0 auto;
-            padding: 16px 8px;
+            padding: var(--space-3xl) 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
         }
-        
+
         .page-header {
-            margin-bottom: 16px;
+            position: relative;
+            margin-bottom: 0;
+            padding: 28px;
+            border-radius: 24px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
+            background:
+                radial-gradient(circle at top left, color-mix(in srgb, var(--color-success) 18%, transparent), transparent 34%),
+                radial-gradient(circle at bottom right, color-mix(in srgb, var(--accent-blue) 16%, transparent), transparent 42%),
+                linear-gradient(145deg, color-mix(in srgb, var(--bg-secondary) 96%, transparent), color-mix(in srgb, var(--bg-primary) 92%, transparent));
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
         }
-        .page-header h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
-            color: var(--accent);
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .page-header::before {
+            content: '';
+            position: absolute;
+            inset: auto -48px -96px auto;
+            width: 240px;
+            height: 240px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--color-success) 14%, transparent);
+            filter: blur(22px);
+            opacity: 0.72;
+            pointer-events: none;
         }
-        .page-header p {
-            color: var(--text-muted);
-            margin-top: 8px;
+        .page-masthead__copy,
+        .page-signal-grid {
+            position: relative;
+            z-index: 1;
+        }
+        .page-header .page-title {
+            margin: 0;
+        }
+        .page-header .page-subtitle {
+            max-width: 760px;
+            margin-top: 10px;
             font-size: 14px;
+            line-height: 1.7;
+        }
+        .page-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--color-success) 32%, transparent);
+            background: color-mix(in srgb, var(--color-success) 10%, transparent);
+            color: color-mix(in srgb, var(--color-success) 78%, white);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .page-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 18px;
+        }
+        .page-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 76%, transparent);
+            background: color-mix(in srgb, var(--bg-overlay) 80%, transparent);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .page-signal-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            width: min(420px, 100%);
+        }
+        .page-signal-card {
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 10%, transparent), transparent 48%);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+        }
+        .page-signal-card strong {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .page-signal-card p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.65;
+        }
+        .page-signal-label {
+            margin-bottom: 8px;
+            color: var(--color-success);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
         }
         
         /* Cards */
         .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: var(--gradient-card);
+            border: 1px solid var(--border-secondary);
             border-radius: 12px;
             margin-bottom: 16px;
             overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
+            box-shadow: var(--shadow-lg);
         }
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border);
+            padding: 14px 18px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border-primary) 40%, transparent);
             background: var(--bg-overlay);
         }
         .card-title {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
             color: var(--text);
             display: flex;
@@ -82,22 +177,121 @@
         .card-body {
             padding: 16px;
         }
+        .section-card {
+            height: 100%;
+        }
+        .card-header-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+        }
+        .card-kicker {
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .section-title {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            min-width: 0;
+        }
+        .section-subtitle {
+            margin-top: 4px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--border-primary) 68%, transparent);
+            background:
+                radial-gradient(circle at 24% 18%, color-mix(in srgb, white 24%, transparent), transparent 42%),
+                linear-gradient(165deg, #173661 0%, #10284a 56%, #0d203d 100%);
+            color: var(--accent-blue);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow:
+                inset 0 1px 0 color-mix(in srgb, white 18%, transparent),
+                0 10px 18px -14px rgba(9, 23, 45, 0.72);
+        }
+        .section-icon--success {
+            color: #7af0b0;
+            border-color: color-mix(in srgb, var(--color-success) 32%, transparent);
+        }
+        .section-icon--neutral {
+            color: #c1e0ff;
+        }
+        .section-icon svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .card-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .context-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 22%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 9%, transparent), color-mix(in srgb, var(--bg-overlay) 94%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--accent-blue) 14%, transparent), transparent 44%);
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.65;
+        }
+        .context-note strong {
+            color: var(--text-primary);
+        }
+        .roi-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+            gap: 20px;
+            align-items: start;
+        }
+        .roi-main-column,
+        .roi-side-column {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
         
         /* Controls row */
         .controls-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 12px;
             align-items: flex-end;
-            margin-bottom: 14px;
+            margin-bottom: 18px;
         }
         .control-group {
             display: flex;
             flex-direction: column;
-            gap: 3px;
+            gap: 6px;
         }
         .control-group label {
-            font-size: 10px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -106,16 +300,18 @@
         /* Inputs */
         .input, select {
             background: var(--bg-input);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-primary);
             color: var(--text);
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
             outline: none;
-            transition: border-color 0.2s;
+            transition: all 0.2s ease;
+            font-family: inherit;
         }
         .input:focus, select:focus {
-            border-color: var(--accent);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-bg);
         }
         select {
             cursor: pointer;
@@ -123,23 +319,35 @@
         
         /* Buttons */
         .btn {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+            border: 1px solid var(--border-primary);
             color: var(--text);
             padding: 10px 18px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            font-family: inherit;
         }
-        .btn:hover { background: var(--border-primary); }
+        .btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--border-accent);
+            transform: translateY(-1px);
+        }
+        .btn:active { transform: translateY(0); }
         .btn:disabled {
-            opacity: 0.5;
+            opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
+        }
+        .btn:disabled:hover {
+            background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+            border-color: var(--border-primary);
+            transform: none;
         }
         .btn-primary {
             background: var(--gradient-success);
@@ -200,11 +408,15 @@
         
         .roi-card {
             background: var(--bg-overlay);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px;
+            border: 1px solid var(--border-secondary);
+            border-radius: 10px;
+            padding: 14px;
             display: flex;
             flex-direction: column;
+            transition: border-color 0.2s ease;
+        }
+        .roi-card:hover {
+            border-color: color-mix(in srgb, var(--accent-blue) 24%, transparent);
         }
         
         .roi-card-content {
@@ -248,6 +460,17 @@
             align-items: center;
             gap: 6px;
         }
+        .roi-card-title span:first-child {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent-blue) 28%, transparent);
+            font-size: 12px;
+        }
         
         .roi-value {
             font-size: 24px;
@@ -277,7 +500,7 @@
         .roi-summary-table td {
             padding: 10px 8px;
             text-align: left;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--border-secondary);
         }
         
         .roi-summary-table th {
@@ -293,7 +516,7 @@
         }
         
         .roi-summary-table th:hover {
-            background: color-mix(in srgb, #000 30%, transparent);
+            background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
         }
         
         .roi-summary-table th::after {
@@ -336,12 +559,58 @@
 
         /* Scrollable panels for ROI and Automation History - keep equal fixed height (50% larger) */
         #roiContent, #automationHistoryContent {
-            max-height: 630px;
-            height: 630px;
+            min-height: 320px;
+            max-height: 720px;
             overflow-y: auto;
-            overflow-x: auto; /* Allow horizontal scroll if needed */
-            padding-right: 8px; /* avoid scrollbar overlap */
+            overflow-x: auto;
+            padding-right: 8px;
             box-sizing: border-box;
+        }
+        .roi-summary-table-shell {
+            margin-top: 18px;
+            overflow-x: auto;
+            border: 1px solid var(--border-secondary);
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--bg-overlay) 86%, transparent);
+        }
+        .roi-info-band {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 14px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid var(--border-secondary);
+            background: color-mix(in srgb, var(--bg-overlay) 90%, transparent);
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+        .roi-info-band__icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 8px;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        .roi-info-band--value {
+            border-color: color-mix(in srgb, var(--accent-blue) 30%, transparent);
+            background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
+        }
+        .roi-info-band--value .roi-info-band__icon {
+            background: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+            color: var(--accent-blue);
+        }
+        .roi-info-band--model {
+            border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
+            background: color-mix(in srgb, var(--color-success) 8%, transparent);
+        }
+        .roi-info-band--model .roi-info-band__icon {
+            background: color-mix(in srgb, var(--color-success) 14%, transparent);
+            color: var(--color-success);
         }
 
         /* Ensure the table uses available width efficiently */
@@ -417,17 +686,17 @@
         }
         
         .automation-timeline::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             border-radius: 4px;
         }
         
         .automation-timeline::-webkit-scrollbar-thumb {
-            background: rgba(88, 166, 255, 0.3);
+            background: color-mix(in srgb, var(--accent-blue) 30%, transparent);
             border-radius: 4px;
         }
         
         .automation-timeline::-webkit-scrollbar-thumb:hover {
-            background: rgba(88, 166, 255, 0.5);
+            background: color-mix(in srgb, var(--accent-blue) 50%, transparent);
         }
         
         .timeline-event {
@@ -436,12 +705,24 @@
             background: var(--bg-overlay);
             border-left: 3px solid var(--accent-blue);
             border-radius: 8px;
-            padding: 16px;
+            padding: 16px 16px 16px 18px;
             transition: all 0.2s;
+        }
+        .timeline-event::before {
+            content: '';
+            position: absolute;
+            top: 18px;
+            left: -8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            border: 2px solid var(--bg-primary);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-blue) 14%, transparent);
         }
         
         .timeline-event:hover {
-            background: color-mix(in srgb, #000 30%, transparent);
+            background: color-mix(in srgb, var(--accent-blue) 6%, transparent);
             transform: translateX(2px);
         }
         
@@ -543,24 +824,24 @@
         }
         
         .condition-list::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--bg-overlay);
             border-radius: 3px;
         }
         
         .condition-list::-webkit-scrollbar-thumb {
-            background: rgba(88, 166, 255, 0.3);
+            background: color-mix(in srgb, var(--accent-blue) 30%, transparent);
             border-radius: 3px;
         }
         
         .condition-list::-webkit-scrollbar-thumb:hover {
-            background: rgba(88, 166, 255, 0.5);
+            background: color-mix(in srgb, var(--accent-blue) 50%, transparent);
         }
         
         .condition-chip {
             background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
             border: 1px solid color-mix(in srgb, var(--accent-blue) 30%, transparent);
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: 8px;
             font-size: 11px;
             color: var(--accent-blue);
             display: flex;
@@ -613,9 +894,69 @@
         }
         
         /* Responsive */
+        @media (max-width: 1100px) {
+            .page-signal-grid {
+                width: 100%;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+            .roi-layout {
+                grid-template-columns: 1fr;
+            }
+        }
         @media (max-width: 768px) {
+            .container.page-shell {
+                width: min(100% - 24px, 100%);
+                padding-top: 18px;
+            }
+            .page-header {
+                padding: 20px 18px;
+                border-radius: 20px;
+            }
+            .page-signal-grid {
+                grid-template-columns: 1fr;
+            }
+            .card-header {
+                align-items: flex-start;
+            }
+            .card-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
             .controls-row { flex-direction: column; align-items: stretch; }
-            nav { flex-wrap: wrap; gap: 8px; }
+            #roiContent, #automationHistoryContent {
+                min-height: 0;
+                max-height: none;
+                height: auto;
+            }
+            .event-header {
+                flex-direction: column;
+            }
+        }
+        @media (max-width: 540px) {
+            .page-meta-row {
+                gap: 8px;
+            }
+            .page-chip {
+                width: 100%;
+                justify-content: center;
+            }
+            .roi-grid {
+                grid-template-columns: 1fr;
+            }
+            .roi-card-content {
+                flex-direction: column;
+            }
+            .roi-card-secondary {
+                text-align: left;
+                min-width: 0;
+            }
+            .roi-info-band {
+                flex-direction: column;
+            }
+            .roi-summary-table th,
+            .roi-summary-table td {
+                font-size: 11px;
+            }
         }
         
         /* Info banner */
@@ -664,9 +1005,9 @@
         .info-banner#wipBanner strong { color: var(--text-primary); }
 
         @keyframes wipPulse {
-            0% { box-shadow: 0 6px 18px rgba(8,30,56,0.35); transform: translateY(0); }
-            50% { box-shadow: 0 10px 28px rgba(8,30,56,0.5); transform: translateY(-2px); }
-            100% { box-shadow: 0 6px 18px rgba(8,30,56,0.35); transform: translateY(0); }
+            0% { box-shadow: var(--shadow-lg); transform: translateY(0); }
+            50% { box-shadow: var(--shadow-xl); transform: translateY(-2px); }
+            100% { box-shadow: var(--shadow-lg); transform: translateY(0); }
         }
     </style>
 </head>
@@ -716,68 +1057,126 @@
     </div>
 
     <div class="container page-shell">
-        <div class="page-header">
-            <h1>💲 Automation ROI</h1>
-            <p>Review what your automation actually changed: charging cost, import avoidance, export capture, and saved baseline comparisons from backtests.</p>
-            <p style="font-size:12px;color:var(--text-muted);margin-top:8px">⏰ Historical data is available for the last 7 days. Older data is automatically archived.</p>
-        </div>
-
-        <!-- WIP Banner removed -->
-
-        <!-- ROI Calculator Section -->
-        <div class="card" data-card="roi-calculator">
-            <div class="card-header">
-                <div class="card-title">💰 ROI Analysis (Last 7 Days)</div>
-                <div style="display:flex;gap:8px">
-                    <button class="btn-primary" onclick="calculateROI()" id="btnCalculateROI" style="font-size:13px;padding:10px 18px;font-weight:600">
-                        Calculate ROI
-                    </button>
+        <div class="page-header page-masthead">
+            <div class="page-masthead__copy">
+                <div class="page-eyebrow">Automation value review</div>
+                <h1 class="page-title">Automation ROI</h1>
+                <p class="page-subtitle">Review what your automation actually changed: charging cost, import avoidance, export capture, and saved baseline comparisons from backtests.</p>
+                <div class="page-meta-row">
+                    <span class="page-chip">7-day settled window</span>
+                    <span class="page-chip">Requested-power aware model</span>
+                    <span class="page-chip">Backtest context preserved</span>
                 </div>
             </div>
-            <div class="card-body">
-                <div id="roiStatus" class="status"></div>
-                
-                <div class="controls-row">
-                    <div class="control-group" style="min-width:120px">
-                        <label>Start Date</label>
-                        <input type="date" id="roiStartDate" class="input" />
-                    </div>
-                    <div class="control-group" style="min-width:120px">
-                        <label>End Date</label>
-                        <input type="date" id="roiEndDate" class="input" />
-                    </div>
+            <div class="page-signal-grid">
+                <div class="page-signal-card">
+                    <div class="page-signal-label">Financial lens</div>
+                    <strong>See whether automation actually improved household economics.</strong>
+                    <p>Import avoidance, export capture, and charge cost are summarized before you dive into event-level detail.</p>
                 </div>
-
-                <div id="roiContent">
-                    <div class="empty-state">
-                        <div class="icon">💵</div>
-                        <p>Click "Calculate ROI" to analyze your automation earnings</p>
-                        <p style="font-size:12px;margin-top:8px">Shows charging cost, import avoidance, and export capture from triggered rules</p>
-                    </div>
+                <div class="page-signal-card">
+                    <div class="page-signal-label">Accuracy label</div>
+                    <strong>Provider precision stays explicit instead of implied.</strong>
+                    <p>Exact, indicative, and provisional outcomes are called out inline so the page stays trustworthy.</p>
+                </div>
+                <div class="page-signal-card">
+                    <div class="page-signal-label">Operational trace</div>
+                    <strong>The event timeline stays beside the economics.</strong>
+                    <p>Review what happened, when it happened, and how the outcome was valued without leaving the page.</p>
                 </div>
             </div>
         </div>
 
-        <!-- Automation Rule History Section -->
-        <div class="card" data-card="automation-history">
-            <div class="card-header">
-                <div class="card-title">🤖 Automation Rule History (Last 7 Days)</div>
-                <div style="display:flex;gap:8px">
-                    <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
-                        🔄 Refresh
-                    </button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="automationHistoryStatus" class="status"></div>
-                
-                <div id="automationHistoryContent">
-                    <div class="empty-state">
-                        <div class="icon">🤖</div>
-                        <p>Loading automation rule history...</p>
+        <div class="roi-layout">
+            <div class="roi-main-column">
+                <div class="card section-card" data-card="roi-calculator">
+                    <div class="card-header">
+                        <div class="card-header-group">
+                            <div class="card-kicker">Financial review</div>
+                            <div class="section-title">
+                                <span class="section-icon section-icon--success" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M4 16l5-5 4 4 7-8"></path>
+                                        <path d="M14 7h6v6"></path>
+                                    </svg>
+                                </span>
+                                <div>
+                                    <div class="card-title">ROI analysis</div>
+                                    <div class="section-subtitle">Seven days of charge, discharge, and export impact presented with settled pricing context.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-primary" onclick="calculateROI()" id="btnCalculateROI" style="font-size:13px;padding:10px 18px;font-weight:600">
+                                Calculate ROI
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="context-note">
+                            <strong>Historical horizon:</strong> ROI review is available for the last 7 days. Older activity is archived so the page stays fast on mobile and in the installed PWA.
+                        </div>
+
+                        <div id="roiStatus" class="status"></div>
+
+                        <div class="controls-row">
+                            <div class="control-group" style="min-width:120px">
+                                <label>Start Date</label>
+                                <input type="date" id="roiStartDate" class="input" />
+                            </div>
+                            <div class="control-group" style="min-width:120px">
+                                <label>End Date</label>
+                                <input type="date" id="roiEndDate" class="input" />
+                            </div>
+                        </div>
+
+                        <div id="roiContent">
+                            <div class="empty-state">
+                                <div class="icon">💵</div>
+                                <p>Click "Calculate ROI" to analyze your automation earnings</p>
+                                <p style="font-size:12px;margin-top:8px">Shows charging cost, import avoidance, and export capture from triggered rules</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <aside class="roi-side-column">
+                <div class="card section-card" data-card="automation-history">
+                    <div class="card-header">
+                        <div class="card-header-group">
+                            <div class="card-kicker">Operational timeline</div>
+                            <div class="section-title">
+                                <span class="section-icon section-icon--neutral" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M12 6v6l4 2"></path>
+                                        <circle cx="12" cy="12" r="8"></circle>
+                                    </svg>
+                                </span>
+                                <div>
+                                    <div class="card-title">Automation timeline</div>
+                                    <div class="section-subtitle">Recent rule activity is kept beside ROI so you can move from economics to root cause quickly.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn" onclick="fetchAutomationHistory()" id="btnRefreshAutomationHistory" style="font-size:11px;padding:6px 12px">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="automationHistoryStatus" class="status"></div>
+
+                        <div id="automationHistoryContent">
+                            <div class="empty-state">
+                                <div class="icon">🤖</div>
+                                <p>Loading automation rule history...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
     </div>
 

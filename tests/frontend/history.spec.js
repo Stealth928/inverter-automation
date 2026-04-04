@@ -134,6 +134,33 @@ test.describe('History Page', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
+  test('keeps reports masthead and section cards within mobile viewport and preserves PWA metadata', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForLoadState('networkidle');
+
+    const mobileLayout = await page.evaluate(() => {
+      const masthead = document.querySelector('.page-masthead');
+      const pricingCard = document.querySelector('.section-card--pricing');
+      const reportCard = document.querySelector('.section-card--reports');
+      return {
+        viewportWidth: window.innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        mastheadRight: masthead ? Math.ceil(masthead.getBoundingClientRect().right) : 0,
+        pricingCardRight: pricingCard ? Math.ceil(pricingCard.getBoundingClientRect().right) : 0,
+        reportCardRight: reportCard ? Math.ceil(reportCard.getBoundingClientRect().right) : 0
+      };
+    });
+
+    expect(mobileLayout.pageScrollWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.mastheadRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.pricingCardRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+    expect(mobileLayout.reportCardRight).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+    await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+    await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+  });
+
   test('should sort history entries', async ({ page }) => {
     // Sort by date, name, status, etc.
     const sortBtn = page.locator('button:has-text("Sort"), [data-sort], th').first();
@@ -246,5 +273,77 @@ test.describe('History Page', () => {
     await expect(page.locator('#pricingCardTitle')).toContainText(/Pricing History/i);
     await expect(page.locator('#pricingCardSubtitle')).toContainText(/AEMO/i);
     await expect(page.locator('#reportsCoverageText')).toContainText(/AEMO/i);
+  });
+
+  test('hides year generation card when the API does not provide a non-zero year total', async ({ page }) => {
+    await page.route('**/api/**', async (route) => {
+      const url = new URL(route.request().url());
+
+      if (url.pathname.endsWith('/api/config')) {
+        await route.fulfill(jsonResponse({
+          errno: 0,
+          result: {
+            setupComplete: true,
+            tourComplete: true,
+            deviceProvider: 'foxess',
+            deviceSn: 'FOX-001',
+            pricingProvider: 'amber'
+          }
+        }));
+        return;
+      }
+
+      if (url.pathname.endsWith('/api/config/setup-status')) {
+        await route.fulfill(jsonResponse({
+          errno: 0,
+          result: {
+            setupComplete: true
+          }
+        }));
+        return;
+      }
+
+      if (url.pathname.endsWith('/api/config/system-topology')) {
+        await route.fulfill(jsonResponse({
+          errno: 0,
+          result: {
+            coupling: 'dc',
+            source: 'manual',
+            lastDetectedAt: Date.now(),
+            refreshAfterMs: 86400000
+          }
+        }));
+        return;
+      }
+
+      if (url.pathname.endsWith('/api/inverter/generation')) {
+        await route.fulfill(jsonResponse({
+          errno: 0,
+          result: {
+            today: 28.6,
+            month: 132.5,
+            cumulative: 6029.2
+          }
+        }));
+        return;
+      }
+
+      if (url.pathname.endsWith('/api/metrics/api-calls')) {
+        await route.fulfill(jsonResponse({ errno: 0, result: {} }));
+        return;
+      }
+
+      await route.fulfill(jsonResponse({ errno: 0, result: {} }));
+    });
+
+    await page.reload();
+    await page.click('#btnFetchGeneration');
+
+    await expect(page.locator('#generationContent')).toContainText(/Today/i);
+    await expect(page.locator('#generationContent')).toContainText(/This Month/i);
+    await expect(page.locator('#generationContent')).toContainText(/Lifetime Total/i);
+    await expect(page.locator('#generationContent')).not.toContainText(/This Year/i);
+    await expect(page.locator('#generationContent')).not.toContainText(/Year total exact/i);
+    await expect(page.locator('#generationContent')).not.toContainText(/0\.0\s*kWh/i);
   });
 });

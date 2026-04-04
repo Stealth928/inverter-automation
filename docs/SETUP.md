@@ -302,9 +302,26 @@ Useful commands:
 ```bash
 npm run emu:start
 npm run emu:seed
+npm run emu:seed:live
+npm run emu:reset:live
 npm run emu:status
 npm run emu:stop
 ```
+
+### Live local seed users
+
+If you want the emulator to include local-only live FoxESS users:
+
+1. Copy `functions/scripts/emulator-live-user.local.example.json` to
+   `functions/scripts/emulator-live-user.local.json`.
+2. Fill in the real credentials locally.
+3. Use `npm run emu:reset:live` or `npm run emu:seed:live`.
+
+Notes:
+
+- `functions/scripts/emulator-live-user.local.json` is gitignored.
+- The `:live` commands fail fast when that file is missing, which avoids a
+  silent reset that recreates only the built-in mock users.
 
 Default local endpoints:
 

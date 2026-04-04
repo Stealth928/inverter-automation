@@ -4,8 +4,10 @@
 
 const admin = require('firebase-admin');
 const {
+  OPTIONAL_LIVE_FOXESS_SEED_PATH,
   TEST_USERS,
   TEST_CONFIG,
+  getOptionalLiveFoxessSeedStatus,
   getProjectId,
   assertEmulatorEnvironment
 } = require('./emulator-test-user');
@@ -969,6 +971,20 @@ async function seedAemoSnapshots({ db, ts, anchorDate = new Date() }) {
 async function main() {
   try {
     assertEmulatorEnvironment();
+
+    const optionalLiveSeedStatus = getOptionalLiveFoxessSeedStatus();
+    if (optionalLiveSeedStatus.exists) {
+      console.log(
+        'Loaded %s local live FoxESS seed user(s) from %s',
+        optionalLiveSeedStatus.userCount,
+        OPTIONAL_LIVE_FOXESS_SEED_PATH
+      );
+    } else {
+      console.warn(
+        'Optional local live-user seed file not found at %s. Only built-in seed users will be created. Set EMULATOR_REQUIRE_LIVE_USERS=1 to fail fast.',
+        OPTIONAL_LIVE_FOXESS_SEED_PATH
+      );
+    }
 
     const projectId = getProjectId();
     console.log('Initializing admin for project', projectId);

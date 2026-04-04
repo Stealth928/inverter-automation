@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('path');
+
 const {
   TEST_PASSWORD,
   TEST_USERS,
@@ -132,5 +134,36 @@ describe('optional live FoxESS seed user', () => {
 
   test('derives a stable admin uid for the admin live user email', () => {
     expect(buildOptionalLiveFoxessSeedUid('live.test.admin@gmail.com', 'admin')).toBe('seed-live-foxess-admin');
+  });
+
+  test('fails fast when live users are required but the local config file is missing', () => {
+    const originalRequireFlag = process.env.EMULATOR_REQUIRE_LIVE_USERS;
+    const originalConfigPath = process.env.EMULATOR_LIVE_USER_CONFIG_PATH;
+    const missingConfigPath = path.join(__dirname, '__missing-live-user-config__.json');
+
+    try {
+      process.env.EMULATOR_REQUIRE_LIVE_USERS = '1';
+      process.env.EMULATOR_LIVE_USER_CONFIG_PATH = missingConfigPath;
+
+      expect(() => {
+        jest.isolateModules(() => {
+          require('../scripts/emulator-test-user');
+        });
+      }).toThrow(/Required local live-user seed file is missing/i);
+    } finally {
+      if (originalRequireFlag === undefined) {
+        delete process.env.EMULATOR_REQUIRE_LIVE_USERS;
+      } else {
+        process.env.EMULATOR_REQUIRE_LIVE_USERS = originalRequireFlag;
+      }
+
+      if (originalConfigPath === undefined) {
+        delete process.env.EMULATOR_LIVE_USER_CONFIG_PATH;
+      } else {
+        process.env.EMULATOR_LIVE_USER_CONFIG_PATH = originalConfigPath;
+      }
+
+      jest.resetModules();
+    }
   });
 });
