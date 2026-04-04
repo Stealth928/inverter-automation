@@ -33,13 +33,13 @@
         .container.page-shell {
             width: min(1400px, calc(100% - 32px));
             margin: 0 auto;
-            padding: 24px 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
+            padding: 16px 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
         }
 
         .page-header {
             position: relative;
             margin-bottom: 0;
-            padding: 18px 20px;
+            padding: 14px 18px 16px;
             border-radius: 18px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
             background:
@@ -51,8 +51,8 @@
         }
         .page-header.page-masthead {
             display: grid;
-            grid-template-columns: minmax(0, 1.1fr) minmax(460px, 0.9fr);
-            gap: 16px;
+            grid-template-columns: minmax(0, 1.24fr) minmax(400px, 0.76fr);
+            gap: 14px;
             align-items: start;
         }
         .page-header::before {
@@ -74,37 +74,24 @@
         }
         .page-masthead__copy {
             min-width: 0;
-            max-width: 64ch;
+            max-width: none;
         }
         .page-header .page-title {
             margin: 0;
+            line-height: 1.04;
         }
         .page-header .page-subtitle {
-            max-width: 58ch;
-            margin-top: 6px;
-            font-size: 13px;
-            line-height: 1.45;
-        }
-        .page-eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            padding: 5px 10px;
-            border-radius: 999px;
-            border: 1px solid color-mix(in srgb, var(--color-success) 32%, transparent);
-            background: color-mix(in srgb, var(--color-success) 10%, transparent);
-            color: color-mix(in srgb, var(--color-success) 78%, white);
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
+            max-width: none;
+            margin-top: 4px;
+            font-size: clamp(12px, 0.18vw + 11.8px, 13px);
+            line-height: 1.35;
+            text-wrap: pretty;
         }
         .page-meta-row {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin-top: 12px;
+            margin-top: 10px;
         }
         .page-chip {
             display: inline-flex;
@@ -121,12 +108,12 @@
         .page-signal-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
+            gap: 6px;
             width: 100%;
             align-self: start;
         }
         .page-signal-card {
-            padding: 10px 12px;
+            padding: 9px 11px;
             border-radius: 12px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
             background:
@@ -145,7 +132,7 @@
             display: none;
         }
         .page-signal-label {
-            margin-bottom: 4px;
+            margin-bottom: 3px;
             color: var(--color-success);
             font-size: 10px;
             font-weight: 700;
@@ -945,7 +932,7 @@
         @media (max-width: 1200px) {
             .page-header.page-masthead {
                 grid-template-columns: 1fr;
-                gap: 18px;
+                gap: 14px;
             }
             .page-masthead__copy {
                 max-width: none;
@@ -960,10 +947,10 @@
         @media (max-width: 768px) {
             .container.page-shell {
                 width: min(100% - 24px, 100%);
-                padding-top: 16px;
+                padding-top: 10px;
             }
             .page-header {
-                padding: 18px 16px;
+                padding: 14px 14px 16px;
                 border-radius: 18px;
             }
             .page-signal-grid {
@@ -1114,7 +1101,6 @@
     <div class="container page-shell">
         <div class="page-header page-masthead">
             <div class="page-masthead__copy">
-                <div class="page-eyebrow">Automation value review</div>
                 <h1 class="page-title">Automation ROI</h1>
                 <p class="page-subtitle">Review gross triggered-rule value, export value, and passive self-use backtests in one place.</p>
                 <div class="page-meta-row">
