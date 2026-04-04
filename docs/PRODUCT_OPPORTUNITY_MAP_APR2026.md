@@ -188,392 +188,117 @@ Why this differentiates:
 
 Priority: P0
 
-## 9. Market Insights
+## 2. Setup / Onboarding
 
 Current role:
 
-- public preview of NEM context
-- member market workspace with regional price patterns and volatility views
+- first-time connection
+- provider validation
+- weather / pricing / hardware setup
 
 Current competitive reality:
 
-- market data alone is interesting but abstract
-- Solar Analytics focuses on household bill and plan fit
-- Amber focuses on operational wholesale participation
-- native inverter apps mostly do not turn regional market structure into
-  household strategy well [S12] [S14]
+- Amber explicitly documents that native battery settings and schedules often
+  block automation onboarding and control tests [S12]
+- native vendor apps expose their own schedules, battery modes, export modes,
+  and reserve controls, which can conflict with third-party automation [S12]
+  [S17] [S18]
 
 Main risk:
 
-- users may find the page informative but disconnected from daily battery action
+- setup becomes the place where SoCrates loses trust before the user sees any
+  value
 
 Best opportunities:
 
-1. Personalize the market view to tariff, battery size, EV use, export limit,
-   and provider constraints.
-2. Add household operating playbooks, not only volatility charts.
-3. Add tariff-fit intelligence tied to automation upside, not just bill
-   comparison. [S14]
-4. Add rule recommendations directly from market conditions.
-5. Turn Market Insights into an action funnel:
-   market insight -> recommended strategy -> simulation -> import -> ROI follow-up
+1. Build a provider-specific pre-flight conflict scanner.
+2. Create a migration assistant from native apps, not just a credential form.
+3. Expand preview mode into a true digital-twin onboarding flow.
+4. Make setup provider-native instead of FoxESS-first.
+5. Pull in tariff context earlier so recommendations feel personalized from day
+   one. [S10] [S14]
 
 Why this differentiates:
 
-- generic market dashboards inform
-- SoCrates should operationalize
+- Native apps optimize device commissioning.
+- SoCrates can optimize safe, conflict-free automation onboarding.
 
-Priority: P1
+Priority: P0
 
-## 10. Settings / Notifications / Tesla
+## 3. Dashboard / Overview
 
 Current role:
 
-- configuration hub
-- credentials
-- automation defaults
-- curtailment
-- blackout settings
-- notifications
-- Tesla onboarding
+- daily home screen
+- live telemetry, prices, weather, automation status, quick control, EV summary
 
 Current competitive reality:
 
-- Tesla, SolarEdge, Sigenergy, and others increasingly use settings as an
-  active operating center, not a dead form screen [S10] [S17] [S18]
-- Charge HQ shows how much value users get from detailed EV and battery-aware
-  configuration without extra hardware [S15]
+- FoxCloud2.0: 5-second flows, AI, analysis dashboard, VPP control [S6]
+- mySigen: rich home energy flows, AI modes, grid-service history, EV control [S10]
+- Enphase / SolarEdge / Tesla: strong real-time flows, outage/backup settings,
+  appliance or EV coordination, strong native mobile framing [S16] [S17] [S18]
 
 Main risk:
 
-- settings remain administrative, while the real product opportunity is
-  operational confidence
+- raw telemetry is table stakes and increasingly well-covered natively
 
 Best opportunities:
 
-1. Add an integration health center with connection, capability, freshness, and
-   limitation status.
-2. Productize notifications into bundles such as daily operating summary,
-   action required, savings proof, outage prep, EV readiness, and automation
-   anomaly.
-3. Evolve Tesla from onboarding workflow to household transport strategy.
-4. Add policy- and backup-aware settings guidance.
-5. Add safe defaults by household type.
+1. Turn the dashboard into a decision cockpit, not a status board.
+2. Add a 24-hour operating plan for battery, grid, solar, export, and EV.
+3. Add a "why this action" card with winning rule, blocked alternatives, and
+   confidence level.
+4. Add household operating intents like maximize savings, preserve backup, and
+   prioritize EV.
+5. Add anomaly detection that is human-readable.
 
 Why this differentiates:
 
-- Native settings tune one ecosystem.
-- SoCrates settings should tune the whole household operating model.
+- Native apps tell users what the device is doing.
+- SoCrates should tell users whether the home is operating intelligently.
 
-Priority: P1
+Priority: P0
 
-## 11. Public Tools and Preview Surfaces
+## 4. Controls Page
 
 Current role:
 
-- public education
-- acquisition
-- early proof of value
+- advanced controls
+- scheduler edits
+- SoC limits
+- direct work mode
+- force charge windows
+- diagnostics
 
 Current competitive reality:
 
-- Solar Analytics uses actual household data and plan comparison to drive value
-  discovery [S14]
-- many public battery calculators are generic and assumption-heavy
+- Amber offers charge / preserve / consume controls and already shows forecast
+  impact for manual actions [S12]
+- SolarEdge and Tesla expose backup levels, EV scheduling, weather-aware backup,
+  and manual control options [S17] [S18]
+- FoxESS and Sigenergy increasingly expose more direct scheduling and AI modes
+  natively [S6] [S10]
 
 Main risk:
 
-- tools stay disconnected from the core product
+- a raw control page is valuable but not yet clearly superior
 
 Best opportunities:
 
-1. Connect the tools into one guided journey.
-2. Increase personalization without adding too much friction.
-3. Let users save and carry forward tool outputs into setup and the first
-   authenticated session.
-4. Keep leaning into proof language around assumptions.
+1. Add impact preview before apply for every manual action.
+2. Add safe re-entry into automation after temporary overrides.
+3. Add scenario controls instead of only parameter controls.
+4. Add a provider-normalized control confidence model.
+5. Add schedule conflict management across SoCrates, native schedules, and
+   manual overrides.
 
 Why this differentiates:
 
-- tools become a product-led funnel, not only SEO content
+- Native apps expose controls.
+- SoCrates can expose safe, explainable, cross-provider control.
 
-Priority: P1
-
-## 12. Admin / Operator Surfaces
-
-Current role:
-
-- internal metrics
-- dead letters
-- user ops
-- announcements
-- data operations
-
-Current competitive reality:
-
-- most consumer energy apps hide operational sophistication
-- SoCrates already has stronger operator surfaces than many consumer products
-
-Best opportunities:
-
-1. Feed internal trust signals into customer-facing product surfaces.
-2. Use admin data to create provider quality scorecards.
-3. Build closed-loop product learning so dead letters, retries, and failure
-   patterns improve setup, rules, and controls upstream.
-
-Why this differentiates:
-
-- trust is not only a backend concern; it can become a visible product moat
-
-Priority: P2
-
-## Highest-Leverage Cross-Page Bets
-
-If I had to narrow everything down to the highest-value product bets, I would
-prioritize these:
-
-### Bet 1: Decision Cockpit
-
-Pages:
-
-- Dashboard
-- Controls
-- Settings / Notifications
-
-Definition:
-
-- always answer what the home is doing, why, what happens next, and what to do
-  about it
-
-### Bet 2: Simulation-First Automation
-
-Pages:
-
-- Rules Library
-- Automation Lab
-- ROI
-- Setup
-
-Definition:
-
-- every meaningful change should be testable, explainable, and attributable
-
-### Bet 3: Conflict-Free Orchestration
-
-Pages:
-
-- Setup
-- Controls
-- Settings
-- Admin
-
-Definition:
-
-- detect, explain, and resolve native app conflicts before they break trust
-
-### Bet 4: Personalized Market-to-Action Loop
-
-Pages:
-
-- Market Insights
-- Rules Library
-- Dashboard
-- Public Preview
-
-Definition:
-
-- turn NEM volatility and tariff complexity into home-specific recommended
-  actions
-
-### Bet 5: Proof of Value
-
-Pages:
-
-- ROI
-- Reports
-- Public tools
-- Landing
-
-Definition:
-
-- show measured outcomes, confidence, counterfactuals, and savings decomposition
-
-## What Not to Do
-
-These are parity traps:
-
-1. Do not invest heavily in generic graphing parity alone.
-2. Do not lead with black-box AI claims.
-3. Do not bury provider limitations.
-4. Do not leave public tools disconnected from the member value story.
-
-## Recommended Sequencing
-
-### Next 90 days
-
-1. Reposition landing and onboarding around explainable, cross-brand household
-   orchestration.
-2. Ship setup conflict detection and provider-specific migration guidance.
-3. Add dashboard "why now / what next" operating summary.
-4. Add control impact previews and safe re-entry into automation.
-5. Deepen ROI with measured vs estimated value and confidence labels.
-6. Make Rules Library -> Automation Lab the default decision flow.
-
-### Following 3 to 6 months
-
-1. Personalize Market Insights to the actual household.
-2. Add weekly explanatory reports and anomaly narratives.
-3. Build an integration health center and smarter notification bundles.
-4. Expand Tesla / EV coordination toward battery-vs-EV operating strategy.
-5. Connect public tools into a saved, personalized assessment journey.
-
-### Longer-term
-
-1. Provider quality benchmarking and user-facing trust scores.
-2. Community / expert strategy packs with evidence and versioning.
-3. Multi-EV / multi-asset orchestration.
-4. VPP participation visibility and strategy tuning where supported.
-
-## Success Metrics
-
-Suggested KPI set by theme:
-
-### Acquisition
-
-- visitor-to-signup conversion
-- tool completion rate
-- preview-to-setup conversion
-- "supported stack" discovery rate
-
-### Activation
-
-- setup completion rate
-- time to first successful control
-- time to first enabled rule
-- first-week Automation Lab usage
-
-### Trust
-
-- percentage of actions with visible explanation
-- provider-specific control success rate
-- automation anomaly resolution rate
-- support tickets caused by native-setting conflicts
-
-### Value realization
-
-- percentage of users viewing ROI in first 14 days
-- median days to first positive measured value event
-- rule bundle adoption rate
-- retained weekly active users on Dashboard + ROI + Reports
-
-### Differentiation
-
-- share of active users who use simulation before enabling rules
-- share of active users who use market insights to import strategies
-- share of active EV users who set battery-vs-EV priorities
-
-## Bottom Line
-
-The strongest future version of SoCrates is not:
-
-- a prettier inverter app
-- a retailer clone
-- a black-box optimizer
-
-It is:
-
-- the explainable operating system for mixed-vendor home energy
-
-That means every major page should reinforce the same value loop:
-
-1. understand the home
-2. recommend the right action
-3. simulate before committing
-4. execute with confidence
-5. prove the result
-
-The pages with the biggest strategic upside are:
-
-- Setup
-- Dashboard
-- Controls
-- ROI
-- Rules Library
-- Automation Lab
-
-Those are the surfaces most likely to produce durable differentiation against
-both native inverter apps and adjacent software.
-
-## Sources
-
-[S1] SoCrates product capability guide
-`docs/guides/PRODUCT_CAPABILITY_GUIDE.md`
-
-[S2] Australian Government, Cheaper Home Batteries Program
-https://www.energy.gov.au/news/discounted-batteries-households-through-cheaper-home-batteries-program
-
-[S3] Clean Energy Council, Rooftop Solar and Storage Report H2 2025
-https://cleanenergycouncil.org.au/getmedia/16ed1cff-8ddb-423a-b3ad-3f9fa8e4d594/rooftop-solar-and-storage-biannual-report_july-december-2025.pdf
-
-[S4] Clean Energy Regulator, Small-scale Renewable Energy Scheme, December 2025 quarter
-https://cer.gov.au/markets/reports-and-data/quarterly-carbon-market-reports/quarterly-carbon-market-report-december-quarter-2025/small-scale-renewable-energy-scheme
-
-[S5] Australian Energy Regulator, Q1 2025 Wholesale Quarterly Report
-https://www.aer.gov.au/system/files/2025-06/Q1%202025%20Wholesale%20quarterly%20report.pdf
-
-[S6] FoxCloud2.0 App Store listing
-https://apps.apple.com/us/app/foxcloud2-0/id6463845509
-
-[S7] Sungrow iSolarCloud datasheet
-https://info-support.sungrowpower.com/application/pdf/2022/04/25/DS_20210302_iSolarCloud%20Datasheet_V1.1.1_EN.pdf
-
-[S8] iSolarCloud App Store listing
-https://apps.apple.com/au/app/isolarcloud/id1050077439
-
-[S9] AlphaESS app and AlphaCloud monitoring
-https://apps.apple.com/us/app/alphaess/id1088168713
-https://www.alphaess.com/alphacloud
-
-[S10] mySigen App Store listing
-https://apps.apple.com/us/app/mysigen/id6446836171
-
-[S11] Amber blog, bring-your-own-battery direction
-https://www.amber.com.au/blog/building-the-bring-your-own-battery-energy-future
-
-[S12] Amber help articles on SmartShift compatibility, manual controls, and
-control blockers
-https://help.amber.com.au/hc/en-us/articles/11202818919437-How-do-Amber-for-Batteries-control-features-work
-https://help.amber.com.au/hc/en-us/articles/42434705873421-How-to-check-battery-settings-that-may-affect-automatic-control
-https://help.amber.com.au/hc/en-us/articles/10015835768845-Which-batteries-are-compatible-with-SmartShift
-
-[S13] Evergen Intelligent Control and Site Optimisation
-https://evergen.energy/intelligent-control/
-https://evergen.energy/site-optimisation/
-
-[S14] Solar Analytics Plan Optimiser and Integrated+
-https://www.solaranalytics.com.au/plan-optimiser
-https://www.solaranalytics.com.au/integrated-plus
-
-[S15] Charge HQ features
-https://chargehq.net/features
-
-[S16] Enphase homeowner and app surfaces
-https://enphase.com/homeowners
-https://apps.apple.com/us/app/enphase-enlighten/id787415770
-
-[S17] SolarEdge mySolarEdge and Weather Guard
-https://www.solaredge.com/mySolarEdge
-https://www.solaredge.com/us/weather-guard
-
-[S18] Tesla app, backup, weather, and VPP support
-https://www.tesla.com/en_au/support/tesla-app
-https://www.tesla.com/support/energy/powerwall/mobile-app/backup-reserve
-https://www.tesla.com/support/energy/powerwall/mobile-app/storm-watch
-https://www.tesla.com/support/energy/powerwall/virtual-power-plant
-
-[S19] Home Assistant energy management and automation traces
-https://www.home-assistant.io/docs/energy/
-https://www.home-assistant.io/docs/automation/troubleshooting/
+Priority: P0
 
 ## 5. Reports / History
 
@@ -725,117 +450,5 @@ Why this differentiates:
 
 - Native apps can claim intelligence.
 - SoCrates can claim inspectable intelligence.
-
-Priority: P0
-
-## 2. Setup / Onboarding
-
-Current role:
-
-- first-time connection
-- provider validation
-- weather / pricing / hardware setup
-
-Current competitive reality:
-
-- Amber explicitly documents that native battery settings and schedules often
-  block automation onboarding and control tests [S12]
-- native vendor apps expose their own schedules, battery modes, export modes,
-  and reserve controls, which can conflict with third-party automation [S12]
-  [S17] [S18]
-
-Main risk:
-
-- setup becomes the place where SoCrates loses trust before the user sees any
-  value
-
-Best opportunities:
-
-1. Build a provider-specific pre-flight conflict scanner.
-2. Create a migration assistant from native apps, not just a credential form.
-3. Expand preview mode into a true digital-twin onboarding flow.
-4. Make setup provider-native instead of FoxESS-first.
-5. Pull in tariff context earlier so recommendations feel personalized from day
-   one. [S10] [S14]
-
-Why this differentiates:
-
-- Native apps optimize device commissioning.
-- SoCrates can optimize safe, conflict-free automation onboarding.
-
-Priority: P0
-
-## 3. Dashboard / Overview
-
-Current role:
-
-- daily home screen
-- live telemetry, prices, weather, automation status, quick control, EV summary
-
-Current competitive reality:
-
-- FoxCloud2.0: 5-second flows, AI, analysis dashboard, VPP control [S6]
-- mySigen: rich home energy flows, AI modes, grid-service history, EV control [S10]
-- Enphase / SolarEdge / Tesla: strong real-time flows, outage/backup settings,
-  appliance or EV coordination, strong native mobile framing [S16] [S17] [S18]
-
-Main risk:
-
-- raw telemetry is table stakes and increasingly well-covered natively
-
-Best opportunities:
-
-1. Turn the dashboard into a decision cockpit, not a status board.
-2. Add a 24-hour operating plan for battery, grid, solar, export, and EV.
-3. Add a "why this action" card with winning rule, blocked alternatives, and
-   confidence level.
-4. Add household operating intents like maximize savings, preserve backup, and
-   prioritize EV.
-5. Add anomaly detection that is human-readable.
-
-Why this differentiates:
-
-- Native apps tell users what the device is doing.
-- SoCrates should tell users whether the home is operating intelligently.
-
-Priority: P0
-
-## 4. Controls Page
-
-Current role:
-
-- advanced controls
-- scheduler edits
-- SoC limits
-- direct work mode
-- force charge windows
-- diagnostics
-
-Current competitive reality:
-
-- Amber offers charge / preserve / consume controls and already shows forecast
-  impact for manual actions [S12]
-- SolarEdge and Tesla expose backup levels, EV scheduling, weather-aware backup,
-  and manual control options [S17] [S18]
-- FoxESS and Sigenergy increasingly expose more direct scheduling and AI modes
-  natively [S6] [S10]
-
-Main risk:
-
-- a raw control page is valuable but not yet clearly superior
-
-Best opportunities:
-
-1. Add impact preview before apply for every manual action.
-2. Add safe re-entry into automation after temporary overrides.
-3. Add scenario controls instead of only parameter controls.
-4. Add a provider-normalized control confidence model.
-5. Add schedule conflict management across SoCrates, native schedules, and
-   manual overrides.
-
-Why this differentiates:
-
-- Native apps expose controls.
-- SoCrates can expose safe, explainable, cross-provider control.
 
 Priority: P0
