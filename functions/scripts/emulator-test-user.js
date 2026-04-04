@@ -190,7 +190,8 @@ function loadOptionalLiveFoxessSeedUsers() {
     parsed = JSON.parse(raw);
   } catch (error) {
     throw new Error(
-      `Optional live FoxESS seed file is not valid JSON: ${OPTIONAL_LIVE_FOXESS_SEED_PATH} (${error.message})`
+      `Optional live FoxESS seed file is not valid JSON: ${OPTIONAL_LIVE_FOXESS_SEED_PATH} (${error.message})`,
+      { cause: error }
     );
   }
 

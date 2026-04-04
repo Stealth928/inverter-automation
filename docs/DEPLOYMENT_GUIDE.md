@@ -47,6 +47,10 @@ It currently validates:
 - OpenAPI parity
 - repo hygiene checks
 
+The docs-impact step evaluates the current checkout's tracked diff together
+with working-tree status, so the release gate reflects the files you are about
+to deploy rather than a stale commit range.
+
 Additional release checks to run when relevant:
 
 - `npm run docs:impact:check`

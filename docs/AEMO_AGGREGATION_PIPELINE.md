@@ -1,6 +1,6 @@
 # AEMO Market Data Pipeline
 
-Last updated: 2026-03-26
+Last updated: 2026-04-04
 
 Purpose: document the current end-to-end AEMO data flow in this repo, from raw
 monthly CSV files to published market-insights JSON bundles and live current
@@ -149,6 +149,10 @@ Behavior:
 - if hosted data is fresher, local files are replaced
 - if local data is current or fresher, nothing changes
 - in strict mode, failure to fetch the hosted bundle aborts the command
+- this is expected during release prep when production already has a newer
+  published bundle; the checked-in `frontend/data/aemo-market-insights/`
+  directory is refreshed before deploy so `test:market-insights:contracts`
+  and Hosting stay aligned with live freshness
 
 This protects Hosting deploys from shipping an older checked-out local bundle
 when the live site already has a newer published dataset.

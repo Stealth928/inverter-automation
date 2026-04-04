@@ -111,17 +111,20 @@ function listFilesFromDiff(repoRoot, diffArgs) {
 }
 
 function listFilesFromWorkingTree(repoRoot) {
-  const output = runGit(repoRoot, ['status', '--porcelain']);
-  return uniqueNormalizedPaths(
-    output
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => line.slice(3).trim())
-      .map((entry) => {
-        const renameParts = entry.split(' -> ');
-        return renameParts[renameParts.length - 1];
-      })
-  );
+  const diffOutput = runGit(repoRoot, ['diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD']);
+  const statusOutput = runGit(repoRoot, ['status', '--porcelain']);
+
+  const diffFiles = diffOutput.split(/\r?\n/).filter(Boolean);
+  const statusFiles = statusOutput
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => line.slice(3).trim())
+    .map((entry) => {
+      const renameParts = entry.split(' -> ');
+      return renameParts[renameParts.length - 1];
+    });
+
+  return uniqueNormalizedPaths([...diffFiles, ...statusFiles]);
 }
 
 function resolvePullRequestBaseRef(repoRoot) {

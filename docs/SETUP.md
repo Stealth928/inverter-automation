@@ -3,7 +3,7 @@
 Purpose: canonical setup reference for local development, provider onboarding,
 runtime configuration, Firestore model, and deployment prerequisites.
 
-Last updated: 2026-03-28
+Last updated: 2026-04-04
 
 ## 1. Prerequisites
 
@@ -322,6 +322,8 @@ Notes:
 - `functions/scripts/emulator-live-user.local.json` is gitignored.
 - The `:live` commands fail fast when that file is missing, which avoids a
   silent reset that recreates only the built-in mock users.
+- If the optional live seed file is malformed, the helper surfaces the
+  original JSON parse error so you can fix the local file quickly.
 
 Default local endpoints:
 

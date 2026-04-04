@@ -688,11 +688,9 @@ function hasNonSeedCredentialOverride(seedUser, existingConfig = {}, existingSec
   const actualSecretEntries = Object.entries(actual.secrets || {});
   const allEntries = actualConfigEntries.concat(actualSecretEntries);
 
-  let hasAnyCredential = false;
   for (const [key, value] of allEntries) {
     const normalizedActual = toComparableString(value);
     if (!normalizedActual) continue;
-    hasAnyCredential = true;
     const normalizedExpected = toComparableString(
       Object.prototype.hasOwnProperty.call(expected.config || {}, key)
         ? expected.config[key]

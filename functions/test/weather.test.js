@@ -3,7 +3,84 @@
  * Tests geocoding functionality and location resolution
  */
 
-const fetch = global.fetch;
+const LIVE_WEATHER_TESTS = /^(1|true|yes|on)$/i.test(String(process.env.RUN_LIVE_WEATHER_TESTS || '').trim());
+
+function createResponse(results) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ results })
+  };
+}
+
+function buildGeocodingResults(name) {
+  const normalized = String(name || '').trim().toLowerCase();
+
+  const fixtures = {
+    narara: [
+      {
+        country_code: 'AU',
+        name: 'Narara',
+        country: 'Australia',
+        admin1: 'New South Wales',
+        latitude: -33.39593,
+        longitude: 151.33527
+      },
+      {
+        country_code: 'FJ',
+        name: 'Narara',
+        country: 'Fiji',
+        admin1: 'Western',
+        latitude: -17.713,
+        longitude: 177.542
+      }
+    ],
+    sydney: [
+      {
+        country_code: 'AU',
+        name: 'Sydney',
+        country: 'Australia',
+        admin1: 'New South Wales',
+        latitude: -33.8688,
+        longitude: 151.2093
+      }
+    ],
+    melbourne: [
+      {
+        country_code: 'AU',
+        name: 'Melbourne',
+        country: 'Australia',
+        admin1: 'Victoria',
+        latitude: -37.8136,
+        longitude: 144.9631
+      }
+    ],
+    'central coast': [
+      {
+        country_code: 'AU',
+        name: 'Central Coast',
+        country: 'Australia',
+        admin1: 'New South Wales',
+        latitude: -33.42,
+        longitude: 151.3
+      }
+    ],
+    invalidlocationxyz123: [],
+    na: []
+  };
+
+  return fixtures[normalized] || [];
+}
+
+async function mockFetch(url) {
+  const parsed = new URL(url);
+  const name = parsed.searchParams.get('name');
+  return createResponse(buildGeocodingResults(name));
+}
+
+const fetch = LIVE_WEATHER_TESTS && typeof global.fetch === 'function'
+  ? global.fetch.bind(global)
+  : mockFetch;
 
 describe('Weather API - Geocoding', () => {
   const baseGeoUrl = 'https://geocoding-api.open-meteo.com/v1/search';
