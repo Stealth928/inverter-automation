@@ -340,6 +340,46 @@ async function createPlatformPage(browser, platform) {
   return { context, page };
 }
 
+async function installIntervalHarness(page) {
+  await page.addInitScript(() => {
+    const captured = [];
+    let nextId = 1;
+
+    window.setInterval = (fn, ms, ...args) => {
+      const id = nextId++;
+      captured.push({
+        id,
+        fn,
+        args,
+        ms: Number(ms) || 0,
+        active: true
+      });
+      return id;
+    };
+
+    window.clearInterval = (id) => {
+      const match = captured.find((entry) => entry.id === id);
+      if (match) {
+        match.active = false;
+      }
+    };
+
+    window.__runCapturedIntervals = async (elapsedMs = 0) => {
+      const originalNow = Date.now;
+      const baseNow = originalNow();
+      Date.now = () => baseNow + Number(elapsedMs || 0);
+      try {
+        for (const entry of captured.slice()) {
+          if (!entry.active || typeof entry.fn !== 'function') continue;
+          await entry.fn(...entry.args);
+        }
+      } finally {
+        Date.now = originalNow;
+      }
+    };
+  });
+}
+
 test.describe('Auth Redirect Rules', () => {
   test.use({ serviceWorkers: 'block' });
 
@@ -441,5 +481,31 @@ test.describe('Auth Redirect Rules', () => {
         await context.close();
       }
     });
+  });
+
+  test('authenticated Android PWA session survives a long inactivity gap', async ({ browser }) => {
+    const { context, page } = await createPlatformPage(browser, 'android-pwa');
+    try {
+      await installIntervalHarness(page);
+      await stubAuthStartupHarness(page);
+      await stubFirebaseSdk(page);
+      await stubSetupApi(page);
+      await seedAuthUser(page, {
+        uid: 'persisted-android-idle',
+        email: 'android-idle@example.com',
+        displayName: 'Android Idle User'
+      });
+
+      await page.goto('/__auth-startup-harness.html');
+      await expect(page.locator('#status')).toHaveAttribute('data-ready', '1', { timeout: 5000 });
+
+      await page.evaluate(() => window.__runCapturedIntervals(3 * 60 * 60 * 1000)).catch(() => null);
+      await page.waitForTimeout(150);
+
+      expect(new URL(page.url()).pathname).toBe('/__auth-startup-harness.html');
+      await expect.poll(() => page.evaluate(() => !!localStorage.getItem('mockAuthUser'))).toBe(true);
+    } finally {
+      await context.close();
+    }
   });
 });

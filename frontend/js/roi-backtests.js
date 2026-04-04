@@ -4,15 +4,28 @@
         error: '',
         runs: [],
         tariffPlans: [],
-        filters: {
-            period: 'all',
-            scenario: '',
-            tariff: 'all'
-        }
+        filters: defaultFilters()
     };
 
     let root = null;
     let bound = false;
+
+    function defaultFilters() {
+        return {
+            period: 'all',
+            scenario: '',
+            tariff: 'all'
+        };
+    }
+
+    function resetFilters() {
+        state.filters = defaultFilters();
+    }
+
+    function getRoiDemoHelpers() {
+        if (typeof window === 'undefined') return null;
+        return window.RoiDemoData || null;
+    }
 
     function escHtml(value) {
         return String(value || '')
@@ -97,6 +110,8 @@
 
         const style = document.createElement('style');
         style.textContent = `
+            .roi-backtests-card .card-body { display:flex; flex-direction:column; gap:16px; }
+            .roi-backtests-card .card-actions .btn { font-size:11px; padding:6px 12px; }
             .roi-backtests-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:16px; }
             .roi-backtests-grid { display:grid; gap:12px; }
             .roi-backtest-card { background: var(--bg-overlay); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
@@ -113,11 +128,13 @@
             .roi-backtest-details { margin-top:10px; border:1px solid var(--border); border-radius:10px; background: color-mix(in srgb, var(--bg-card) 92%, transparent); }
             .roi-backtest-details summary { cursor:pointer; padding:12px; font-weight:600; }
             .roi-backtest-details div { padding:0 12px 12px; color: var(--text-muted); font-size:12px; line-height:1.55; }
+            .roi-backtests-card .empty-state { min-height: 180px; padding: 32px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+            .roi-backtests-card .status { margin-bottom:0; }
         `;
         document.head.appendChild(style);
 
         root = document.createElement('div');
-        root.className = 'card';
+        root.className = 'card section-card roi-backtests-card';
         root.id = 'roiBacktestsCard';
         historyCard.parentElement.insertBefore(root, historyCard);
         if (!bound) {
@@ -132,6 +149,14 @@
         state.loading = true;
         render();
         try {
+            const demoHelpers = getRoiDemoHelpers();
+            if (demoHelpers && typeof demoHelpers.isEnabled === 'function' && demoHelpers.isEnabled()) {
+                const scenario = typeof demoHelpers.getScenario === 'function' ? demoHelpers.getScenario() : null;
+                state.runs = Array.isArray(scenario?.backtestRuns) ? scenario.backtestRuns : [];
+                state.tariffPlans = Array.isArray(scenario?.tariffPlans) ? scenario.tariffPlans : [];
+                state.error = '';
+                return;
+            }
             await waitForAPIClient(5000);
             const [runsResponse, plansResponse] = await Promise.all([
                 window.apiClient.listBacktestRuns(20),
@@ -154,8 +179,24 @@
         const visibleRuns = filteredRuns();
         host.innerHTML = `
             <div class="card-header">
-                <div class="card-title">Compare Against Baseline</div>
-                <div style="display:flex;gap:8px;">
+                <div class="card-header-group">
+                    <div class="card-kicker">Saved backtests</div>
+                    <div class="section-title">
+                        <span class="section-icon section-icon--neutral" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M6 8h8"></path>
+                                <path d="M6 16h12"></path>
+                                <path d="M14 5l3 3-3 3"></path>
+                                <path d="M10 13l-3 3 3 3"></path>
+                            </svg>
+                        </span>
+                        <div>
+                            <div class="card-title">Compare Against Baseline</div>
+                            <div class="section-subtitle">Saved replays stay beside live ROI so you can compare rule performance against passive self-use.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-actions">
                     <button class="btn" type="button" data-action="refresh-backtests">Refresh</button>
                 </div>
             </div>
@@ -277,4 +318,14 @@
         ensureRoot();
         loadBacktests();
     });
+
+    if (typeof window !== 'undefined') {
+        window.loadRoiBacktests = loadBacktests;
+        window.addEventListener('roi-demo-data-changed', (event) => {
+            if (event && event.detail && Object.prototype.hasOwnProperty.call(event.detail, 'enabled')) {
+                resetFilters();
+            }
+            loadBacktests();
+        });
+    }
 })();

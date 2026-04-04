@@ -34,6 +34,146 @@
             return null;
         }
 
+        function getRoiDemoHelpers() {
+            if (typeof window === 'undefined') return null;
+            return window.RoiDemoData || null;
+        }
+
+        function isRoiDemoEnabled() {
+            const helpers = getRoiDemoHelpers();
+            return !!(helpers && typeof helpers.isEnabled === 'function' && helpers.isEnabled());
+        }
+
+        function getRoiDemoScenario() {
+            const helpers = getRoiDemoHelpers();
+            if (!helpers || typeof helpers.getScenario !== 'function') return null;
+            return helpers.getScenario();
+        }
+
+        function getDefaultRoiEmptyStateMarkup() {
+            return `
+                <div class="empty-state">
+                    <div class="icon">💵</div>
+                    <p>Click "Calculate ROI" to analyze your automation earnings</p>
+                    <p style="font-size:12px;margin-top:8px">Shows charging cost, import avoidance, and export capture from triggered rules. Use "Load sample data" to preview the layout without live history.</p>
+                </div>
+            `;
+        }
+
+        function applyRoiDateRange(startDate, endDate) {
+            const startInput = document.getElementById('roiStartDate');
+            const endInput = document.getElementById('roiEndDate');
+            if (startInput && startDate) startInput.value = startDate;
+            if (endInput && endDate) endInput.value = endDate;
+        }
+
+        function updateRoiDemoControls() {
+            const toggleButton = document.getElementById('btnToggleRoiDemo');
+            const demoNote = document.getElementById('roiDemoNote');
+            const enabled = isRoiDemoEnabled();
+
+            if (toggleButton) {
+                toggleButton.dataset.demoEnabled = enabled ? 'true' : 'false';
+                toggleButton.textContent = enabled ? 'Use live data' : 'Load sample data';
+            }
+
+            if (demoNote) {
+                demoNote.classList.toggle('is-visible', enabled);
+            }
+        }
+
+        async function loadRoiDemoState(announce = true) {
+            const scenario = getRoiDemoScenario();
+            if (!scenario) return;
+
+            const roiStatus = document.getElementById('roiStatus');
+            const historyStatus = document.getElementById('automationHistoryStatus');
+            const historyContent = document.getElementById('automationHistoryContent');
+
+            applyRoiDateRange(scenario.startDate, scenario.endDate);
+            deviceProvider = normalizeRoiProvider(scenario.provider || 'foxess');
+            providerCapabilities = resolveRoiProviderCapabilities(deviceProvider);
+            roiData = Array.isArray(scenario.events) ? scenario.events : [];
+            automationHistoryData = Array.isArray(scenario.automationHistoryEvents)
+                ? scenario.automationHistoryEvents
+                : roiData;
+
+            renderRoiProviderNotice();
+            updateRoiDemoControls();
+
+            await renderROICalculation(roiData, scenario.startDate, scenario.endDate, null, true);
+
+            if (historyContent) {
+                if (automationHistoryData.length > 0) {
+                    renderAutomationTimeline(automationHistoryData);
+                } else {
+                    historyContent.innerHTML = `
+                        <div class="timeline-empty">
+                            <div class="icon">Preview</div>
+                            <p>No sample automation events are configured.</p>
+                        </div>
+                    `;
+                }
+            }
+
+            if (typeof window !== 'undefined' && typeof window.loadRoiBacktests === 'function') {
+                await window.loadRoiBacktests();
+            }
+
+            if (announce) {
+                showStatus(roiStatus, 'success', `Loaded ${roiData.length} sample rule event${roiData.length !== 1 ? 's' : ''}`);
+                showStatus(historyStatus, 'success', `Loaded ${automationHistoryData.length} sample timeline event${automationHistoryData.length !== 1 ? 's' : ''}`);
+                setTimeout(() => { dismissStatus(roiStatus); }, 3000);
+                setTimeout(() => { dismissStatus(historyStatus); }, 3000);
+            } else {
+                dismissStatus(roiStatus);
+                dismissStatus(historyStatus);
+            }
+        }
+
+        async function restoreLiveRoiState() {
+            const roiStatus = document.getElementById('roiStatus');
+            const roiContent = document.getElementById('roiContent');
+
+            updateRoiDemoControls();
+            if (roiContent) {
+                roiContent.innerHTML = getDefaultRoiEmptyStateMarkup();
+            }
+            dismissStatus(roiStatus);
+
+            try {
+                await loadDeviceSn();
+            } catch (error) {
+                console.warn('[ROI] Failed to restore live provider context', error);
+            }
+
+            try {
+                await fetchAutomationHistory();
+            } catch (error) {
+                console.warn('[ROI] Failed to restore live automation history', error);
+            }
+
+            if (typeof window !== 'undefined' && typeof window.loadRoiBacktests === 'function') {
+                await window.loadRoiBacktests();
+            }
+        }
+
+        async function toggleRoiDemoMode(forceEnabled) {
+            const helpers = getRoiDemoHelpers();
+            if (!helpers || typeof helpers.setEnabled !== 'function') return;
+
+            const nextEnabled = typeof forceEnabled === 'boolean'
+                ? forceEnabled
+                : !isRoiDemoEnabled();
+
+            helpers.setEnabled(nextEnabled);
+            if (nextEnabled) {
+                await loadRoiDemoState(true);
+            } else {
+                await restoreLiveRoiState();
+            }
+        }
+
         function escHtml(value) {
             const helpers = getRoiImpactHelpers();
             if (helpers && typeof helpers.escHtml === 'function') {
@@ -220,7 +360,13 @@
             const endDate = document.getElementById('roiEndDate').value;
             const btn = document.getElementById('btnCalculateROI');
             const status = document.getElementById('roiStatus');
-            const content = document.getElementById('roiContent');            
+            const content = document.getElementById('roiContent');
+
+            if (isRoiDemoEnabled()) {
+                await loadRoiDemoState(true);
+                return;
+            }
+
             if (!startDate || !endDate) {
                 showStatus(status, 'error', '✗ Please select both start and end dates');
                 return;
@@ -268,6 +414,7 @@
                         <div class="empty-state">
                             <div class="icon">📭</div>
                             <p>No automation rule activity in this date range</p>
+                            <p style="font-size:12px;margin-top:8px">Use "Load sample data" if you want to preview the ROI layout without live rule triggers.</p>
                         </div>
                     `;
                     showStatus(status, 'success', 'No rules triggered during this period');
@@ -390,85 +537,87 @@
             // Fetch ALL actual prices for the ACTUAL event date range (not just user-selected range)
             const actualPriceMap = new Map(); // key: ISO timestamp, value: {buyPrice, feedInPrice}
             
-            try {
-                const pricingContext = await getRoiPricingContext();
-                const sitesResp = await apiClient.getPricingSites(pricingContext.provider);
-                if (sitesResp && sitesResp.errno === 0 && sitesResp.result && sitesResp.result.length > 0) {
-                    const selectionKey = pricingContext.provider === 'aemo' ? 'region' : 'id';
-                    const siteId = (pricingContext.selection && sitesResp.result.some(s => String(s[selectionKey] || s.id) === pricingContext.selection))
-                        ? pricingContext.selection
-                        : String(sitesResp.result[0][selectionKey] || sitesResp.result[0].id || '');
-                    
-                    // Find the actual date range covered by events (may be wider than user selection)
-                    let minEventTime = Infinity;
-                    let maxEventTime = -Infinity;
-                    for (const event of events) {
-                        if (event.startTime) {
-                            const eventTime = new Date(event.startTime).getTime();
-                            minEventTime = Math.min(minEventTime, eventTime);
-                            maxEventTime = Math.max(maxEventTime, eventTime);
-                        }
-                    }
-                    
-                    // If we found events, use their date range; otherwise fallback to user selection
-                    let fetchStartDate, fetchEndDate;
-                    if (minEventTime !== Infinity && maxEventTime !== -Infinity) {
-                        // Convert event timestamps to date strings (UTC)
-                        // Events are stored as epoch ms and represent UTC times
-                        const minDate = new Date(minEventTime);
-                        const maxDate = new Date(maxEventTime);
+            if (!isRoiDemoEnabled()) {
+                try {
+                    const pricingContext = await getRoiPricingContext();
+                    const sitesResp = await apiClient.getPricingSites(pricingContext.provider);
+                    if (sitesResp && sitesResp.errno === 0 && sitesResp.result && sitesResp.result.length > 0) {
+                        const selectionKey = pricingContext.provider === 'aemo' ? 'region' : 'id';
+                        const siteId = (pricingContext.selection && sitesResp.result.some(s => String(s[selectionKey] || s.id) === pricingContext.selection))
+                            ? pricingContext.selection
+                            : String(sitesResp.result[0][selectionKey] || sitesResp.result[0].id || '');
                         
-                        // Extract UTC date (YYYY-MM-DD) and add one day buffer at end for safety
-                        fetchStartDate = minDate.toISOString().split('T')[0];
-                        fetchEndDate = new Date(maxDate.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                    } else {
-                        // Fallback: use user-selected date range
-                        // User selects dates in their local timezone (AEDT), pass them directly to API
-                        // Amber API interprets YYYY-MM-DD as local Australian dates
-                        fetchStartDate = startDate;
-                        fetchEndDate = endDate;
-                    }
-                    
-                    // Fetch all prices for the date range with 5-minute resolution (not actualOnly to get recent data)
-                    const pricesResp = await apiClient.getPricingHistoricalPrices(pricingContext.provider, siteId, fetchStartDate, fetchEndDate, 5, false);
-                    if (pricesResp && pricesResp.errno === 0 && pricesResp.result) {
-                        const applyAmberSecondOffset = pricingContext.provider === 'amber';
-                        const nowMs = Date.now();
-                        // Build map of prices indexed by EPOCH MILLISECONDS (avoids timezone issues)
-                        for (const pricePoint of pricesResp.result) {
-                            const startMs = new Date(pricePoint.startTime || pricePoint.nemTime).getTime();
-                            // Use only settled (actual) prices: ignore forecasts and future timestamps
-                            if (pricePoint.type === 'ForecastInterval' || startMs > nowMs) {
-                                continue;
-                            }
-                            // Amber historical rows sometimes land one second after the interval boundary
-                            // (for example 14:00:01 instead of 14:00:00). Keep that compatibility shim
-                            // for Amber only; AEMO rows already align to exact 5-minute boundaries.
-                            const priceEpochMs = applyAmberSecondOffset ? (startMs - 1000) : startMs;
-                            const channelType = pricePoint.channelType;
-                            
-                            // Amber API returns prices in cents/kWh already (e.g., 105.87 = 105.87¢/kWh)
-                            // No conversion or normalization needed
-                            const perKwh = pricePoint.perKwh;
-                            
-                            if (!actualPriceMap.has(priceEpochMs)) {
-                                actualPriceMap.set(priceEpochMs, {});
-                            }
-                            
-                            if (channelType === 'general') {
-                                actualPriceMap.get(priceEpochMs).buyPrice = perKwh;
-                            } else if (channelType === 'feedIn') {
-                                // Amber API returns feedIn as negative (grid paying user to take power)
-                                // Negate it so discharge operations (exporting) show positive revenue
-                                actualPriceMap.get(priceEpochMs).feedInPrice = -perKwh;
+                        // Find the actual date range covered by events (may be wider than user selection)
+                        let minEventTime = Infinity;
+                        let maxEventTime = -Infinity;
+                        for (const event of events) {
+                            if (event.startTime) {
+                                const eventTime = new Date(event.startTime).getTime();
+                                minEventTime = Math.min(minEventTime, eventTime);
+                                maxEventTime = Math.max(maxEventTime, eventTime);
                             }
                         }
-                    } else {
-                        console.warn('[ROI Actual] No price data returned:', pricesResp);
+                        
+                        // If we found events, use their date range; otherwise fallback to user selection
+                        let fetchStartDate, fetchEndDate;
+                        if (minEventTime !== Infinity && maxEventTime !== -Infinity) {
+                            // Convert event timestamps to date strings (UTC)
+                            // Events are stored as epoch ms and represent UTC times
+                            const minDate = new Date(minEventTime);
+                            const maxDate = new Date(maxEventTime);
+                            
+                            // Extract UTC date (YYYY-MM-DD) and add one day buffer at end for safety
+                            fetchStartDate = minDate.toISOString().split('T')[0];
+                            fetchEndDate = new Date(maxDate.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                        } else {
+                            // Fallback: use user-selected date range
+                            // User selects dates in their local timezone (AEDT), pass them directly to API
+                            // Amber API interprets YYYY-MM-DD as local Australian dates
+                            fetchStartDate = startDate;
+                            fetchEndDate = endDate;
+                        }
+                        
+                        // Fetch all prices for the date range with 5-minute resolution (not actualOnly to get recent data)
+                        const pricesResp = await apiClient.getPricingHistoricalPrices(pricingContext.provider, siteId, fetchStartDate, fetchEndDate, 5, false);
+                        if (pricesResp && pricesResp.errno === 0 && pricesResp.result) {
+                            const applyAmberSecondOffset = pricingContext.provider === 'amber';
+                            const nowMs = Date.now();
+                            // Build map of prices indexed by EPOCH MILLISECONDS (avoids timezone issues)
+                            for (const pricePoint of pricesResp.result) {
+                                const startMs = new Date(pricePoint.startTime || pricePoint.nemTime).getTime();
+                                // Use only settled (actual) prices: ignore forecasts and future timestamps
+                                if (pricePoint.type === 'ForecastInterval' || startMs > nowMs) {
+                                    continue;
+                                }
+                                // Amber historical rows sometimes land one second after the interval boundary
+                                // (for example 14:00:01 instead of 14:00:00). Keep that compatibility shim
+                                // for Amber only; AEMO rows already align to exact 5-minute boundaries.
+                                const priceEpochMs = applyAmberSecondOffset ? (startMs - 1000) : startMs;
+                                const channelType = pricePoint.channelType;
+                                
+                                // Amber API returns prices in cents/kWh already (e.g., 105.87 = 105.87¢/kWh)
+                                // No conversion or normalization needed
+                                const perKwh = pricePoint.perKwh;
+                                
+                                if (!actualPriceMap.has(priceEpochMs)) {
+                                    actualPriceMap.set(priceEpochMs, {});
+                                }
+                                
+                                if (channelType === 'general') {
+                                    actualPriceMap.get(priceEpochMs).buyPrice = perKwh;
+                                } else if (channelType === 'feedIn') {
+                                    // Amber API returns feedIn as negative (grid paying user to take power)
+                                    // Negate it so discharge operations (exporting) show positive revenue
+                                    actualPriceMap.get(priceEpochMs).feedInPrice = -perKwh;
+                                }
+                            }
+                        } else {
+                            console.warn('[ROI Actual] No price data returned:', pricesResp);
+                        }
                     }
+                } catch (error) {
+                    console.warn('[ROI Actual] Failed to fetch historical prices:', error.message);
                 }
-            } catch (error) {
-                console.warn('[ROI Actual] Failed to fetch historical prices:', error.message);
             }
             
             /**
@@ -867,6 +1016,27 @@
         async function fetchAutomationHistory() {            const btn = document.getElementById('btnRefreshAutomationHistory');
             const status = document.getElementById('automationHistoryStatus');
             const content = document.getElementById('automationHistoryContent');
+
+            if (isRoiDemoEnabled()) {
+                const scenario = getRoiDemoScenario();
+                const events = Array.isArray(scenario?.automationHistoryEvents) ? scenario.automationHistoryEvents : [];
+                automationHistoryData = events;
+
+                if (events.length === 0) {
+                    content.innerHTML = `
+                        <div class="timeline-empty">
+                            <div class="icon">Preview</div>
+                            <p>No sample automation events are configured.</p>
+                        </div>
+                    `;
+                } else {
+                    renderAutomationTimeline(events);
+                }
+
+                showStatus(status, 'success', `Loaded ${events.length} sample rule event${events.length !== 1 ? 's' : ''}`);
+                setTimeout(() => { dismissStatus(status); }, 3000);
+                return;
+            }
             
             if (btn) {
                 btn.disabled = true;
@@ -1041,6 +1211,16 @@
          * Load device SN from Firestore
          */
         async function loadDeviceSn() {
+            if (isRoiDemoEnabled()) {
+                const scenario = getRoiDemoScenario();
+                if (scenario?.provider) {
+                    deviceProvider = normalizeRoiProvider(scenario.provider);
+                    providerCapabilities = resolveRoiProviderCapabilities(deviceProvider);
+                }
+                renderRoiProviderNotice();
+                return;
+            }
+
             try {
                 const resp = await authenticatedFetch('/api/config');
                 const data = await resp.json();
@@ -1121,6 +1301,24 @@
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             initDatePickers();
+            updateRoiDemoControls();
+
+            const toggleButton = document.getElementById('btnToggleRoiDemo');
+            if (toggleButton) {
+                toggleButton.addEventListener('click', () => {
+                    toggleRoiDemoMode().catch((error) => {
+                        console.error('[ROI] Failed to toggle sample data', error);
+                    });
+                });
+            }
+
+            if (typeof window !== 'undefined') {
+                window.addEventListener('roi-demo-data-changed', () => {
+                    updateRoiDemoControls();
+                });
+                window.toggleRoiDemoMode = toggleRoiDemoMode;
+                window.loadRoiSampleData = () => toggleRoiDemoMode(true);
+            }
         });
 
         // Initialize Firebase & AppShell
@@ -1136,7 +1334,11 @@
                     console.error('Failed to load device SN', error);
                 }
                 try {
-                    fetchAutomationHistory();
+                    if (isRoiDemoEnabled()) {
+                        loadRoiDemoState(false);
+                    } else {
+                        fetchAutomationHistory();
+                    }
                 } catch (error) {
                     console.error('Failed to load automation history', error);
                 }

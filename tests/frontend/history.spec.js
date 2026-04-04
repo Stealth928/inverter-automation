@@ -161,6 +161,36 @@ test.describe('History Page', () => {
     await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
   });
 
+  test('stacks the pricing and real-time history cards full width on desktop', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.waitForLoadState('networkidle');
+
+    const desktopLayout = await page.evaluate(() => {
+      const grid = document.querySelector('.reports-grid--top');
+      const pricingCard = document.querySelector('.section-card--pricing');
+      const historyCard = document.querySelector('.section-card--history');
+      const gridRect = grid ? grid.getBoundingClientRect() : null;
+      const pricingRect = pricingCard ? pricingCard.getBoundingClientRect() : null;
+      const historyRect = historyCard ? historyCard.getBoundingClientRect() : null;
+
+      return {
+        gridWidth: gridRect ? Math.round(gridRect.width) : 0,
+        pricingWidth: pricingRect ? Math.round(pricingRect.width) : 0,
+        historyWidth: historyRect ? Math.round(historyRect.width) : 0,
+        pricingTop: pricingRect ? Math.round(pricingRect.top) : 0,
+        pricingBottom: pricingRect ? Math.round(pricingRect.bottom) : 0,
+        historyTop: historyRect ? Math.round(historyRect.top) : 0,
+        historyLeft: historyRect ? Math.round(historyRect.left) : 0,
+        pricingLeft: pricingRect ? Math.round(pricingRect.left) : 0
+      };
+    });
+
+    expect(desktopLayout.pricingWidth).toBeGreaterThanOrEqual(desktopLayout.gridWidth - 2);
+    expect(desktopLayout.historyWidth).toBeGreaterThanOrEqual(desktopLayout.gridWidth - 2);
+    expect(Math.abs(desktopLayout.pricingLeft - desktopLayout.historyLeft)).toBeLessThanOrEqual(2);
+    expect(desktopLayout.historyTop).toBeGreaterThan(desktopLayout.pricingBottom);
+  });
+
   test('should sort history entries', async ({ page }) => {
     // Sort by date, name, status, etc.
     const sortBtn = page.locator('button:has-text("Sort"), [data-sort], th').first();

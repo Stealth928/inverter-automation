@@ -3075,10 +3075,43 @@ section { padding: 80px 0; }
   border: 1px solid rgba(50, 74, 105, 0.42);
   background: rgba(7, 12, 22, 0.72);
   text-align: center;
-  padding: 8px 4px;
-  font-size: 0.8rem;
+  padding: 7px 4px;
+  min-height: 50px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+}
+
+.price-forecast-row span small {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6d88a6;
+}
+
+.price-forecast-row span strong {
+  font-size: 0.84rem;
   font-weight: 700;
   color: #e3b341;
+}
+
+.price-forecast-row span.is-current {
+  border-color: rgba(88, 166, 255, 0.58);
+  box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.18);
+}
+
+.price-forecast-row span.is-current small {
+  color: #9fc4ef;
+}
+
+.price-forecast-row span.is-charge-window strong {
+  color: #7ee787;
+}
+
+.price-forecast-row span.is-export-window strong {
+  color: #ff938d;
 }
 
 .chart-shell {
@@ -4057,7 +4090,15 @@ section { padding: 80px 0; }
 
   .price-forecast-row span {
     padding: 6px 4px;
-    font-size: 0.72rem;
+    min-height: 44px;
+  }
+
+  .price-forecast-row span small {
+    font-size: 0.54rem;
+  }
+
+  .price-forecast-row span strong {
+    font-size: 0.76rem;
   }
 
   .chart-shell {
@@ -4385,7 +4426,15 @@ section { padding: 80px 0; }
 
   .price-forecast-row span {
     padding: 5px 2px;
-    font-size: 0.62rem;
+    min-height: 40px;
+  }
+
+  .price-forecast-row span small {
+    font-size: 0.5rem;
+  }
+
+  .price-forecast-row span strong {
+    font-size: 0.68rem;
   }
 
   .chart-shell {

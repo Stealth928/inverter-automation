@@ -21,11 +21,6 @@ class FirebaseAuth {
     this.onAuthStateChangedCallbacks = [];
     this.initialized = false;
     this.initialAuthStateResolved = false;
-    
-    // Idle session timeout (120 minutes / 2 hours - relaxed for better user experience)
-    this.IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
-    this.lastActivityTime = Date.now();
-    this.idleTimeoutCheckInterval = null;
   }
 
   markInitialAuthStateResolved() {
@@ -232,9 +227,6 @@ class FirebaseAuth {
         }
       }, 50 * 60 * 1000);
 
-      // Track user activity for idle timeout
-      this.setupIdleTracking();
-
       this.initialized = true;
     } catch (error) {
       console.error('[FirebaseAuth] Initialization error:', error);
@@ -374,12 +366,6 @@ class FirebaseAuth {
    * Sign out
    */
   async signOut() {
-    // Clear idle timeout interval to prevent duplicate checks after logout
-    if (this.idleTimeoutCheckInterval) {
-      clearInterval(this.idleTimeoutCheckInterval);
-      this.idleTimeoutCheckInterval = null;
-    }
-
     // Clear sensitive data from localStorage
     try {
       localStorage.removeItem('automationRules');
@@ -407,55 +393,6 @@ class FirebaseAuth {
       console.error('[FirebaseAuth] Sign out error:', error);
       return { success: false, error: error.message };
     }
-  }
-
-  /**
-   * Setup activity tracking for idle session timeout
-   * Tracks user interactions and logs them out after 180 minutes of inactivity
-   */
-  setupIdleTracking() {
-    // Track user activity
-    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-    const updateActivity = () => {
-      this.lastActivityTime = Date.now();
-    };
-
-    activityEvents.forEach(event => {
-      document.addEventListener(event, updateActivity, { passive: true });
-    });
-
-    // Check for idle timeout every 60 seconds
-    this.idleTimeoutCheckInterval = setInterval(async () => {
-      try {
-        if (this.user) {
-          const idleTime = Date.now() - this.lastActivityTime;
-          
-          if (idleTime > this.IDLE_TIMEOUT_MS) {
-            console.warn(`[FirebaseAuth] Session idle for ${Math.round(idleTime / 1000 / 60)} minutes - logging out`);
-            // Clear interval before signing out to prevent duplicate execution
-            if (this.idleTimeoutCheckInterval) {
-              clearInterval(this.idleTimeoutCheckInterval);
-              this.idleTimeoutCheckInterval = null;
-            }
-            await this.signOut();
-            
-            // Redirect to login
-            if (typeof window !== 'undefined' && window.location) {
-              // console.log('[FirebaseAuth] Redirecting to login page');
-              window.location.href = '/login.html';
-            }
-          }
-        } else {
-          // User is null, stop checking
-          if (this.idleTimeoutCheckInterval) {
-            clearInterval(this.idleTimeoutCheckInterval);
-            this.idleTimeoutCheckInterval = null;
-          }
-        }
-      } catch (error) {
-        console.error('[FirebaseAuth] Error in idle timeout check:', error);
-      }
-    }, 60 * 1000); // Check every 60 seconds
   }
 
   /**

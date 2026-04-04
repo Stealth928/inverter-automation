@@ -33,14 +33,14 @@
         .container.page-shell {
             width: min(1400px, calc(100% - 32px));
             margin: 0 auto;
-            padding: var(--space-3xl) 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
+            padding: 24px 0 calc(var(--space-3xl) + env(safe-area-inset-bottom, 0px));
         }
 
         .page-header {
             position: relative;
             margin-bottom: 0;
-            padding: 28px;
-            border-radius: 24px;
+            padding: 24px;
+            border-radius: 22px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
             background:
                 radial-gradient(circle at top left, color-mix(in srgb, var(--color-success) 18%, transparent), transparent 34%),
@@ -48,6 +48,12 @@
                 linear-gradient(145deg, color-mix(in srgb, var(--bg-secondary) 96%, transparent), color-mix(in srgb, var(--bg-primary) 92%, transparent));
             box-shadow: var(--shadow-lg);
             overflow: hidden;
+        }
+        .page-header.page-masthead {
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(560px, 0.95fr);
+            gap: 22px;
+            align-items: start;
         }
         .page-header::before {
             content: '';
@@ -66,21 +72,25 @@
             position: relative;
             z-index: 1;
         }
+        .page-masthead__copy {
+            min-width: 0;
+            max-width: 64ch;
+        }
         .page-header .page-title {
             margin: 0;
         }
         .page-header .page-subtitle {
-            max-width: 760px;
-            margin-top: 10px;
+            max-width: 64ch;
+            margin-top: 8px;
             font-size: 14px;
-            line-height: 1.7;
+            line-height: 1.6;
         }
         .page-eyebrow {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 16px;
-            padding: 7px 12px;
+            margin-bottom: 12px;
+            padding: 6px 11px;
             border-radius: 999px;
             border: 1px solid color-mix(in srgb, var(--color-success) 32%, transparent);
             background: color-mix(in srgb, var(--color-success) 10%, transparent);
@@ -94,13 +104,13 @@
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 18px;
+            margin-top: 14px;
         }
         .page-chip {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 8px 12px;
+            padding: 7px 11px;
             border-radius: 999px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 76%, transparent);
             background: color-mix(in srgb, var(--bg-overlay) 80%, transparent);
@@ -111,12 +121,13 @@
         .page-signal-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 12px;
-            width: min(420px, 100%);
+            gap: 10px;
+            width: 100%;
+            align-self: start;
         }
         .page-signal-card {
-            padding: 16px;
-            border-radius: 16px;
+            padding: 14px;
+            border-radius: 14px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
             background:
                 linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
@@ -125,19 +136,19 @@
         }
         .page-signal-card strong {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             color: var(--text-primary);
-            font-size: 14px;
-            line-height: 1.45;
+            font-size: 13px;
+            line-height: 1.38;
         }
         .page-signal-card p {
             margin: 0;
             color: var(--text-secondary);
             font-size: 12px;
-            line-height: 1.65;
+            line-height: 1.55;
         }
         .page-signal-label {
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             color: var(--color-success);
             font-size: 10px;
             font-weight: 700;
@@ -263,6 +274,21 @@
         .context-note strong {
             color: var(--text-primary);
         }
+        .roi-demo-note {
+            display: none;
+            border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+            background:
+                linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 10%, transparent), color-mix(in srgb, var(--bg-overlay) 94%, transparent)),
+                radial-gradient(circle at top right, color-mix(in srgb, var(--color-warning) 16%, transparent), transparent 42%);
+        }
+        .roi-demo-note.is-visible {
+            display: flex;
+        }
+        .btn[data-demo-enabled="true"] {
+            border-color: color-mix(in srgb, var(--color-warning) 34%, transparent);
+            background: color-mix(in srgb, var(--color-warning-bg) 90%, transparent);
+            color: var(--text-primary);
+        }
         .roi-layout {
             display: grid;
             grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
@@ -272,9 +298,13 @@
         .roi-main-column,
         .roi-side-column {
             min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 0;
+            display: grid;
+            align-content: start;
+            gap: 16px;
+        }
+        .roi-main-column > .card,
+        .roi-side-column > .card {
+            margin-bottom: 0;
         }
         
         /* Controls row */
@@ -557,10 +587,18 @@
             font-weight: 600;
         }
 
-        /* Scrollable panels for ROI and Automation History - keep equal fixed height (50% larger) */
-        #roiContent, #automationHistoryContent {
+        /* Scrollable panels tuned per column so the right stack stays visually balanced */
+        #roiContent {
             min-height: 320px;
             max-height: 720px;
+            overflow-y: auto;
+            overflow-x: auto;
+            padding-right: 8px;
+            box-sizing: border-box;
+        }
+        #automationHistoryContent {
+            min-height: 240px;
+            max-height: 560px;
             overflow-y: auto;
             overflow-x: auto;
             padding-right: 8px;
@@ -894,6 +932,15 @@
         }
         
         /* Responsive */
+        @media (max-width: 1200px) {
+            .page-header.page-masthead {
+                grid-template-columns: 1fr;
+                gap: 18px;
+            }
+            .page-masthead__copy {
+                max-width: none;
+            }
+        }
         @media (max-width: 1100px) {
             .page-signal-grid {
                 width: 100%;
@@ -906,11 +953,11 @@
         @media (max-width: 768px) {
             .container.page-shell {
                 width: min(100% - 24px, 100%);
-                padding-top: 18px;
+                padding-top: 16px;
             }
             .page-header {
-                padding: 20px 18px;
-                border-radius: 20px;
+                padding: 18px 16px;
+                border-radius: 18px;
             }
             .page-signal-grid {
                 grid-template-columns: 1fr;
@@ -1107,12 +1154,18 @@
                             </div>
                         </div>
                         <div class="card-actions">
+                            <button class="btn" type="button" id="btnToggleRoiDemo">
+                                Load sample data
+                            </button>
                             <button class="btn btn-primary" onclick="calculateROI()" id="btnCalculateROI" style="font-size:13px;padding:10px 18px;font-weight:600">
                                 Calculate ROI
                             </button>
                         </div>
                     </div>
                     <div class="card-body">
+                        <div class="context-note roi-demo-note" id="roiDemoNote">
+                            <strong>Sample review active:</strong> ROI, timeline, and baseline comparison cards are showing illustrative data so you can inspect the page without waiting for live rule history.
+                        </div>
                         <div class="context-note">
                             <strong>Historical horizon:</strong> ROI review is available for the last 7 days. Older activity is archived so the page stays fast on mobile and in the installed PWA.
                         </div>
@@ -1182,6 +1235,7 @@
 
     <script defer src="js/roi-classification.js"></script>
     <script defer src="js/roi-impact.js"></script>
+    <script defer src="js/roi-demo-data.js"></script>
     <script defer src="js/roi.js"></script>
     <script defer src="js/roi-backtests.js"></script>
 </body>

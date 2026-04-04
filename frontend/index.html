@@ -265,7 +265,7 @@
                 </div>
                 <div class="product-card__meta">
                   <span class="product-badge product-badge--live">LIVE</span>
-                  <span class="product-card__age">3m ago</span>
+                  <span class="product-card__age" id="heroStatusAge">2m ago</span>
                 </div>
               </header>
 
@@ -326,7 +326,7 @@
                     <div class="hero-energy__node-top">
                       <span class="hero-energy__title">Solar</span>
                     </div>
-                    <strong id="heroSolarKw">0.40 kW</strong>
+                    <strong id="heroSolarKw">0.00 kW</strong>
                     <small>Solar Production</small>
                   </section>
 
@@ -335,7 +335,7 @@
                       <span class="hero-energy__title">Grid</span>
                       <span class="hero-energy__node-state" id="heroGridMode">Import</span>
                     </div>
-                    <strong id="heroGridKw">2.62 kW</strong>
+                    <strong id="heroGridKw">2.92 kW</strong>
                     <small id="heroGridLabel">Grid Import</small>
                   </section>
 
@@ -343,7 +343,7 @@
                     <div class="hero-energy__node-top">
                       <span class="hero-energy__title">Home</span>
                     </div>
-                    <strong id="heroLoadKw">0.52 kW</strong>
+                    <strong id="heroLoadKw">0.62 kW</strong>
                     <small>House Load</small>
                   </section>
 
@@ -354,9 +354,9 @@
                     </div>
                     <div class="hero-energy__hub-main">
                       <div class="hero-energy__hub-copy">
-                        <div class="hero-energy__hub-power"><span id="heroChargeW">2.5</span> kW</div>
-                        <div class="hero-energy__hub-soc" id="heroSoc">76%</div>
-                        <div class="hero-energy__hub-energy"><span id="heroBatteryKwh">23.9</span> kWh available</div>
+                        <div class="hero-energy__hub-power"><span id="heroChargeW">2.3</span> kW</div>
+                        <div class="hero-energy__hub-soc" id="heroSoc">72%</div>
+                        <div class="hero-energy__hub-energy"><span id="heroBatteryKwh">22.7</span> kWh available</div>
                       </div>
                       <div class="hero-energy__hub-visual" aria-hidden="true">
                         <span class="hero-energy__battery-icon">
@@ -370,15 +370,15 @@
                 <div class="hero-energy__temps">
                   <div class="hero-energy__temp">
                     <span>Battery Temp</span>
-                    <strong>29.1&deg;C</strong>
+                    <strong id="heroBatteryTemp">20.9&deg;C</strong>
                   </div>
                   <div class="hero-energy__temp">
                     <span>Ambient Temp</span>
-                    <strong>35.5&deg;C</strong>
+                    <strong id="heroAmbientTemp">19.7&deg;C</strong>
                   </div>
                   <div class="hero-energy__temp">
                     <span>Inverter Temp</span>
-                    <strong>28.1&deg;C</strong>
+                    <strong id="heroInverterTemp">22.8&deg;C</strong>
                   </div>
                 </div>
               </div>
@@ -388,8 +388,8 @@
               <header class="product-card__head">
                 <h3>&#128176; Electricity Prices</h3>
                 <div class="product-card__meta">
-                  <span class="product-badge product-badge--provider">AEMO LIVE</span>
-                  <span class="product-card__age">18s ago</span>
+                  <span class="product-badge product-badge--provider" id="heroPriceProvider">LIVE TARIFFS</span>
+                  <span class="product-card__age" id="heroPricesAge">18s ago</span>
                 </div>
               </header>
 
@@ -400,21 +400,21 @@
                 </div>
                 <div class="price-kpi">
                   <span>Feed-in</span>
-                  <strong id="heroFeedInPrice">10.0&cent;</strong>
+                  <strong id="heroFeedInPrice">6.7&cent;</strong>
                 </div>
                 <div class="price-kpi">
                   <span>Today saved</span>
-                  <strong id="heroSaving">$2.60</strong>
+                  <strong id="heroSaving">$2.14</strong>
                 </div>
               </div>
 
-              <div class="price-forecast-row" aria-hidden="true">
-                <span>21&cent;</span>
-                <span>21&cent;</span>
-                <span>20&cent;</span>
-                <span>19&cent;</span>
-                <span>20&cent;</span>
-                <span>19&cent;</span>
+              <div class="price-forecast-row" id="heroPriceForecastRow" aria-hidden="true">
+                <span><small>12am</small><strong>8.6&cent;</strong></span>
+                <span><small>2am</small><strong>8.2&cent;</strong></span>
+                <span><small>4am</small><strong>7.8&cent;</strong></span>
+                <span><small>6am</small><strong>7.9&cent;</strong></span>
+                <span><small>8am</small><strong>9.1&cent;</strong></span>
+                <span><small>10am</small><strong>10.4&cent;</strong></span>
               </div>
 
               <div class="chart-shell">
@@ -466,14 +466,14 @@
               <header class="product-card__head">
                 <h3>&#9925; Weather Forecast</h3>
                 <div class="product-card__meta">
-                  <span class="product-card__age">43s ago</span>
+                  <span class="product-card__age" id="heroWeatherAge">41s ago</span>
                 </div>
               </header>
 
               <div class="weather-toolbar">
                 <div class="weather-location-pill">
                   <span class="weather-location-pill__pin">&#128205;</span>
-                  <span>Sydney</span>
+                  <span id="heroWeatherLocation">Sydney</span>
                 </div>
                 <div class="weather-range">
                   <span>1d</span>
@@ -485,56 +485,56 @@
               <div class="weather-now">
                 <div class="weather-now__main">
                   <span class="weather-now__pulse" aria-hidden="true"></span>
-                  <strong>20.5&deg;C</strong>
-                  <span class="weather-now__cond">&#127783; Showers</span>
+                  <strong id="heroWeatherTemp">19.7&deg;C</strong>
+                  <span class="weather-now__cond" id="heroWeatherCondition">&#127783; Showers</span>
                 </div>
-                <div class="weather-now__place">Sydney &middot; Now (21:30)</div>
+                <div class="weather-now__place" id="heroWeatherPlace">Sydney &middot; Now (12:00am)</div>
                 <div class="weather-now__meta">
-                  <span>&#127783; Rain&thinsp;3.6 mm</span>
-                  <span>&#128168; Wind&thinsp;5.5 km/h SSE</span>
-                  <span>&#9728; Sun&thinsp;0 W/m&sup2;</span>
-                  <span>&#128167; Humidity&thinsp;55%</span>
+                  <span id="heroWeatherRain">&#127783; Rain&thinsp;1.4 mm</span>
+                  <span id="heroWeatherWind">&#128168; Wind&thinsp;8.2 km/h SSE</span>
+                  <span id="heroWeatherSolar">&#9728; Sun&thinsp;0 W/m&sup2;</span>
+                  <span id="heroWeatherHumidity">&#128167; Humidity&thinsp;85%</span>
                 </div>
               </div>
 
-              <div class="weather-cards">
+              <div class="weather-cards" id="heroWeatherCards">
                 <div class="weather-card">
                   <div class="weather-card__top">
-                    <h4>Mon 30/3</h4>
+                    <h4>Tomorrow</h4>
                     <span class="weather-card__emoji" aria-hidden="true">&#127783;</span>
                   </div>
                   <p>Showers</p>
-                  <div class="weather-card__temps">High <strong>22.8&deg;</strong> / Low 18.6&deg;</div>
+                  <div class="weather-card__temps">High <strong>22.8&deg;</strong> / Low 18.4&deg;</div>
                   <div class="weather-card__badges">
-                    <span class="wbadge wbadge--rain-mid">&#127783; 3.6 mm</span>
-                    <span class="wbadge wbadge--sun-mid">&#9728; 119</span>
-                    <span class="wbadge wbadge--cloud-bad">&#9729; 81%</span>
+                    <span class="wbadge wbadge--rain-mid">&#127783; 4.2 mm</span>
+                    <span class="wbadge wbadge--sun-mid">&#9728; 128</span>
+                    <span class="wbadge wbadge--cloud-bad">&#9729; 79%</span>
                   </div>
                 </div>
                 <div class="weather-card weather-card--extreme">
                   <div class="weather-card__top">
-                    <h4>Tue 31/3</h4>
+                    <h4>Day +2</h4>
                     <span class="weather-card__emoji" aria-hidden="true">&#9928;</span>
                   </div>
                   <p>Thunderstorms</p>
-                  <div class="weather-card__temps">High <strong>21.4&deg;</strong> / Low 17.2&deg;</div>
+                  <div class="weather-card__temps">High <strong>21.6&deg;</strong> / Low 17.1&deg;</div>
                   <div class="weather-card__badges">
-                    <span class="wbadge wbadge--rain-bad">&#127783; 12.4 mm</span>
-                    <span class="wbadge wbadge--sun-bad">&#9728; 68</span>
-                    <span class="wbadge wbadge--cloud-bad">&#9729; 92%</span>
+                    <span class="wbadge wbadge--rain-bad">&#127783; 11.8 mm</span>
+                    <span class="wbadge wbadge--sun-bad">&#9728; 84</span>
+                    <span class="wbadge wbadge--cloud-bad">&#9729; 90%</span>
                   </div>
                 </div>
                 <div class="weather-card weather-card--clear">
                   <div class="weather-card__top">
-                    <h4>Wed 1/4</h4>
+                    <h4>Day +3</h4>
                     <span class="weather-card__emoji" aria-hidden="true">&#9925;</span>
                   </div>
-                  <p>Partly Cloudy</p>
-                  <div class="weather-card__temps">High <strong>29.8&deg;</strong> / Low 18.9&deg;</div>
+                  <p>Bright Breaks</p>
+                  <div class="weather-card__temps">High <strong>27.2&deg;</strong> / Low 18.0&deg;</div>
                   <div class="weather-card__badges">
-                    <span class="wbadge wbadge--rain-good">&#127783; 0.0 mm</span>
-                    <span class="wbadge wbadge--sun-good">&#9728; 282</span>
-                    <span class="wbadge wbadge--cloud-good">&#9729; 24%</span>
+                    <span class="wbadge wbadge--rain-good">&#127783; 0.6 mm</span>
+                    <span class="wbadge wbadge--sun-good">&#9728; 248</span>
+                    <span class="wbadge wbadge--cloud-good">&#9729; 36%</span>
                   </div>
                 </div>
               </div>
@@ -1415,31 +1415,159 @@
     var enableInteractiveHero = !!document.querySelector('.hero-preview--interactive');
 
     /* ── Hero live data ticker ───────────────────────── */
-    var soc = 76;
-    var prices = [8.6, 8.2, 7.9, 7.6, 7.8, 8.1, 8.5, 9.4, 11.2, 12.4, 11.0, 9.6, 8.8, 8.2];
-    var solarKw = [0.5, 0.4, 0.3, 0.2, 0.3, 0.6, 1.0, 1.8, 2.4, 2.1, 1.4, 1.0, 0.7, 0.5];
-    var houseLoadKw = [0.54, 0.52, 0.51, 0.49, 0.50, 0.55, 0.59, 0.64, 0.69, 0.74, 0.71, 0.66, 0.61, 0.57];
-    var feedInPriceKw = [10.0, 9.8, 9.4, 9.3, 9.7, 10.2, 11.6, 14.2, 18.4, 22.1, 16.8, 10.6, 9.6, 9.2];
-    var forecastSolarWm2 = [210, 190, 175, 220, 300, 420, 520, 610, 700, 640, 480, 320, 230, 200];
-    var forecastCloudPct = [82, 79, 76, 70, 62, 54, 40, 28, 22, 30, 44, 58, 72, 80];
-    var forecastFeedInMax4h = [18, 20, 24, 28, 36, 52, 61, 58, 44, 30, 22, 18, 16, 15];
     var batteryCapacityKwh = 31.5;
-    var priceIdx = 0;
-    var savings = 2.60;
     var countdown = 58;
+    var chargeThreshold = 8.4;
+
+    var heroRuleTemplates = {
+      overnightCharge: {
+        priority: 'P5',
+        name: '&#9889; Overnight Solar Planning Charge',
+        powerState: 'Charging',
+        action: 'charge',
+        recommendation: 'Force charge',
+        decisions: [
+          { label: 'Time 00:00-06:00', matched: true },
+          { label: 'Battery SoC \u2264 80%', matched: true },
+          { label: 'Tomorrow solar outlook weak', matched: true }
+        ]
+      },
+      returnToSelfUse: {
+        priority: 'P6',
+        name: '&#8635; Return to Self-Use',
+        powerState: 'Self use',
+        action: 'self-use',
+        recommendation: 'Self use',
+        decisions: [
+          { label: 'Cheap charge window closed', matched: true },
+          { label: 'Solar ramp starting', matched: true },
+          { label: 'Reserve preserved', matched: true }
+        ]
+      },
+      morningSolarCapture: {
+        priority: 'P4',
+        name: '&#9889; Morning Solar Capture',
+        powerState: 'Charging',
+        action: 'charge',
+        recommendation: 'Capture solar',
+        decisions: [
+          { label: 'Solar exceeds house load', matched: true },
+          { label: 'Feed-in still soft', matched: true },
+          { label: 'Battery has room', matched: true }
+        ]
+      },
+      solarSoakCapture: {
+        priority: 'P3',
+        name: '&#9889; Solar Soak Capture',
+        powerState: 'Charging',
+        action: 'charge',
+        recommendation: 'Capture solar',
+        decisions: [
+          { label: 'Midday solar peak', matched: true },
+          { label: 'Feed-in below sell target', matched: true },
+          { label: 'Battery below target SoC', matched: true }
+        ]
+      },
+      holdPeakExport: {
+        priority: 'P6',
+        name: '&#8635; Hold for Peak Export',
+        powerState: 'Standby',
+        action: 'self-use',
+        recommendation: 'Hold for peak',
+        decisions: [
+          { label: 'Peak window ahead', matched: true },
+          { label: 'Feed-in still climbing', matched: true },
+          { label: 'Battery reserve intact', matched: true }
+        ]
+      },
+      eveningPeakExport: {
+        priority: 'P7',
+        name: '&#9889; Evening Peak Export',
+        powerState: 'Exporting',
+        action: 'export',
+        recommendation: 'Peak export',
+        decisions: [
+          { label: 'Time 18:00-23:00', matched: true },
+          { label: 'Feed-in rate at peak', matched: true },
+          { label: 'Tomorrow solar strong', matched: true }
+        ]
+      },
+      postPeakSelfUse: {
+        priority: 'P8',
+        name: '&#8635; Post-Spike Return to Self-Use',
+        powerState: 'Self use',
+        action: 'self-use',
+        recommendation: 'Self use',
+        decisions: [
+          { label: 'Peak spike fading', matched: true },
+          { label: 'Feed-in back below target', matched: true },
+          { label: 'Overnight reserve protected', matched: true }
+        ]
+      }
+    };
+
+    function buildHeroRule(templateKey, reason) {
+      var template = heroRuleTemplates[templateKey];
+      return {
+        priority: template.priority,
+        name: template.name,
+        powerState: template.powerState,
+        action: template.action,
+        recommendation: template.recommendation,
+        reason: reason,
+        decisions: template.decisions.map(function (decision) {
+          return {
+            label: decision.label,
+            matched: !!decision.matched
+          };
+        })
+      };
+    }
+
+    var heroForecastThemes = {
+      stormFront: [
+        { offset: 1, summary: 'Showers', emojiHtml: '&#127783;', highC: 22.8, lowC: 18.4, rainMm: 4.2, solarWm2: 128, cloudPct: 79 },
+        { offset: 2, summary: 'Thunderstorms', emojiHtml: '&#9928;', highC: 21.6, lowC: 17.1, rainMm: 11.8, solarWm2: 84, cloudPct: 90 },
+        { offset: 3, summary: 'Bright Breaks', emojiHtml: '&#9925;', highC: 27.2, lowC: 18.0, rainMm: 0.6, solarWm2: 248, cloudPct: 36 }
+      ],
+      mixedRecovery: [
+        { offset: 1, summary: 'Partly Cloudy', emojiHtml: '&#9925;', highC: 25.9, lowC: 17.8, rainMm: 0.8, solarWm2: 214, cloudPct: 42 },
+        { offset: 2, summary: 'Mostly Sunny', emojiHtml: '&#9728;', highC: 29.4, lowC: 18.2, rainMm: 0.0, solarWm2: 296, cloudPct: 18 },
+        { offset: 3, summary: 'Late Shower', emojiHtml: '&#127783;', highC: 26.8, lowC: 19.1, rainMm: 2.1, solarWm2: 188, cloudPct: 48 }
+      ],
+      clearBreak: [
+        { offset: 1, summary: 'Sunny', emojiHtml: '&#9728;', highC: 30.2, lowC: 18.1, rainMm: 0.0, solarWm2: 312, cloudPct: 14 },
+        { offset: 2, summary: 'Partly Cloudy', emojiHtml: '&#9925;', highC: 28.7, lowC: 19.0, rainMm: 0.2, solarWm2: 254, cloudPct: 28 },
+        { offset: 3, summary: 'Evening Shower', emojiHtml: '&#127783;', highC: 25.4, lowC: 17.9, rainMm: 1.7, solarWm2: 164, cloudPct: 52 }
+      ]
+    };
+
+    var heroTimeline = [
+      { timeLabel: '12am', currentTimeMinutes: 0, buyPrice: 8.6, feedInPrice: 6.7, savings: 2.14, solarKw: 0, loadKw: 0.62, batteryMode: 'charge', batteryPowerKw: 2.3, soc: 72, ambientTempC: 19.7, batteryTempC: 20.9, inverterTempC: 22.8, statusAgeSec: 132, pricingAgeSec: 18, weatherAgeSec: 41, forecastKey: 'stormFront', weatherNow: { label: 'Showers', conditionHtml: '&#127783; Showers', effect: 'rain', tempC: 19.7, rainMm: 1.4, windKph: 8.2, windDir: 'SSE', solarWm2: 0, humidityPct: 85, isDay: false }, rule: buildHeroRule('overnightCharge', 'Tomorrow stays wet and weak, topping up reserve on the cheap overnight window.') },
+      { timeLabel: '2am', currentTimeMinutes: 120, buyPrice: 8.2, feedInPrice: 6.4, savings: 2.21, solarKw: 0, loadKw: 0.58, batteryMode: 'charge', batteryPowerKw: 2.4, soc: 74, ambientTempC: 18.9, batteryTempC: 20.1, inverterTempC: 22.4, statusAgeSec: 109, pricingAgeSec: 16, weatherAgeSec: 37, forecastKey: 'stormFront', weatherNow: { label: 'Rain Bands', conditionHtml: '&#127783; Rain', effect: 'rain', tempC: 18.9, rainMm: 2.1, windKph: 9.4, windDir: 'S', solarWm2: 0, humidityPct: 88, isDay: false }, rule: buildHeroRule('overnightCharge', 'Export is weak and tomorrow is still soggy, so the overnight top-up keeps the reserve healthy.') },
+      { timeLabel: '4am', currentTimeMinutes: 240, buyPrice: 7.8, feedInPrice: 6.2, savings: 2.31, solarKw: 0, loadKw: 0.55, batteryMode: 'charge', batteryPowerKw: 2.2, soc: 77, ambientTempC: 18.4, batteryTempC: 19.8, inverterTempC: 21.8, statusAgeSec: 93, pricingAgeSec: 14, weatherAgeSec: 34, forecastKey: 'stormFront', weatherNow: { label: 'Drizzle', conditionHtml: '&#127783; Drizzle', effect: 'drizzle', tempC: 18.4, rainMm: 0.8, windKph: 7.1, windDir: 'SSW', solarWm2: 0, humidityPct: 89, isDay: false }, rule: buildHeroRule('overnightCharge', 'This is the cheapest part of the night and the forecast still does not justify waiting for solar.') },
+      { timeLabel: '6am', currentTimeMinutes: 360, buyPrice: 7.9, feedInPrice: 5.8, savings: 2.38, solarKw: 0.08, loadKw: 0.68, batteryMode: 'idle', batteryPowerKw: 0, soc: 79, ambientTempC: 18.8, batteryTempC: 19.5, inverterTempC: 20.6, statusAgeSec: 71, pricingAgeSec: 12, weatherAgeSec: 29, forecastKey: 'mixedRecovery', weatherNow: { label: 'Early Drizzle', conditionHtml: '&#127783; Early Drizzle', effect: 'drizzle', tempC: 18.8, rainMm: 0.4, windKph: 6.8, windDir: 'SW', solarWm2: 28, humidityPct: 83, isDay: true }, rule: buildHeroRule('returnToSelfUse', 'The overnight top-up is done, so the inverter waits for morning solar instead of forcing more import.') },
+      { timeLabel: '8am', currentTimeMinutes: 480, buyPrice: 9.1, feedInPrice: 4.9, savings: 2.46, solarKw: 1.35, loadKw: 0.95, batteryMode: 'charge', batteryPowerKw: 0.28, soc: 80, ambientTempC: 20.6, batteryTempC: 22.3, inverterTempC: 23.9, statusAgeSec: 54, pricingAgeSec: 11, weatherAgeSec: 24, forecastKey: 'mixedRecovery', weatherNow: { label: 'Cloudy Breaks', conditionHtml: '&#9729; Cloudy Breaks', effect: 'cloudy', tempC: 20.6, rainMm: 0.1, windKph: 10.2, windDir: 'WSW', solarWm2: 176, humidityPct: 76, isDay: true }, rule: buildHeroRule('morningSolarCapture', 'Morning solar is covering the house and export is still cheap, so the battery starts soaking up the surplus.') },
+      { timeLabel: '10am', currentTimeMinutes: 600, buyPrice: 10.4, feedInPrice: 3.8, savings: 2.61, solarKw: 3.05, loadKw: 1.25, batteryMode: 'charge', batteryPowerKw: 1.35, soc: 82, ambientTempC: 23.1, batteryTempC: 25.4, inverterTempC: 27.2, statusAgeSec: 43, pricingAgeSec: 10, weatherAgeSec: 21, forecastKey: 'mixedRecovery', weatherNow: { label: 'Cloudy', conditionHtml: '&#9729; Cloudy', effect: 'cloudy', tempC: 23.1, rainMm: 0, windKph: 11.6, windDir: 'W', solarWm2: 422, humidityPct: 66, isDay: true }, rule: buildHeroRule('morningSolarCapture', 'The battery is still below target and midday export value is weak, so extra solar stays on site.') },
+      { timeLabel: '12pm', currentTimeMinutes: 720, buyPrice: 11.6, feedInPrice: 2.9, savings: 2.82, solarKw: 4.4, loadKw: 1.10, batteryMode: 'charge', batteryPowerKw: 1.6, soc: 84, ambientTempC: 24.7, batteryTempC: 27.0, inverterTempC: 29.2, statusAgeSec: 37, pricingAgeSec: 9, weatherAgeSec: 18, forecastKey: 'clearBreak', weatherNow: { label: 'Bright Intervals', conditionHtml: '&#9925; Bright Intervals', effect: 'clear', tempC: 24.7, rainMm: 0, windKph: 13.4, windDir: 'WNW', solarWm2: 612, humidityPct: 58, isDay: true }, rule: buildHeroRule('solarSoakCapture', 'Solar is near its peak but feed-in is still soft, so the battery keeps absorbing the midday surplus first.') },
+      { timeLabel: '2pm', currentTimeMinutes: 840, buyPrice: 10.8, feedInPrice: 3.2, savings: 3.04, solarKw: 4.1, loadKw: 0.88, batteryMode: 'charge', batteryPowerKw: 0.9, soc: 86, ambientTempC: 25.2, batteryTempC: 26.8, inverterTempC: 28.5, statusAgeSec: 34, pricingAgeSec: 8, weatherAgeSec: 16, forecastKey: 'clearBreak', weatherNow: { label: 'Mostly Sunny', conditionHtml: '&#9728; Mostly Sunny', effect: 'clear', tempC: 25.2, rainMm: 0, windKph: 14.1, windDir: 'NW', solarWm2: 548, humidityPct: 53, isDay: true }, rule: buildHeroRule('solarSoakCapture', 'There is still plenty of solar left in the day, so the battery tops off before the evening peak begins.') },
+      { timeLabel: '4pm', currentTimeMinutes: 960, buyPrice: 9.6, feedInPrice: 6.3, savings: 3.12, solarKw: 2.2, loadKw: 1.02, batteryMode: 'idle', batteryPowerKw: 0, soc: 86, ambientTempC: 24.0, batteryTempC: 24.8, inverterTempC: 25.6, statusAgeSec: 39, pricingAgeSec: 8, weatherAgeSec: 15, forecastKey: 'clearBreak', weatherNow: { label: 'Partly Cloudy', conditionHtml: '&#9925; Partly Cloudy', effect: 'cloudy', tempC: 24.0, rainMm: 0, windKph: 12.0, windDir: 'NW', solarWm2: 218, humidityPct: 57, isDay: true }, rule: buildHeroRule('holdPeakExport', 'The battery is comfortably charged, so SoCrates holds it back for the stronger export rates expected after sunset.') },
+      { timeLabel: '6pm', currentTimeMinutes: 1080, buyPrice: 11.4, feedInPrice: 10.4, savings: 3.44, solarKw: 0.35, loadKw: 1.46, batteryMode: 'discharge', batteryPowerKw: 1.8, soc: 82, ambientTempC: 22.1, batteryTempC: 23.8, inverterTempC: 25.5, statusAgeSec: 46, pricingAgeSec: 7, weatherAgeSec: 17, forecastKey: 'clearBreak', weatherNow: { label: 'Clearing', conditionHtml: '&#9925; Clearing', effect: 'clear', tempC: 22.1, rainMm: 0, windKph: 10.8, windDir: 'NNW', solarWm2: 34, humidityPct: 61, isDay: true }, rule: buildHeroRule('eveningPeakExport', 'Export rates are up and tomorrow looks strong, so the battery starts selling into the evening peak.') },
+      { timeLabel: '8pm', currentTimeMinutes: 1200, buyPrice: 12.6, feedInPrice: 12.1, savings: 3.88, solarKw: 0, loadKw: 1.72, batteryMode: 'discharge', batteryPowerKw: 2.6, soc: 76, ambientTempC: 20.9, batteryTempC: 22.7, inverterTempC: 24.8, statusAgeSec: 58, pricingAgeSec: 6, weatherAgeSec: 18, forecastKey: 'clearBreak', weatherNow: { label: 'Clear', conditionHtml: '&#127769; Clear', effect: 'clear', tempC: 20.9, rainMm: 0, windKph: 9.8, windDir: 'N', solarWm2: 0, humidityPct: 67, isDay: false }, rule: buildHeroRule('eveningPeakExport', 'This is the cleanest export window of the day, so SoCrates leans on the battery while the feed-in rate is highest.') },
+      { timeLabel: '10pm', currentTimeMinutes: 1320, buyPrice: 10.2, feedInPrice: 9.4, savings: 3.95, solarKw: 0, loadKw: 0.98, batteryMode: 'idle', batteryPowerKw: 0, soc: 71, ambientTempC: 20.0, batteryTempC: 20.9, inverterTempC: 22.3, statusAgeSec: 66, pricingAgeSec: 9, weatherAgeSec: 20, forecastKey: 'clearBreak', weatherNow: { label: 'Cloudy', conditionHtml: '&#9729; Cloudy', effect: 'cloudy', tempC: 20.0, rainMm: 0, windKph: 8.1, windDir: 'NNE', solarWm2: 0, humidityPct: 72, isDay: false }, rule: buildHeroRule('postPeakSelfUse', 'The spike is fading, so the battery tapers back into self-use and protects the overnight reserve.') },
+      { timeLabel: '12am', currentTimeMinutes: 0, buyPrice: 8.8, feedInPrice: 7.2, savings: 4.03, solarKw: 0, loadKw: 0.74, batteryMode: 'charge', batteryPowerKw: 1.9, soc: 73, ambientTempC: 19.3, batteryTempC: 20.4, inverterTempC: 21.9, statusAgeSec: 73, pricingAgeSec: 11, weatherAgeSec: 24, forecastKey: 'stormFront', weatherNow: { label: 'Light Showers', conditionHtml: '&#127783; Light Showers', effect: 'drizzle', tempC: 19.3, rainMm: 0.6, windKph: 7.5, windDir: 'ENE', solarWm2: 0, humidityPct: 80, isDay: false }, rule: buildHeroRule('overnightCharge', 'A wetter forecast update pushed solar expectations down again, so SoCrates restarts a modest overnight top-up.') },
+      { timeLabel: '2am', currentTimeMinutes: 120, buyPrice: 8.1, feedInPrice: 6.8, savings: 4.11, solarKw: 0, loadKw: 0.60, batteryMode: 'charge', batteryPowerKw: 2.1, soc: 75, ambientTempC: 18.7, batteryTempC: 19.9, inverterTempC: 21.7, statusAgeSec: 88, pricingAgeSec: 13, weatherAgeSec: 27, forecastKey: 'stormFront', weatherNow: { label: 'Rain', conditionHtml: '&#127783; Rain', effect: 'rain', tempC: 18.7, rainMm: 1.7, windKph: 8.4, windDir: 'ESE', solarWm2: 0, humidityPct: 85, isDay: false }, rule: buildHeroRule('overnightCharge', 'The feed-in opportunity is gone and the overnight import rate is still attractive, so the reserve keeps climbing quietly.') }
+    ];
+
+    var prices = heroTimeline.map(function (state) { return state.buyPrice; });
+    var priceIdx = 0;
+    var soc = heroTimeline[0].soc;
     var heroRuntime = {
       activeRule: 'Overnight Solar Planning Charge',
-      ruleReason: 'Weak solar forecast tomorrow, topping up overnight reserve',
-      price: prices[0],
-      chargeKw: 2.4
+      ruleReason: heroTimeline[0].rule.reason,
+      price: heroTimeline[0].buyPrice,
+      chargeKw: heroTimeline[0].batteryPowerKw
     };
-    var chargeThreshold = 8.5;
-    var exportThreshold = 11.5;
-    var minSocBound = 25;
-    var targetSoc = 85;
-    var exportReserveSoc = 38;
-    var peakWindowStart = 8;
-    var peakWindowEnd = 11;
 
     var chartMinX = 24;
     var chartMaxX = 696;
@@ -1474,16 +1602,69 @@
       return chartMaxY - (t * (chartMaxY - chartMinY));
     }
 
+    function getHeroState(index) {
+      return heroTimeline[(index + heroTimeline.length) % heroTimeline.length];
+    }
+
     function formatHourForIndex(i) {
-      var hour = (i * 2) % 24;
-      var suffix = hour >= 12 ? 'pm' : 'am';
-      var display = hour % 12;
-      if (display === 0) display = 12;
-      return display + suffix;
+      return getHeroState(i).timeLabel;
     }
 
     function formatKw(v) {
       return Number(v).toFixed(2) + ' kW';
+    }
+
+    function formatRelativeAge(seconds) {
+      var safe = Math.max(0, Math.round(Number(seconds) || 0));
+      if (safe >= 120) return Math.round(safe / 60) + 'm ago';
+      if (safe >= 60) return '1m ago';
+      return safe + 's ago';
+    }
+
+    function formatTempC(value) {
+      return Number(value).toFixed(1) + '\u00b0C';
+    }
+
+    function formatClock(minutes) {
+      var safe = ((Number(minutes) || 0) % 1440 + 1440) % 1440;
+      var hours = Math.floor(safe / 60);
+      var mins = safe % 60;
+      var suffix = hours >= 12 ? 'pm' : 'am';
+      var displayHour = hours % 12;
+      if (displayHour === 0) displayHour = 12;
+      return displayHour + ':' + String(mins).padStart(2, '0') + suffix;
+    }
+
+    function getForecastDayLabel(offset) {
+      var date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() + offset);
+      var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return days[date.getDay()] + ' ' + date.getDate() + '/' + (date.getMonth() + 1);
+    }
+
+    function getWeatherCardThemeClass(card) {
+      if (card.rainMm >= 8 || card.cloudPct >= 85) return ' weather-card--extreme';
+      if (card.solarWm2 >= 240 && card.cloudPct <= 35 && card.rainMm <= 0.6) return ' weather-card--clear';
+      return '';
+    }
+
+    function getRainBadgeClass(rainMm) {
+      if (rainMm <= 0.6) return 'wbadge--rain-good';
+      if (rainMm < 5) return 'wbadge--rain-mid';
+      return 'wbadge--rain-bad';
+    }
+
+    function getSunBadgeClass(solarValue) {
+      if (solarValue >= 240) return 'wbadge--sun-good';
+      if (solarValue >= 120) return 'wbadge--sun-mid';
+      return 'wbadge--sun-bad';
+    }
+
+    function getCloudBadgeClass(cloudPct) {
+      if (cloudPct <= 35) return 'wbadge--cloud-good';
+      if (cloudPct <= 60) return 'wbadge--cloud-mid';
+      return 'wbadge--cloud-bad';
     }
 
     function getPeakIndex() {
@@ -1513,13 +1694,15 @@
 
       if (chartMarkersEl) {
         chartMarkersEl.innerHTML = '';
-        pts.forEach(function (pt) {
-          if (pt.p > chargeThreshold) return;
+        pts.forEach(function (pt, i) {
+          var state = getHeroState(i);
+          var action = state && state.rule ? state.rule.action : '';
+          if (action !== 'charge' && action !== 'export') return;
           var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           c.setAttribute('cx', pt.x.toFixed(2));
           c.setAttribute('cy', pt.y.toFixed(2));
           c.setAttribute('r', '4.5');
-          c.setAttribute('fill', '#7ee787');
+          c.setAttribute('fill', action === 'export' ? '#f85149' : '#7ee787');
           c.setAttribute('stroke', '#0d1117');
           c.setAttribute('stroke-width', '2');
           chartMarkersEl.appendChild(c);
@@ -1578,20 +1761,14 @@
     function setChartTooltip(index, clientX) {
       if (!chartTooltipEl || !chartShellEl) return;
       var safe = (index + prices.length) % prices.length;
-      var deltaCharge = prices[safe] - chargeThreshold;
-      var direction = deltaCharge <= 0 ? 'below' : 'above';
-      var recommendation = 'Recommended: Self use';
-
-      if (prices[safe] <= chargeThreshold) {
-        recommendation = 'Recommended: Force charge';
-      } else if (prices[safe] >= exportThreshold) {
-        recommendation = 'Recommended: Peak export';
-      }
+      var state = getHeroState(safe);
+      var recommendation = 'Recommended: ' + (state && state.rule ? state.rule.recommendation : 'Self use');
 
       if (tooltipTimeEl) tooltipTimeEl.textContent = formatHourForIndex(safe);
       if (tooltipPriceEl) {
-        tooltipPriceEl.textContent = prices[safe].toFixed(1) + '\u00a2/kWh \u00b7 ' +
-          Math.abs(deltaCharge).toFixed(1) + '\u00a2 ' + direction + ' charge line';
+        tooltipPriceEl.textContent =
+          'Buy ' + prices[safe].toFixed(1) + '\u00a2/kWh \u00b7 Feed-in ' +
+          Number(state.feedInPrice || 0).toFixed(1) + '\u00a2/kWh';
       }
       if (tooltipActionEl) tooltipActionEl.textContent = recommendation;
 
@@ -1734,38 +1911,50 @@
       setHeroDotTarget('heroAnchorDotHub', batteryAnchor.x.toFixed(2), batteryAnchor.y.toFixed(2));
     }
 
-    function getHeroWeatherState(hour, solarValue, cloudValue) {
-      var isDay = hour >= 6 && hour < 18;
-      var solar = Number(solarValue) || 0;
-      var cloud = Number(cloudValue) || 0;
-      var effect = 'clear';
-      var label = 'Clear';
+    function renderHeroPriceForecastRow(index) {
+      var rowEl = document.getElementById('heroPriceForecastRow');
+      if (!rowEl) return;
 
-      if (cloud >= 80 && solar < 0.6) {
-        effect = 'storm';
-        label = 'Storm';
-      } else if (cloud >= 72 && solar < 0.8) {
-        effect = 'rain';
-        label = 'Showers';
-      } else if (cloud >= 56) {
-        effect = 'drizzle';
-        label = 'Drizzle';
-      } else if (cloud >= 36) {
-        effect = 'cloudy';
-        label = 'Cloudy';
-      }
-
-      return {
-        effect: effect,
-        label: label,
-        isDay: isDay,
-        currentTimeMinutes: hour * 60,
-        sunrise: '06:08',
-        sunset: '18:04'
-      };
+      rowEl.innerHTML = Array.from({ length: 6 }).map(function (_, offset) {
+        var state = getHeroState(index + offset);
+        var action = state && state.rule ? state.rule.action : '';
+        var classes = [];
+        if (offset === 0) classes.push('is-current');
+        if (action === 'charge') classes.push('is-charge-window');
+        if (action === 'export') classes.push('is-export-window');
+        return (
+          '<span' + (classes.length ? ' class="' + classes.join(' ') + '"' : '') + '>' +
+            '<small>' + state.timeLabel + '</small>' +
+            '<strong>' + state.buyPrice.toFixed(1) + '&cent;</strong>' +
+          '</span>'
+        );
+      }).join('');
     }
 
-    function syncHeroSceneState(gridMode, batteryMode, socValue, solarValue, loadValue, gridValue, batteryValue, weatherState) {
+    function renderHeroWeatherCards(forecastKey) {
+      var cardsEl = document.getElementById('heroWeatherCards');
+      if (!cardsEl) return;
+      var cards = heroForecastThemes[forecastKey] || [];
+      cardsEl.innerHTML = cards.map(function (card) {
+        return (
+          '<div class="weather-card' + getWeatherCardThemeClass(card) + '">' +
+            '<div class="weather-card__top">' +
+              '<h4>' + getForecastDayLabel(card.offset) + '</h4>' +
+              '<span class="weather-card__emoji" aria-hidden="true">' + card.emojiHtml + '</span>' +
+            '</div>' +
+            '<p>' + card.summary + '</p>' +
+            '<div class="weather-card__temps">High <strong>' + card.highC.toFixed(1) + '&deg;</strong> / Low ' + card.lowC.toFixed(1) + '&deg;</div>' +
+            '<div class="weather-card__badges">' +
+              '<span class="wbadge ' + getRainBadgeClass(card.rainMm) + '">&#127783; ' + card.rainMm.toFixed(1) + ' mm</span>' +
+              '<span class="wbadge ' + getSunBadgeClass(card.solarWm2) + '">&#9728; ' + card.solarWm2 + '</span>' +
+              '<span class="wbadge ' + getCloudBadgeClass(card.cloudPct) + '">&#9729; ' + card.cloudPct + '%</span>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    function syncHeroSceneState(gridMode, batteryMode, powerStateLabel, socValue, solarValue, loadValue, gridValue, batteryValue, weatherState) {
       var scene = document.getElementById('heroEnergyScene');
       if (!scene) return;
 
@@ -1809,148 +1998,136 @@
           : (normalizedGridMode === 'import' ? 'Import' : 'Balanced');
       }
       if (powerStateEl) {
-        powerStateEl.textContent = normalizedBatteryMode === 'charge'
-          ? 'Charging'
-          : (normalizedBatteryMode === 'discharge' ? 'Discharging' : 'Standby');
+        powerStateEl.textContent = powerStateLabel || (
+          normalizedBatteryMode === 'charge'
+            ? 'Charging'
+            : (normalizedBatteryMode === 'discharge' ? 'Discharging' : 'Standby')
+        );
       }
       syncHeroSceneGeometry();
     }
 
-    function updateHero() {
-      priceIdx = (priceIdx + 1) % prices.length;
-
-      var currentPrice = prices[priceIdx];
-      var currentFeedIn = feedInPriceKw[priceIdx % feedInPriceKw.length];
-      var currentSolar = solarKw[priceIdx];
-      var currentLoad = houseLoadKw[priceIdx % houseLoadKw.length];
-      var nextDaySolar = forecastSolarWm2[priceIdx % forecastSolarWm2.length];
-      var nextDayCloud = forecastCloudPct[priceIdx % forecastCloudPct.length];
-      var next4hFeedInMax = forecastFeedInMax4h[priceIdx % forecastFeedInMax4h.length];
-      var hour = (priceIdx * 2) % 24;
-
-      var inOvernightWindow = hour >= 0 && hour < 6;
-      var inEveningWindow = hour >= 18 && hour <= 23;
-      var chargeReady = inOvernightWindow && soc <= 80 && nextDaySolar < 250 && nextDayCloud >= 70;
-      var exportReady = inEveningWindow && currentFeedIn >= 8 && soc > 50 && nextDaySolar > 150 && next4hFeedInMax <= 50;
-      var selfUseReady = inEveningWindow && currentFeedIn < 11 && soc >= minSocBound;
-
-      var activeRule = '\u267b\ufe0f Post-Spike Return to Self-Use';
-      var rulePriority = 'P8';
-      var ruleReason = 'Monitoring evening window while feed-in cools off';
-      var powerState = '\u2195 Monitoring';
-      var chargeKw = 0;
-      var batteryMode = 'idle';
-      var socDelta = (Math.random() - 0.5) * 0.18;
-
-      if (chargeReady) {
-        activeRule = '\u26a1 Overnight Solar Planning Charge';
-        rulePriority = 'P5';
-        ruleReason = 'Weak solar forecast tomorrow, topping up overnight reserve';
-        powerState = '\u2191 Charging';
-        batteryMode = 'charge';
-        chargeKw = 2.0 + (Math.random() * 0.8);
-        socDelta = 0.75 + (Math.random() * 0.35);
-      } else if (exportReady) {
-        activeRule = '\u26a1 Evening Drain \u2014 Sunny Forecast Tomorrow';
-        rulePriority = 'P7';
-        ruleReason = 'Tomorrow looks sunny and no better spike is forecast';
-        powerState = '\u2198 Exporting';
-        batteryMode = 'discharge';
-        chargeKw = 1.7 + (Math.random() * 0.9);
-        socDelta = -(0.65 + (Math.random() * 0.45));
-      } else {
-        if (selfUseReady) {
-          ruleReason = 'Feed-in is back below 11\u00a2, holding SelfUse';
-          powerState = '\u2195 Self-use hold';
-          batteryMode = 'idle';
-          chargeKw = 0;
-          socDelta -= 0.10 + (Math.random() * 0.12);
-        } else if (currentSolar > currentLoad + 0.25 && soc < (targetSoc - 3)) {
-          powerState = '\u2191 Balancing';
-          batteryMode = 'charge';
-          chargeKw = 0.35 + (Math.random() * 0.35);
-          socDelta += 0.22;
-        } else if (currentPrice > 10.8 && soc > (exportReserveSoc + 5)) {
-          powerState = '\u2193 Balancing';
-          batteryMode = 'discharge';
-          chargeKw = 0.30 + (Math.random() * 0.35);
-          socDelta -= 0.18;
-        } else {
-          batteryMode = 'idle';
-          chargeKw = 0;
-        }
-      }
-
-      var batteryChargeKw = batteryMode === 'charge' ? chargeKw : 0;
-      var batteryDischargeKw = batteryMode === 'discharge' ? chargeKw : 0;
-      var netGridKw = currentLoad + batteryChargeKw - currentSolar - batteryDischargeKw;
+    function renderHeroState(index) {
+      var state = getHeroState(index);
+      var batteryChargeKw = state.batteryMode === 'charge' ? state.batteryPowerKw : 0;
+      var batteryDischargeKw = state.batteryMode === 'discharge' ? state.batteryPowerKw : 0;
+      var netGridKw = state.loadKw + batteryChargeKw - state.solarKw - batteryDischargeKw;
       var gridLabel = 'Grid Neutral';
       var gridMode = 'idle';
-      if (netGridKw > 0.02) gridLabel = 'Grid Import';
-      if (netGridKw < -0.02) gridLabel = 'Grid Export';
-      if (netGridKw > 0.02) gridMode = 'import';
-      if (netGridKw < -0.02) gridMode = 'export';
-
-      soc = Math.max(minSocBound, Math.min(targetSoc, soc + socDelta));
-      soc = Math.round(soc * 10) / 10;
-      var socDisplay = Math.round(soc);
-      var availableKwh = (soc * batteryCapacityKwh / 100).toFixed(1);
-
-      var savingsDelta = 0;
-      if (chargeReady) savingsDelta += 0.03;
-      if (exportReady) savingsDelta += 0.08;
-      if (!chargeReady && !exportReady && currentPrice > 10.2 && socDisplay > (exportReserveSoc + 2)) {
-        savingsDelta += 0.02;
-      }
-      savings = Math.round((savings + savingsDelta) * 100) / 100;
-
+      var availableKwh = (state.soc * batteryCapacityKwh / 100).toFixed(1);
       var el;
-      el = document.getElementById('heroSolarKw'); if (el) el.textContent = formatKw(currentSolar);
-      el = document.getElementById('heroLoadKw'); if (el) el.textContent = formatKw(currentLoad);
+
+      soc = state.soc;
+
+      if (netGridKw > 0.02) {
+        gridLabel = 'Grid Import';
+        gridMode = 'import';
+      } else if (netGridKw < -0.02) {
+        gridLabel = 'Grid Export';
+        gridMode = 'export';
+      }
+
+      el = document.getElementById('heroStatusAge'); if (el) el.textContent = formatRelativeAge(state.statusAgeSec);
+      el = document.getElementById('heroPricesAge'); if (el) el.textContent = formatRelativeAge(state.pricingAgeSec);
+      el = document.getElementById('heroWeatherAge'); if (el) el.textContent = formatRelativeAge(state.weatherAgeSec);
+
+      el = document.getElementById('heroSolarKw'); if (el) el.textContent = formatKw(state.solarKw);
+      el = document.getElementById('heroLoadKw'); if (el) el.textContent = formatKw(state.loadKw);
       el = document.getElementById('heroGridKw'); if (el) el.textContent = formatKw(Math.abs(netGridKw));
       el = document.getElementById('heroGridLabel'); if (el) el.textContent = gridLabel;
-      el = document.getElementById('heroSoc'); if (el) el.textContent = socDisplay + '%';
+      el = document.getElementById('heroSoc'); if (el) el.textContent = Math.round(state.soc) + '%';
       el = document.getElementById('heroBatteryKwh'); if (el) el.textContent = availableKwh;
-      el = document.getElementById('heroPrice'); if (el) el.textContent = currentPrice.toFixed(1) + '\u00a2';
-      el = document.getElementById('heroFeedInPrice'); if (el) el.textContent = currentFeedIn.toFixed(1) + '\u00a2';
-      el = document.getElementById('heroRulePriority'); if (el) el.textContent = rulePriority;
-      el = document.getElementById('heroRule'); if (el) el.textContent = activeRule;
-      el = document.getElementById('heroRuleReason'); if (el) el.textContent = ruleReason;
-      el = document.getElementById('heroPowerState'); if (el) el.textContent = powerState;
-      el = document.getElementById('heroChargeW'); if (el) el.textContent = chargeKw.toFixed(1);
+      el = document.getElementById('heroPrice'); if (el) el.textContent = state.buyPrice.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroFeedInPrice'); if (el) el.textContent = state.feedInPrice.toFixed(1) + '\u00a2';
+      el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + state.savings.toFixed(2);
+      el = document.getElementById('heroChargeW'); if (el) el.textContent = state.batteryPowerKw.toFixed(1);
       el = document.getElementById('heroCountdown'); if (el) el.textContent = countdown;
-      el = document.getElementById('heroSaving'); if (el) el.textContent = '$' + savings.toFixed(2);
+
+      el = document.getElementById('heroBatteryTemp'); if (el) el.textContent = formatTempC(state.batteryTempC);
+      el = document.getElementById('heroAmbientTemp'); if (el) el.textContent = formatTempC(state.ambientTempC);
+      el = document.getElementById('heroInverterTemp'); if (el) el.textContent = formatTempC(state.inverterTempC);
+
+      el = document.getElementById('heroWeatherLocation'); if (el) el.textContent = 'Sydney';
+      el = document.getElementById('heroWeatherTemp'); if (el) el.textContent = formatTempC(state.weatherNow.tempC);
+      el = document.getElementById('heroWeatherCondition'); if (el) el.innerHTML = state.weatherNow.conditionHtml;
+      el = document.getElementById('heroWeatherPlace'); if (el) el.innerHTML = 'Sydney &middot; Now (' + formatClock(state.currentTimeMinutes) + ')';
+      el = document.getElementById('heroWeatherRain'); if (el) el.innerHTML = '&#127783; Rain&thinsp;' + state.weatherNow.rainMm.toFixed(1) + ' mm';
+      el = document.getElementById('heroWeatherWind'); if (el) el.innerHTML = '&#128168; Wind&thinsp;' + state.weatherNow.windKph.toFixed(1) + ' km/h ' + state.weatherNow.windDir;
+      el = document.getElementById('heroWeatherSolar'); if (el) el.innerHTML = '&#9728; Sun&thinsp;' + state.weatherNow.solarWm2 + ' W/m&sup2;';
+      el = document.getElementById('heroWeatherHumidity'); if (el) el.innerHTML = '&#128167; Humidity&thinsp;' + state.weatherNow.humidityPct + '%';
+
+      el = document.getElementById('heroRulePriority'); if (el) el.textContent = state.rule.priority;
+      el = document.getElementById('heroRule'); if (el) el.innerHTML = state.rule.name;
+      el = document.getElementById('heroRuleReason'); if (el) el.textContent = state.rule.reason;
+
+      renderHeroPriceForecastRow(index);
+      renderHeroWeatherCards(state.forecastKey);
 
       syncHeroSceneState(
         gridMode,
-        batteryMode,
-        socDisplay,
-        currentSolar,
-        currentLoad,
+        state.batteryMode,
+        state.rule.powerState,
+        Math.round(state.soc),
+        state.solarKw,
+        state.loadKw,
         netGridKw,
-        chargeKw,
-        getHeroWeatherState(hour, currentSolar, nextDayCloud)
+        state.batteryPowerKw,
+        {
+          effect: state.weatherNow.effect,
+          label: state.weatherNow.label,
+          isDay: state.weatherNow.isDay,
+          currentTimeMinutes: state.currentTimeMinutes,
+          sunrise: '06:06',
+          sunset: '18:04'
+        }
       );
 
-      if (chargeReady) {
-        setHeroDecision('heroDecisionPrice', 'Time 00:00-06:00', inOvernightWindow);
-        setHeroDecision('heroDecisionSoc', 'Battery SoC \u2264 80%', socDisplay <= 80);
-        setHeroDecision('heroDecisionSolar', 'Cloud cover avg \u2265 70% (24h)', nextDayCloud >= 70);
-      } else if (exportReady) {
-        setHeroDecision('heroDecisionPrice', 'Time 18:00-23:59', inEveningWindow);
-        setHeroDecision('heroDecisionSoc', 'Feed-in \u2265 8\u00a2 now', currentFeedIn >= 8);
-        setHeroDecision('heroDecisionSolar', 'Solar avg > 150 W/m\u00b2 (24h)', nextDaySolar > 150);
-      } else {
-        setHeroDecision('heroDecisionPrice', 'Time 17:00-23:59', inEveningWindow);
-        setHeroDecision('heroDecisionSoc', 'Feed-in < 11\u00a2 now', currentFeedIn < 11);
-        setHeroDecision('heroDecisionSolar', 'Cloud cover avg < 85% (24h)', nextDayCloud < 85);
-      }
-      updateHeroChartMarker(priceIdx);
+      setHeroDecision('heroDecisionPrice', state.rule.decisions[0].label, state.rule.decisions[0].matched);
+      setHeroDecision('heroDecisionSoc', state.rule.decisions[1].label, state.rule.decisions[1].matched);
+      setHeroDecision('heroDecisionSolar', state.rule.decisions[2].label, state.rule.decisions[2].matched);
+      updateHeroChartMarker(index);
 
-      heroRuntime.activeRule = String(activeRule || '').replace(/^[^A-Za-z]+/, '').trim() || 'Automation';
-      heroRuntime.ruleReason = ruleReason;
-      heroRuntime.price = currentPrice;
-      heroRuntime.chargeKw = chargeKw;
+      heroRuntime.activeRule = String(state.rule.name || '').replace(/^[^A-Za-z]+/, '').trim() || 'Automation';
+      heroRuntime.ruleReason = state.rule.reason;
+      heroRuntime.price = state.buyPrice;
+      heroRuntime.chargeKw = state.batteryPowerKw;
+    }
+
+    function updateHero() {
+      priceIdx = (priceIdx + 1) % prices.length;
+      renderHeroState(priceIdx);
+    }
+
+    if (enableInteractiveHero) {
+      window.__heroDemo = {
+        getStateIndex: function () {
+          return priceIdx;
+        },
+        renderState: function (index) {
+          var normalized = ((Number(index) || 0) % prices.length + prices.length) % prices.length;
+          priceIdx = normalized;
+          renderHeroState(priceIdx);
+          return priceIdx;
+        },
+        getTimeline: function () {
+          return heroTimeline.map(function (state) {
+            return {
+              timeLabel: state.timeLabel,
+              buyPrice: state.buyPrice,
+              feedInPrice: state.feedInPrice,
+              solarKw: state.solarKw,
+              loadKw: state.loadKw,
+              batteryMode: state.batteryMode,
+              batteryPowerKw: state.batteryPowerKw,
+              soc: state.soc,
+              weatherLabel: state.weatherNow.label,
+              weatherSolarWm2: state.weatherNow.solarWm2,
+              forecastKey: state.forecastKey,
+              ruleAction: state.rule.action
+            };
+          });
+        }
+      };
     }
 
     function tickHeroCountdown() {
@@ -1988,7 +2165,7 @@
         window.addEventListener('resize', syncHeroSceneGeometry);
       }
 
-      updateHero();
+      renderHeroState(priceIdx);
 
       if (!prefersReducedMotion) {
         setInterval(tickHeroCountdown, 1000);

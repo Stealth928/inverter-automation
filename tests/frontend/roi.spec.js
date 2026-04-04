@@ -1,12 +1,5 @@
 const { test, expect } = require('@playwright/test');
-
-function jsonResponse(payload, status = 200) {
-  return {
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(payload)
-  };
-}
+const { installInternalPageHarness, jsonResponse } = require('./support/browser-harness');
 
 async function mockRoiApi(page, {
   deviceProvider = 'foxess',
@@ -85,20 +78,12 @@ async function mockRoiApi(page, {
 
 test.describe('ROI Page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      try {
-        localStorage.setItem('mockAuthUser', JSON.stringify({
-          uid: 'test-user-roi',
-          email: 'roi@example.com',
-          displayName: 'ROI User'
-        }));
-        localStorage.setItem('mockAuthToken', 'mock-token');
-      } catch (e) {
-        // ignore
+    await installInternalPageHarness(page, {
+      user: {
+        uid: 'test-user-roi',
+        email: 'roi@example.com',
+        displayName: 'ROI User'
       }
-
-      window.safeRedirect = function () {};
-      window.location.assign = function () {};
     });
   });
 
@@ -492,6 +477,56 @@ test.describe('ROI Page', () => {
     await expect(page.locator('#roiBacktestsCard')).toContainText(/Most important limitation/i);
     await expect(page.locator('#roiBacktestsCard')).toContainText(/Confidence:\s*medium/i);
     await expect(page.locator('#roiBacktestsCard select[data-filter="period"]')).not.toContainText('365 days');
+  });
+
+  test('can populate ROI, timeline, and backtests with sample data from the page control', async ({ page }) => {
+    await mockRoiApi(page, { deviceProvider: 'foxess' });
+    await page.goto('/roi.html');
+
+    const toggleButton = page.locator('#btnToggleRoiDemo');
+    await expect(toggleButton).toHaveText(/Load sample data/i);
+    await toggleButton.click();
+
+    await expect(toggleButton).toHaveText(/Use live data/i);
+    await expect(page.locator('#roiDemoNote')).toHaveClass(/is-visible/);
+    await expect(page.locator('#roiTable')).toContainText(/Night Charge Window/i);
+    await expect(page.locator('#automationHistoryContent')).toContainText(/Peak Saver Discharge/i);
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/Peak Saver/i);
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/Export Shield/i);
+  });
+
+  test('keeps desktop ROI cards aligned as a composed two-column stack', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await mockRoiApi(page, { deviceProvider: 'foxess' });
+    await page.goto('/roi.html');
+
+    await expect(page.locator('#roiBacktestsCard .card-kicker')).toContainText(/Saved backtests/i);
+
+    const desktopLayout = await page.evaluate(() => {
+      const roiCard = document.querySelector('[data-card="roi-calculator"]');
+      const backtestsCard = document.querySelector('#roiBacktestsCard');
+      const historyCard = document.querySelector('[data-card="automation-history"]');
+
+      const roiRect = roiCard?.getBoundingClientRect();
+      const backtestsRect = backtestsCard?.getBoundingClientRect();
+      const historyRect = historyCard?.getBoundingClientRect();
+
+      return {
+        roiTop: roiRect ? Math.round(roiRect.top) : 0,
+        backtestsTop: backtestsRect ? Math.round(backtestsRect.top) : 0,
+        backtestsLeft: backtestsRect ? Math.round(backtestsRect.left) : 0,
+        backtestsRight: backtestsRect ? Math.round(backtestsRect.right) : 0,
+        historyLeft: historyRect ? Math.round(historyRect.left) : 0,
+        historyRight: historyRect ? Math.round(historyRect.right) : 0,
+        stackGap: backtestsRect && historyRect ? Math.round(historyRect.top - backtestsRect.bottom) : 0
+      };
+    });
+
+    expect(Math.abs(desktopLayout.roiTop - desktopLayout.backtestsTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(desktopLayout.backtestsLeft - desktopLayout.historyLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(desktopLayout.backtestsRight - desktopLayout.historyRight)).toBeLessThanOrEqual(1);
+    expect(desktopLayout.stackGap).toBeGreaterThanOrEqual(12);
+    expect(desktopLayout.stackGap).toBeLessThanOrEqual(20);
   });
 
   test('keeps ROI masthead and live cards within mobile viewport and preserves PWA metadata', async ({ page }) => {

@@ -163,7 +163,7 @@
             const providerLabel = providerCapabilities.label || 'FoxESS';
             const pricingLabel = pricingProviderLabel(pricingContext?.provider);
             titleEl.textContent = `${providerLabel} reporting coverage`;
-            textEl.innerHTML = `Showing <strong>${escapeHtml(providerLabel)}</strong> device reporting with <strong>${escapeHtml(pricingLabel)}</strong> pricing context. Values stay comparable across providers because the page labels exact, estimated, derived, and unavailable data explicitly.`;
+            textEl.innerHTML = `Paired with <strong>${escapeHtml(pricingLabel)}</strong> pricing. Values are labeled exact, estimated, derived, or unavailable.`;
             gridEl.innerHTML = getSurfaceCoverage(pricingContext)
                 .map(surface => renderCoverageCard(surface.title, surface.level, surface.detail))
                 .join('');

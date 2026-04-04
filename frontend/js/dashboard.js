@@ -7653,6 +7653,35 @@
             return 'today';
         }
 
+        function formatOverviewWeatherTemperatureSuffix(weather) {
+            const tempC = toOverviewFiniteNumber(weather?.currentTempC);
+            return tempC === null ? '' : `, with temperatures around ${Math.round(tempC)}C`;
+        }
+
+        function capitalizeOverviewSentence(text) {
+            const normalized = String(text || '').trim();
+            if (!normalized) return '';
+            return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+        }
+
+        function lowercaseOverviewSentenceStart(text) {
+            const normalized = String(text || '').trim();
+            if (!normalized) return '';
+            return normalized.charAt(0).toLowerCase() + normalized.slice(1);
+        }
+
+        function buildOverviewFallbackText(fragments = []) {
+            const parts = Array.isArray(fragments)
+                ? fragments
+                    .map((fragment) => String(fragment?.text || fragment || '').trim())
+                    .filter(Boolean)
+                : [];
+
+            if (!parts.length) return '';
+            if (parts.length === 1) return `${capitalizeOverviewSentence(parts[0])}.`;
+            return `${capitalizeOverviewSentence(parts[0])} and ${lowercaseOverviewSentenceStart(parts[1])}.`;
+        }
+
         function formatOverviewPowerKw(value) {
             const numeric = toOverviewFiniteNumber(value);
             if (numeric === null) return null;
@@ -8269,6 +8298,7 @@
             const pricingBestFeedFuture = pricing?.bestFeedFuture || null;
             const pricingCheapestFuture = pricing?.cheapestFuture || null;
             const pricingHighestFuture = pricing?.highestFuture || null;
+            const allowSolarNarrative = weather?.isDaylight === false ? false : true;
             const netSolarKw = hasValue(inverterSolarKw) && hasValue(inverterLoadKw)
                 ? inverterSolarKw - inverterLoadKw
                 : null;
@@ -8432,32 +8462,35 @@
             }
 
             const fallbackFragments = [];
-            if (netSolarKw !== null) {
+            if (allowSolarNarrative && netSolarKw !== null) {
                 if (netSolarKw > 0.35) {
-                    fallbackFragments.push({ key: 'solar', text: 'Solar is covering the home' });
+                    fallbackFragments.push({ key: 'solar', text: 'solar is covering the home' });
                 } else if (netSolarKw < -0.35) {
-                    fallbackFragments.push({ key: 'solar', text: 'Home load is running ahead of solar output' });
+                    fallbackFragments.push({ key: 'solar', text: 'home load is running ahead of solar output' });
                 }
             }
             if (!fallbackFragments.length && hasValue(inverterSocPct)) {
-                fallbackFragments.push({ key: 'battery', text: `Battery is steady at ${Math.round(inverterSocPct)}%` });
+                fallbackFragments.push({ key: 'battery', text: `battery is at ${Math.round(inverterSocPct)}%` });
             }
             if (hasValue(pricingCurrentBuyCents)) {
-                fallbackFragments.push({ key: 'pricing', text: `buy pricing sits at ${formatOverviewPrice(pricingCurrentBuyCents)}` });
+                fallbackFragments.push({ key: 'pricing', text: `buy pricing is ${formatOverviewPrice(pricingCurrentBuyCents)}` });
             } else if (pricingBestFeedFuture && exportWindowWhen) {
                 fallbackFragments.push({ key: 'pricing', text: `the best export window is ${exportWindowWhen}` });
             } else if (pricingHighestFuture && highestWindowWhen) {
                 fallbackFragments.push({ key: 'pricing', text: `the highest buy window lands ${highestWindowWhen}` });
             }
             if (weather?.currentCondition) {
-                fallbackFragments.push({ key: 'weather', text: `${String(weather.currentCondition).toLowerCase()} weather is in play` });
+                fallbackFragments.push({
+                    key: 'weather',
+                    text: `${String(weather.currentCondition).toLowerCase()} conditions are in place ${weatherTimeContext}${formatOverviewWeatherTemperatureSuffix(weather)}`
+                });
             }
 
             if (fallbackFragments.length >= 2) {
                 return {
                     focus: 'balanced',
                     usedKeys: fallbackFragments.slice(0, 2).map((item) => item.key),
-                    text: `${fallbackFragments[0].text} while ${fallbackFragments[1].text}.`
+                    text: buildOverviewFallbackText(fallbackFragments.slice(0, 2))
                 };
             }
 
@@ -8465,7 +8498,7 @@
                 return {
                     focus: 'balanced',
                     usedKeys: [fallbackFragments[0].key],
-                    text: `${fallbackFragments[0].text}.`
+                    text: buildOverviewFallbackText([fallbackFragments[0]])
                 };
             }
 
@@ -8499,6 +8532,7 @@
             const pricingNextSpike = pricing?.nextSpike || null;
             const evSocPct = ev?.socPct;
             const evTimeToFullHours = ev?.timeToFullHours;
+            const allowSolarNarrative = weather?.isDaylight === false ? false : true;
             const headlineDescriptor = buildOverviewHeadlineDescriptor({
                 inverter,
                 pricing,
@@ -8552,7 +8586,7 @@
                     });
                 }
             }
-            if (hasValue(inverterSolarKw) && hasValue(inverterLoadKw)) {
+            if (allowSolarNarrative && hasValue(inverterSolarKw) && hasValue(inverterLoadKw)) {
                 const netSolarKw = inverterSolarKw - inverterLoadKw;
                 if (netSolarKw > 0.35) {
                     leadCandidates.push({
@@ -8570,7 +8604,7 @@
                 } else {
                     leadCandidates.push({
                         key: 'solar',
-                        text: 'Solar and house load are fairly balanced.'
+                        text: 'Solar is roughly matching house load.'
                     });
                 }
             }
@@ -8589,7 +8623,7 @@
                 }
             }
             if (weather) {
-                const tempText = weather.currentTempC !== null ? ` at ${Math.round(weather.currentTempC)}C` : '';
+                const tempSuffix = formatOverviewWeatherTemperatureSuffix(weather);
                 const weatherTimeContext = describeOverviewWeatherTimeContext(weather);
                 const weatherSolarWindow = describeOverviewActiveSolarWindow(weather);
                 const weatherSolarOutlookWindow = describeOverviewSolarOutlookWindow(weather);
@@ -8597,37 +8631,37 @@
                     if (weather.solarSupport === 'weak') {
                         leadCandidates.push({
                             key: 'weather',
-                            text: `${weather.currentCondition}${tempText} weather is lingering ${weatherTimeContext}, which could soften the next solar ramp ${weatherSolarWindow}.`
+                            text: `${weather.currentCondition} conditions are lingering ${weatherTimeContext}${tempSuffix}.`
                         });
                     } else if (weather.solarSupport === 'strong') {
                         leadCandidates.push({
                             key: 'weather',
-                            text: `${weather.currentCondition}${tempText} weather looks settled ${weatherTimeContext}.`
+                            text: `${weather.currentCondition} conditions look settled ${weatherTimeContext}${tempSuffix}.`
                         });
                     } else {
                         leadCandidates.push({
                             key: 'weather',
-                            text: `${weather.currentCondition}${tempText} weather is in place ${weatherTimeContext}.`
+                            text: `${weather.currentCondition} conditions are in place ${weatherTimeContext}${tempSuffix}.`
                         });
                     }
                 } else if (weather.solarSupport === 'strong') {
                     leadCandidates.push({
                         key: 'weather',
-                        text: `${weather.currentCondition}${tempText} weather still supports solar output ${weatherSolarWindow}.`
+                        text: `${weather.currentCondition} conditions still support solar output ${weatherSolarWindow}.`
                     });
                 } else if (weather.solarSupport === 'weak') {
                     leadCandidates.push({
                         key: 'weather',
-                        text: `${weather.currentCondition}${tempText} weather is likely to suppress solar output ${weatherSolarOutlookWindow}.`
+                        text: `${weather.currentCondition} conditions are likely to suppress solar output ${weatherSolarOutlookWindow}.`
                     });
                 } else {
                     leadCandidates.push({
                         key: 'weather',
-                        text: `${weather.currentCondition}${tempText} weather looks fairly neutral for solar ${weatherSolarOutlookWindow}.`
+                        text: `${weather.currentCondition} conditions look fairly neutral for solar ${weatherSolarOutlookWindow}.`
                     });
                 }
             }
-            const lead = selectOverviewCandidateTexts(leadCandidates, headlineExcludedKeys, 3, 2).join(' ');
+            const lead = selectOverviewCandidateTexts(leadCandidates, headlineExcludedKeys, 3, 1).join(' ');
 
             const nowCandidates = [];
             if (quickControl?.active) {

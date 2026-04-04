@@ -41,8 +41,8 @@
         .page-header {
             position: relative;
             margin-bottom: 0;
-            padding: 28px;
-            border-radius: 24px;
+            padding: 22px 24px;
+            border-radius: 22px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 70%, transparent);
             background:
                 radial-gradient(circle at top left, color-mix(in srgb, var(--color-warning) 18%, transparent), transparent 34%),
@@ -54,9 +54,9 @@
         .page-header::before {
             content: '';
             position: absolute;
-            inset: auto -56px -104px auto;
-            width: 250px;
-            height: 250px;
+            inset: auto -44px -86px auto;
+            width: 210px;
+            height: 210px;
             border-radius: 50%;
             background: color-mix(in srgb, var(--color-warning) 14%, transparent);
             filter: blur(24px);
@@ -68,26 +68,43 @@
             position: relative;
             z-index: 1;
         }
+        .page-masthead__copy {
+            flex: 1 1 100%;
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+        }
+        .page-masthead__heading {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 16px 24px;
+            flex-wrap: wrap;
+        }
+        .page-masthead__title-group {
+            flex: 1 1 360px;
+            min-width: 0;
+        }
         .page-header .page-title {
             margin: 0;
         }
         .page-header .page-subtitle {
             max-width: 760px;
-            margin-top: 10px;
-            font-size: 14px;
-            line-height: 1.7;
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.6;
         }
         .page-eyebrow {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 16px;
-            padding: 7px 12px;
+            margin-bottom: 10px;
+            padding: 6px 11px;
             border-radius: 999px;
             border: 1px solid color-mix(in srgb, var(--color-warning) 32%, transparent);
             background: color-mix(in srgb, var(--color-warning) 12%, transparent);
             color: color-mix(in srgb, var(--color-warning) 84%, white);
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
@@ -95,22 +112,27 @@
         .masthead-note {
             display: flex;
             align-items: flex-start;
-            gap: 12px;
-            margin-top: 18px;
-            padding: 16px;
-            border-radius: 16px;
+            gap: 10px;
+            margin-top: 0;
+            padding: 12px 14px;
+            border-radius: 14px;
             border: 1px solid color-mix(in srgb, var(--color-warning) 28%, transparent);
             background:
                 linear-gradient(180deg, color-mix(in srgb, var(--color-warning) 12%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
                 radial-gradient(circle at top right, color-mix(in srgb, var(--color-warning) 12%, transparent), transparent 48%);
             color: var(--text-secondary);
-            font-size: 13px;
-            line-height: 1.7;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+        .masthead-note__content {
+            display: grid;
+            gap: 3px;
+            min-width: 0;
         }
         .masthead-note__icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 11px;
+            width: 30px;
+            height: 30px;
+            border-radius: 10px;
             border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
             background: color-mix(in srgb, var(--color-warning) 12%, transparent);
             color: var(--color-warning);
@@ -120,28 +142,38 @@
             flex-shrink: 0;
         }
         .masthead-note__icon svg {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             stroke: currentColor;
             fill: none;
             stroke-width: 1.9;
             stroke-linecap: round;
             stroke-linejoin: round;
         }
-        .masthead-note strong {
+        .masthead-note__title {
             display: block;
-            margin-bottom: 4px;
+            margin: 0;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .masthead-note__text {
+            color: var(--text-secondary);
+        }
+        .masthead-note__text strong {
             color: var(--text-primary);
         }
         .page-signal-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 12px;
-            width: min(440px, 100%);
+            gap: 10px;
+            width: min(520px, 100%);
+            flex: 1 1 420px;
         }
         .page-signal-card {
-            padding: 16px;
-            border-radius: 16px;
+            padding: 12px 14px;
+            border-radius: 14px;
             border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
             background:
                 linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, transparent), color-mix(in srgb, var(--bg-overlay) 92%, transparent)),
@@ -149,25 +181,22 @@
             box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
         }
         .page-signal-label {
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             color: var(--color-warning);
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
         }
         .page-signal-card strong {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 0;
             color: var(--text-primary);
-            font-size: 14px;
-            line-height: 1.45;
+            font-size: 12px;
+            line-height: 1.4;
         }
         .page-signal-card p {
-            margin: 0;
-            color: var(--text-secondary);
-            font-size: 12px;
-            line-height: 1.65;
+            display: none;
         }
         
         /* Cards */
@@ -281,13 +310,15 @@
             gap: 20px;
         }
         .reports-grid--top {
-            grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+            grid-template-columns: minmax(0, 1fr);
         }
         .reports-grid--bottom {
             grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
         }
         .coverage-grid--hero {
-            margin-bottom: 0;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 4px 0 0;
         }
         
         /* Controls row */
@@ -511,8 +542,8 @@
         .coverage-card {
             background: var(--gradient-card);
             border: 1px solid var(--border-secondary);
-            border-radius: 10px;
-            padding: 14px;
+            border-radius: 12px;
+            padding: 12px;
             transition: border-color 0.2s ease;
         }
         .coverage-card:hover {
@@ -520,18 +551,18 @@
         }
 
         .coverage-card .label {
-            font-size: 11px;
+            font-size: 10px;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .coverage-card .meta {
-            margin-top: 8px;
-            font-size: 13px;
+            margin-top: 6px;
+            font-size: 12px;
             color: var(--text);
-            line-height: 1.5;
+            line-height: 1.45;
         }
 
         .capability-badge,
@@ -708,8 +739,11 @@
                 padding-top: 18px;
             }
             .page-header {
-                padding: 20px 18px;
-                border-radius: 20px;
+                padding: 18px 16px;
+                border-radius: 18px;
+            }
+            .page-masthead__heading {
+                align-items: flex-start;
             }
             .page-signal-grid {
                 grid-template-columns: 1fr;
@@ -726,7 +760,7 @@
         }
         @media (max-width: 540px) {
             .masthead-note {
-                flex-direction: column;
+                align-items: flex-start;
             }
             .card-meta {
                 white-space: normal;
@@ -992,9 +1026,27 @@
     <div class="container page-shell">
         <div class="page-header page-masthead">
             <div class="page-masthead__copy">
-                <div class="page-eyebrow">Diagnostics and reporting</div>
-                <h1 class="page-title">Reports & Insights</h1>
-                <p class="page-subtitle">Cross-provider performance, pricing, and diagnostics in one place. Data is fetched on-demand and clearly labeled when it is exact, estimated, derived, or unavailable.</p>
+                <div class="page-masthead__heading">
+                    <div class="page-masthead__title-group">
+                        <div class="page-eyebrow">Diagnostics and reporting</div>
+                        <h1 class="page-title">Reports & Insights</h1>
+                    </div>
+                    <div class="page-signal-grid" aria-label="Reports page highlights">
+                        <div class="page-signal-card">
+                            <div class="page-signal-label">Pricing</div>
+                            <strong>Amber and AEMO stay comparable.</strong>
+                        </div>
+                        <div class="page-signal-card">
+                            <div class="page-signal-label">Device data</div>
+                            <strong>History, reports, and generation stay together.</strong>
+                        </div>
+                        <div class="page-signal-card">
+                            <div class="page-signal-label">Trust layer</div>
+                            <strong>Every value keeps a visible provenance label.</strong>
+                        </div>
+                    </div>
+                </div>
+                <p class="page-subtitle">Cross-provider performance, pricing, and diagnostics in one place. Every value is labeled as exact, estimated, derived, or unavailable.</p>
                 <div class="masthead-note" id="reportsCoverageBanner">
                     <div class="masthead-note__icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24">
@@ -1004,32 +1056,13 @@
                             <path d="M12 11l-4 6"></path>
                         </svg>
                     </div>
-                    <div>
-                        <strong id="reportsCoverageTitle">Cross-provider reporting</strong>
-                        <span id="reportsCoverageText">Loading provider coverage and pricing context…</span>
+                    <div class="masthead-note__content">
+                        <strong class="masthead-note__title" id="reportsCoverageTitle">Cross-provider reporting</strong>
+                        <span class="masthead-note__text" id="reportsCoverageText">Loading provider coverage and pricing context…</span>
                     </div>
                 </div>
             </div>
-            <div class="page-signal-grid">
-                <div class="page-signal-card">
-                    <div class="page-signal-label">Pricing</div>
-                    <strong>Retail and market tariffs render with the same shell.</strong>
-                    <p>Amber and AEMO pricing stay visually comparable so trends are easier to interpret.</p>
-                </div>
-                <div class="page-signal-card">
-                    <div class="page-signal-label">Device data</div>
-                    <strong>Power history, reports, and generation stay in one workspace.</strong>
-                    <p>Move from live inverter behaviour to period summaries without jumping between tools.</p>
-                </div>
-                <div class="page-signal-card">
-                    <div class="page-signal-label">Trust layer</div>
-                    <strong>Data provenance is visible before you use the numbers.</strong>
-                    <p>Exact, estimated, derived, and unavailable values are surfaced as part of the UI rather than hidden in docs.</p>
-                </div>
-            </div>
         </div>
-
-        <div id="reportsCoverageGrid" class="coverage-grid coverage-grid--hero"></div>
 
         <div class="reports-grid reports-grid--top">
             <div class="card section-card section-card--pricing">
@@ -1172,6 +1205,8 @@
                 </div>
             </div>
         </div>
+
+        <div id="reportsCoverageGrid" class="coverage-grid coverage-grid--hero"></div>
 
         <div class="reports-grid reports-grid--bottom">
             <div class="card section-card section-card--reports">
