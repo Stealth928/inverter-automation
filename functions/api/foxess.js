@@ -28,6 +28,70 @@ const foxessCircuitBreaker = createUpstreamCircuitBreaker({
   logger: console
 });
 
+function isEmulatorRuntime() {
+  return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
+}
+
+function buildFoxessEmulatorResponse(apiPath, method, body = null, userConfig = {}) {
+  const normalizedPath = String(apiPath || '').trim();
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  const deviceSN = String(
+    userConfig?.deviceSn
+      || userConfig?.deviceSN
+      || body?.deviceSN
+      || 'EMULATOR-FOXESS'
+  ).trim();
+
+  if (normalizedPath === '/op/v1/device/scheduler/get') {
+    return {
+      errno: 0,
+      msg: 'FoxESS emulator mode: returning mock scheduler state',
+      result: {
+        deviceSN,
+        groups: []
+      },
+      raw: null
+    };
+  }
+
+  if (normalizedPath === '/op/v1/device/scheduler/enable') {
+    return {
+      errno: 0,
+      msg: 'FoxESS emulator mode: scheduler accepted',
+      result: {
+        deviceSN,
+        accepted: true,
+        groups: Array.isArray(body?.groups) ? body.groups : []
+      },
+      raw: null
+    };
+  }
+
+  if (normalizedPath === '/op/v1/device/scheduler/set/flag') {
+    return {
+      errno: 0,
+      msg: 'FoxESS emulator mode: scheduler flag updated',
+      result: {
+        deviceSN,
+        enable: Number(body?.enable) === 0 ? 0 : 1
+      },
+      raw: null
+    };
+  }
+
+  return {
+    errno: 0,
+    msg: 'FoxESS emulator mode: returning mock response',
+    result: {
+      _emulated: true,
+      deviceSN,
+      method: normalizedMethod,
+      path: normalizedPath
+    },
+    raw: null
+  };
+}
+
 function shouldTripFoxessCircuit(httpStatus, result = {}) {
   if (Number.isFinite(httpStatus) && httpStatus >= 500) {
     return true;
@@ -98,6 +162,16 @@ function generateFoxESSSignature(apiPath, token, timestamp) {
  * @returns {Promise<Object>} { errno, msg, result, raw } or { errno, error }
  */
 async function callFoxESSAPI(apiPath, method = 'GET', body = null, userConfig, userId = null) {
+  if (isEmulatorRuntime()) {
+    if (userId && incrementApiCount) {
+      await incrementApiCount(userId, 'foxess').catch((error) => {
+        logger.warn(`[FoxESSAPI] Failed to increment metrics: ${error?.message || error}`);
+      });
+    }
+    logger.info('[FoxESSAPI] Emulator mode: returning mock response for path=' + apiPath);
+    return buildFoxessEmulatorResponse(apiPath, method, body, userConfig);
+  }
+
   const circuitGate = foxessCircuitBreaker.beforeRequest();
   if (!circuitGate.allowed) {
     return buildFoxessCircuitOpenResponse(foxessCircuitBreaker.getState());

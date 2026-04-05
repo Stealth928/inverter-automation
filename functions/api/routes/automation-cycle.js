@@ -357,6 +357,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
     const normalizeActionErrno = (value) => {
       const parsed = Number(value);
       if (!Number.isInteger(parsed)) return 500;
+      if (parsed === 401 || parsed === 403) return 502;
       if (parsed >= 400 && parsed <= 599) return parsed;
       return 500;
     };

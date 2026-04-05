@@ -435,6 +435,46 @@ describe('automation cycle route module', () => {
     );
   });
 
+  test('maps upstream action auth failures to a non-auth HTTP status', async () => {
+    const deps = buildDeps({
+      evaluateRule: jest.fn(async () => ({
+        triggered: true,
+        conditions: [{ passed: true }]
+      })),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({ enabled: true })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-ERR-401' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          action: { workMode: 'ForceDischarge', durationMinutes: 30, fdPwr: 2500, fdSoc: 20, minSocOnGrid: 20 }
+        }
+      })),
+      applyRuleAction: jest.fn(async () => ({ errno: 401, msg: 'FoxESS token rejected' }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-action-auth-fail' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(502);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 502,
+      error: expect.stringContaining('Action apply failed')
+    }));
+    expect(deps.applyRuleAction).toHaveBeenCalled();
+  });
+
   test('cancels an active rule when its stop-on-energy cap is reached', async () => {
     const deps = buildDeps({
       evaluateActiveRuleEnergyCap: jest.fn(async () => ({
