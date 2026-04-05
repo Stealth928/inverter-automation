@@ -984,8 +984,22 @@ function buildRunListSummary(summary = {}) {
     scenarioId: summary.scenarioId,
     scenarioName: summary.scenarioName,
     totalBillAud: toFiniteNumber(summary.totalBillAud, null),
+    totalImportCostAud: toFiniteNumber(summary.totalImportCostAud, null),
+    totalExportRevenueAud: toFiniteNumber(summary.totalExportRevenueAud, null),
+    totalSupplyChargeAud: toFiniteNumber(summary.totalSupplyChargeAud, null),
+    importKWh: toFiniteNumber(summary.importKWh, null),
+    exportKWh: toFiniteNumber(summary.exportKWh, null),
+    throughputKWh: toFiniteNumber(summary.throughputKWh, null),
+    equivalentCycles: toFiniteNumber(summary.equivalentCycles, null),
+    triggerCount: toFiniteNumber(summary.triggerCount, null),
     deltaVsBaseline: summary.deltaVsBaseline && typeof summary.deltaVsBaseline === 'object'
-      ? { billAud: toFiniteNumber(summary.deltaVsBaseline.billAud, null) }
+      ? {
+        billAud: toFiniteNumber(summary.deltaVsBaseline.billAud, null),
+        importKWh: toFiniteNumber(summary.deltaVsBaseline.importKWh, null),
+        exportKWh: toFiniteNumber(summary.deltaVsBaseline.exportKWh, null),
+        throughputKWh: toFiniteNumber(summary.deltaVsBaseline.throughputKWh, null),
+        equivalentCycles: toFiniteNumber(summary.deltaVsBaseline.equivalentCycles, null)
+      }
       : undefined
   };
   return entry;
@@ -995,7 +1009,19 @@ function buildRunListEntry(run = {}, id = '') {
   const summaries = Array.isArray(run?.result?.summaries)
     ? run.result.summaries.map(buildRunListSummary).filter(Boolean)
     : [];
-  const result = summaries.length > 0 ? { summaries } : undefined;
+  const limitations = Array.isArray(run?.result?.limitations)
+    ? run.result.limitations.filter((item) => typeof item === 'string' && item.trim())
+    : [];
+  const confidence = typeof run?.result?.confidence === 'string' && run.result.confidence.trim()
+    ? run.result.confidence.trim()
+    : undefined;
+  const result = summaries.length > 0 || limitations.length > 0 || confidence
+    ? {
+      ...(confidence ? { confidence } : {}),
+      ...(limitations.length > 0 ? { limitations } : {}),
+      ...(summaries.length > 0 ? { summaries } : {})
+    }
+    : undefined;
   return {
     id,
     type: run.type,

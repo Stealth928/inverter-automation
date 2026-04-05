@@ -452,14 +452,27 @@ describe('backtest service helpers', () => {
           requestedAtMs: 123,
           request: { period: { startDate: '2026-03-01', endDate: '2026-03-02' } },
           result: {
+            confidence: 'medium',
+            limitations: ['Battery SoC before the first historical sample was reconstructed from battery power'],
             summaries: [
               {
                 scenarioId: 'current',
                 scenarioName: 'Current rules',
                 totalBillAud: 4.21,
+                totalImportCostAud: 2.1,
+                totalExportRevenueAud: 0.45,
+                totalSupplyChargeAud: 1.1,
+                importKWh: 8.2,
+                exportKWh: 2.4,
+                throughputKWh: 3.5,
+                equivalentCycles: 0.18,
+                triggerCount: 4,
                 deltaVsBaseline: {
                   billAud: 1.34,
-                  importKWh: 2.1
+                  importKWh: 2.1,
+                  exportKWh: 0.9,
+                  throughputKWh: 1.4,
+                  equivalentCycles: 0.07
                 },
                 chart: {
                   points: [{ timestampMs: 1, solarKw: 0.5 }]
@@ -470,6 +483,14 @@ describe('backtest service helpers', () => {
                 scenarioId: 'baseline',
                 scenarioName: 'Baseline',
                 totalBillAud: 5.55,
+                totalImportCostAud: 3.2,
+                totalExportRevenueAud: 0.2,
+                totalSupplyChargeAud: 1.1,
+                importKWh: 10.3,
+                exportKWh: 1.5,
+                throughputKWh: 2.1,
+                equivalentCycles: 0.11,
+                triggerCount: 0,
                 chart: {
                   points: [{ timestampMs: 1, solarKw: 0.1 }]
                 }
@@ -488,17 +509,41 @@ describe('backtest service helpers', () => {
       id: 'run-preview',
       status: 'completed',
       result: {
+        confidence: 'medium',
+        limitations: ['Battery SoC before the first historical sample was reconstructed from battery power'],
         summaries: [
           {
             scenarioId: 'current',
             scenarioName: 'Current rules',
             totalBillAud: 4.21,
-            deltaVsBaseline: { billAud: 1.34 }
+            totalImportCostAud: 2.1,
+            totalExportRevenueAud: 0.45,
+            totalSupplyChargeAud: 1.1,
+            importKWh: 8.2,
+            exportKWh: 2.4,
+            throughputKWh: 3.5,
+            equivalentCycles: 0.18,
+            triggerCount: 4,
+            deltaVsBaseline: {
+              billAud: 1.34,
+              importKWh: 2.1,
+              exportKWh: 0.9,
+              throughputKWh: 1.4,
+              equivalentCycles: 0.07
+            }
           },
           {
             scenarioId: 'baseline',
             scenarioName: 'Baseline',
             totalBillAud: 5.55,
+            totalImportCostAud: 3.2,
+            totalExportRevenueAud: 0.2,
+            totalSupplyChargeAud: 1.1,
+            importKWh: 10.3,
+            exportKWh: 1.5,
+            throughputKWh: 2.1,
+            equivalentCycles: 0.11,
+            triggerCount: 0,
             deltaVsBaseline: undefined
           }
         ]

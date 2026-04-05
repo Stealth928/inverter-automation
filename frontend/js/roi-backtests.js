@@ -35,6 +35,16 @@
         }).format(Number(value || 0));
     }
 
+    function toFiniteNumber(value) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function formatMetric(value, digits = 3, suffix = '') {
+        const numeric = toFiniteNumber(value);
+        return numeric === null ? 'n/a' : `${numeric.toFixed(digits)}${suffix}`;
+    }
+
     function formatDate(value) {
         if (!value) return 'Unknown';
         return new Date(value).toLocaleString('en-AU', {
@@ -235,6 +245,9 @@
         const limitations = Array.isArray(run?.result?.limitations || run?.limitations) ? (run.result?.limitations || run.limitations) : [];
         const bestScenario = run.bestScenario;
         const topLimitation = limitations[0] || '';
+        const throughput = toFiniteNumber(bestScenario?.throughputKWh);
+        const triggerCount = toFiniteNumber(bestScenario?.triggerCount);
+        const hasFlowMetrics = throughput !== null || triggerCount !== null;
         const deltaSummary = bestScenario?.deltaVsBaseline
             ? `Bill vs passive self-use: ${formatCurrency(bestScenario.deltaVsBaseline.billAud)}`
             : 'Baseline comparison not available.';
@@ -264,7 +277,9 @@
                         </div>
                         <div class="roi-backtest-metric">
                             <strong>Trade-off snapshot</strong>
-                            <span>Throughput ${bestScenario.throughputKWh.toFixed(3)} kWh • ${bestScenario.triggerCount} trigger(s).</span>
+                            <span>${hasFlowMetrics
+                                ? `Throughput ${formatMetric(throughput, 3, ' kWh')} • ${formatMetric(triggerCount, 0)} trigger(s).`
+                                : 'Saved preview omits throughput and trigger totals. Open the full run in Automation Lab for flow details.'}</span>
                         </div>
                     </div>
                 ` : ''}
@@ -273,7 +288,14 @@
                     <div>
                         ${comparisons.length ? comparisons.map((comparison) => `<div>${escHtml(comparison.leftScenarioName)} vs ${escHtml(comparison.rightScenarioName)} • bill delta ${formatCurrency(-comparison.billDeltaAud)}</div>`).join('') : '<div>No side-by-side comparison rows saved for this run.</div>'}
                         ${limitations.length ? limitations.map((item) => `<div>${escHtml(item)}</div>`).join('') : ''}
-                        ${summaries.length ? summaries.map((summary) => `<div>${escHtml(summary.scenarioName)} • import ${summary.importKWh.toFixed(3)} kWh • export ${summary.exportKWh.toFixed(3)} kWh</div>`).join('') : ''}
+                        ${summaries.length ? summaries.map((summary) => {
+                            const importKWh = toFiniteNumber(summary?.importKWh);
+                            const exportKWh = toFiniteNumber(summary?.exportKWh);
+                            const summaryMetrics = [];
+                            if (importKWh !== null) summaryMetrics.push(`import ${formatMetric(importKWh, 3, ' kWh')}`);
+                            if (exportKWh !== null) summaryMetrics.push(`export ${formatMetric(exportKWh, 3, ' kWh')}`);
+                            return `<div>${escHtml(summary.scenarioName)}${summaryMetrics.length ? ` • ${summaryMetrics.join(' • ')}` : ' • saved preview only'}</div>`;
+                        }).join('') : ''}
                     </div>
                 </details>
             </div>

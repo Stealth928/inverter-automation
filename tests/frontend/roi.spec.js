@@ -488,6 +488,54 @@ test.describe('ROI Page', () => {
     await expect(page.locator('#roiBacktestsCard select[data-filter="period"]')).not.toContainText('365 days');
   });
 
+  test('renders lightweight saved backtest previews without crashing when flow totals are omitted', async ({ page }) => {
+    await mockRoiApi(page, {
+      deviceProvider: 'foxess',
+      backtestRuns: [
+        {
+          requestedAtMs: Date.now(),
+          status: 'completed',
+          request: {
+            period: { startDate: '2026-03-01', endDate: '2026-03-30' },
+            scenarios: [
+              {
+                name: 'Current rules',
+                tariff: { plan: { name: 'Amber NSW' } }
+              }
+            ]
+          },
+          result: {
+            summaries: [
+              {
+                scenarioId: 'baseline',
+                scenarioName: 'No automation',
+                totalBillAud: 8.42
+              },
+              {
+                scenarioId: 'current',
+                scenarioName: 'Current rules',
+                totalBillAud: 7.93,
+                deltaVsBaseline: {
+                  billAud: 0.49
+                }
+              }
+            ]
+          }
+        }
+      ],
+      tariffPlans: [
+        { id: 'plan-1', name: 'Amber NSW' }
+      ]
+    });
+
+    await page.goto('/roi.html');
+
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/Current rules finished at/i);
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/Saved preview omits throughput and trigger totals/i);
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/No side-by-side comparison rows saved for this run/i);
+    await expect(page.locator('#roiBacktestsCard')).toContainText(/saved preview only/i);
+  });
+
   test('does not expose local sample-data controls on the ROI page', async ({ page }) => {
     await mockRoiApi(page, { deviceProvider: 'foxess' });
     await page.goto('/roi.html');
