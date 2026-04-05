@@ -387,6 +387,61 @@ test.describe('Test Lab Page', () => {
     await expect(page.locator('.lab-guidance-actions')).toBeVisible();
   });
 
+  test('retries failed backtests with the saved request payload instead of current form state', async ({ page }) => {
+    const nowMs = Date.parse('2026-04-05T08:03:00Z');
+    await page.goto('about:blank');
+    const requestLog = await mockAutomationLabBacktestApis(page, {
+      nowMs,
+      backtestRuns: [{
+        id: 'run-stale-retry-1',
+        requestedAtMs: nowMs,
+        status: 'failed',
+        request: {
+          period: { startDate: '2026-03-07', endDate: '2026-04-05' },
+          includeBaseline: true,
+          comparisonMode: 'current_vs_baseline',
+          scenarios: [{
+            id: 'current',
+            name: 'Current rules',
+            ruleSetSnapshot: {
+              source: 'current',
+              rules: {
+                peak_saver: {
+                  name: 'Peak Saver',
+                  enabled: true,
+                  priority: 1,
+                  conditions: {},
+                  action: { type: 'charge' }
+                }
+              }
+            }
+          }]
+        },
+        error: 'Backtest processing stopped before the replay completed. Retry this saved run to start a fresh replay with the same settings.',
+        errorDetails: {
+          category: 'infrastructure',
+          reason: 'stale-run',
+          lastStatus: 'running'
+        }
+      }]
+    });
+
+    await page.goto('/test.html');
+
+    await page.getByRole('button', { name: /Retry backtest/i }).click();
+
+    await expect.poll(() => requestLog.createBacktestPayloads.length).toBe(1);
+    expect(requestLog.createBacktestPayloads[0]).toEqual(expect.objectContaining({
+      period: {
+        startDate: '2026-03-07',
+        endDate: '2026-04-05'
+      },
+      includeBaseline: true,
+      comparisonMode: 'current_vs_baseline'
+    }));
+    expect(requestLog.createBacktestPayloads[0].requestHash).toBeUndefined();
+  });
+
   test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {
     let createRequestCount = 0;
     let lastCreatePayload = null;

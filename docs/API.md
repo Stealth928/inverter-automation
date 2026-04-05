@@ -282,6 +282,11 @@ All endpoints in this section require an authenticated admin user.
 | `GET` | `/api/admin/dataworks/ops` | GitHub workflow and market-data operations summary |
 | `POST` | `/api/admin/dataworks/dispatch` | Dispatch the DataWorks workflow |
 
+Admin API health notes:
+
+- `GET /api/admin/api-health` aggregates provider rollups on Australia/Sydney calendar dates.
+- Daily windows stay calendar-based across DST changes, so the response does not duplicate or skip a day when clocks shift.
+
 ## Known Repo-only Route Modules
 
 The repo still contains route modules that are not mounted by `functions/index.js`

@@ -1872,7 +1872,7 @@ exports.processBacktestRun = onDocumentCreated(
   {
     document: 'users/{userId}/backtests/runs/items/{runId}',
     region: 'australia-southeast1',
-    memory: '1GiB',
+    memory: '2GiB',
     timeoutSeconds: 540,
     secrets: RUN_AUTOMATION_SECRETS
   },

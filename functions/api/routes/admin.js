@@ -1579,6 +1579,31 @@ function registerAdminRoutes(app, deps = {}) {
   const getAdminMetricsDateKey = (date = new Date(), timeZone = 'Australia/Sydney') =>
     date.toLocaleDateString('en-CA', { timeZone });
 
+  const getTimeZoneCalendarParts = (date = new Date(), timeZone = 'Australia/Sydney') => {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatter.formatToParts(date);
+    return {
+      year: Number(parts.find((part) => part.type === 'year')?.value || 0),
+      month: Number(parts.find((part) => part.type === 'month')?.value || 0),
+      day: Number(parts.find((part) => part.type === 'day')?.value || 0)
+    };
+  };
+
+  const buildTimeZoneDateWindow = (days, date = new Date(), timeZone = 'Australia/Sydney') => {
+    const { year, month, day } = getTimeZoneCalendarParts(date, timeZone);
+    const anchor = new Date(Date.UTC(year, month - 1, day));
+    return Array.from({ length: days }, (_value, index) => {
+      const cursor = new Date(anchor);
+      cursor.setUTCDate(cursor.getUTCDate() - (days - 1 - index));
+      return cursor.toISOString().slice(0, 10);
+    });
+  };
+
   const toCounter = (value) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed <= 0) return 0;
@@ -2977,10 +3002,7 @@ const adminApiHealthHandler = async (req, res) => {
     const loadHealth = async () => {
       const warnings = [];
       const now = new Date();
-      const dateKeys = Array.from({ length: days }, (_value, index) => {
-        const date = new Date(now.getTime() - ((days - 1 - index) * 24 * 60 * 60 * 1000));
-        return getAdminMetricsDateKey(date);
-      });
+      const dateKeys = buildTimeZoneDateWindow(days, now);
 
       const daily = await Promise.all(dateKeys.map(async (dateKey) => {
         try {

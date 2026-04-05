@@ -32,7 +32,9 @@ const DEFAULT_LIMITS = Object.freeze({
   maxActiveRuns: 2,
   maxSavedRuns: 5,
   maxRunsPerDay: 5,
-  runTtlMs: 30 * 24 * 60 * 60 * 1000
+  runTtlMs: 30 * 24 * 60 * 60 * 1000,
+  staleQueuedRunMs: 15 * 60 * 1000,
+  staleRunningRunMs: 20 * 60 * 1000
 });
 
 const MAX_REPORT_CHART_POINTS = 96;
@@ -1056,6 +1058,12 @@ function buildBacktestErrorDetails(error) {
   if (typeof error.provider === 'string' && error.provider.trim()) {
     details.provider = error.provider.trim().toLowerCase();
   }
+  if (typeof error.category === 'string' && error.category.trim()) {
+    details.category = error.category.trim().toLowerCase();
+  }
+  if (typeof error.reason === 'string' && error.reason.trim()) {
+    details.reason = error.reason.trim().toLowerCase();
+  }
   if (Number.isFinite(errno)) {
     details.errno = Math.round(errno);
   }
@@ -1098,7 +1106,9 @@ function createBacktestService(deps = {}) {
       maxActiveRuns: Math.max(1, Math.round(toFiniteNumber(runtime.maxActiveRuns, DEFAULT_LIMITS.maxActiveRuns) || DEFAULT_LIMITS.maxActiveRuns)),
       maxSavedRuns: Math.max(1, Math.round(toFiniteNumber(runtime.maxSavedRuns, DEFAULT_LIMITS.maxSavedRuns) || DEFAULT_LIMITS.maxSavedRuns)),
       maxRunsPerDay: Math.max(1, Math.round(toFiniteNumber(runtime.maxRunsPerDay, DEFAULT_LIMITS.maxRunsPerDay) || DEFAULT_LIMITS.maxRunsPerDay)),
-      runTtlMs: Math.max(60 * 60 * 1000, Math.round(toFiniteNumber(runtime.runTtlMs, DEFAULT_LIMITS.runTtlMs) || DEFAULT_LIMITS.runTtlMs))
+      runTtlMs: Math.max(60 * 60 * 1000, Math.round(toFiniteNumber(runtime.runTtlMs, DEFAULT_LIMITS.runTtlMs) || DEFAULT_LIMITS.runTtlMs)),
+      staleQueuedRunMs: Math.max(5 * 60 * 1000, Math.round(toFiniteNumber(runtime.staleQueuedRunMs, DEFAULT_LIMITS.staleQueuedRunMs) || DEFAULT_LIMITS.staleQueuedRunMs)),
+      staleRunningRunMs: Math.max(10 * 60 * 1000, Math.round(toFiniteNumber(runtime.staleRunningRunMs, DEFAULT_LIMITS.staleRunningRunMs) || DEFAULT_LIMITS.staleRunningRunMs))
     };
   }
 
@@ -1106,14 +1116,104 @@ function createBacktestService(deps = {}) {
   const tariffPlansCollection = (userId) => db.collection('users').doc(userId).collection('backtests').doc('tariffPlans').collection('items');
   const dailyUsageCollection = (userId) => db.collection('users').doc(userId).collection('backtests').doc('usage').collection('daily');
 
+  function getRunActivityTimestamp(run = {}) {
+    if (!run || typeof run !== 'object') return null;
+    if (run.status === RUN_STATUSES.running) {
+      return toFiniteNumber(run.startedAtMs ?? run.requestedAtMs, null);
+    }
+    if (run.status === RUN_STATUSES.queued) {
+      return toFiniteNumber(run.requestedAtMs, null);
+    }
+    return null;
+  }
+
+  function isStaleActiveRun(run = {}, limits = getLimits(), nowMs = Date.now()) {
+    if (!run || typeof run !== 'object') return false;
+    const activityMs = getRunActivityTimestamp(run);
+    if (!Number.isFinite(activityMs)) return false;
+    if (run.status === RUN_STATUSES.queued) {
+      return (nowMs - activityMs) >= limits.staleQueuedRunMs;
+    }
+    if (run.status === RUN_STATUSES.running) {
+      return (nowMs - activityMs) >= limits.staleRunningRunMs;
+    }
+    return false;
+  }
+
+  function buildStaleRunFailure(run = {}, nowMs = Date.now()) {
+    const lastStatus = run.status === RUN_STATUSES.running ? RUN_STATUSES.running : RUN_STATUSES.queued;
+    const activityMs = getRunActivityTimestamp(run);
+    const staleForMs = Number.isFinite(activityMs) ? Math.max(0, nowMs - activityMs) : null;
+    const error = lastStatus === RUN_STATUSES.running
+      ? 'Backtest processing stopped before the replay completed. Retry this saved run to start a fresh replay with the same settings.'
+      : 'Backtest processing never started. Retry this saved run to start a fresh replay with the same settings.';
+
+    return {
+      status: RUN_STATUSES.failed,
+      completedAtMs: nowMs,
+      error,
+      errorDetails: {
+        category: 'infrastructure',
+        reason: 'stale-run',
+        lastStatus,
+        staleForMs,
+        recoveredAtMs: nowMs
+      },
+      result: null,
+      confidence: null,
+      limitations: []
+    };
+  }
+
+  async function reconcileStaleRun(userId, runId, run = null, nowMs = Date.now()) {
+    if (!run || ![RUN_STATUSES.queued, RUN_STATUSES.running].includes(run.status)) {
+      return run;
+    }
+
+    const limits = getLimits();
+    if (!isStaleActiveRun(run, limits, nowMs)) {
+      return run;
+    }
+
+    const runRef = runsCollection(userId).doc(runId);
+    let resolved = run;
+
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(runRef);
+      if (!snapshot.exists) {
+        resolved = null;
+        return;
+      }
+
+      const current = snapshot.data() || {};
+      if (!isStaleActiveRun(current, limits, nowMs)) {
+        resolved = { id: snapshot.id, ...current };
+        return;
+      }
+
+      const failure = buildStaleRunFailure(current, nowMs);
+      await transaction.set(runRef, failure, { merge: true });
+      resolved = { id: snapshot.id, ...current, ...failure };
+    });
+
+    return resolved;
+  }
+
   async function listRuns(userId, limit = 20) {
     const snapshot = await runsCollection(userId).orderBy('requestedAtMs', 'desc').limit(Math.max(1, Math.min(50, Math.round(toFiniteNumber(limit, 20) || 20)))).get();
-    return snapshot.docs.map((doc) => buildRunListEntry(doc.data() || {}, doc.id));
+    const reconciled = await Promise.all(snapshot.docs.map(async (doc) => {
+      const run = await reconcileStaleRun(userId, doc.id, doc.data() || {});
+      return buildRunListEntry(run || {}, doc.id);
+    }));
+    return reconciled;
   }
 
   async function getRun(userId, runId) {
     const snapshot = await runsCollection(userId).doc(runId).get();
-    return snapshot.exists ? { id: snapshot.id, ...(snapshot.data() || {}) } : null;
+    if (!snapshot.exists) return null;
+    const resolved = await reconcileStaleRun(userId, snapshot.id, snapshot.data() || {});
+    if (!resolved) return null;
+    return resolved.id ? resolved : { id: snapshot.id, ...resolved };
   }
 
   function getLocalDayWindow(timezone, timestampMs) {
@@ -1162,7 +1262,9 @@ function createBacktestService(deps = {}) {
 
   async function countActiveRuns(userId) {
     const snapshot = await runsCollection(userId).where('status', 'in', [RUN_STATUSES.queued, RUN_STATUSES.running]).get();
-    return snapshot.size;
+    const nowMs = Date.now();
+    const runs = await Promise.all(snapshot.docs.map((doc) => reconcileStaleRun(userId, doc.id, doc.data() || {}, nowMs)));
+    return runs.filter((run) => run && (run.status === RUN_STATUSES.queued || run.status === RUN_STATUSES.running)).length;
   }
 
   async function countSavedRuns(userId, limit = DEFAULT_LIMITS.maxSavedRuns) {
@@ -1288,7 +1390,8 @@ function createBacktestService(deps = {}) {
     const docRef = runsCollection(userId).doc(runId);
     const snapshot = await docRef.get();
     if (!snapshot.exists) throw new Error('Backtest run not found');
-    const data = snapshot.data() || {};
+    const reconciled = await reconcileStaleRun(userId, runId, snapshot.data() || {});
+    const data = reconciled || snapshot.data() || {};
     if (data.status === RUN_STATUSES.queued || data.status === RUN_STATUSES.running) {
       throw new Error('Backtest run is still processing and cannot be deleted yet');
     }

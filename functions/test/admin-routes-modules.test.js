@@ -80,6 +80,22 @@ function buildApp(deps) {
   return app;
 }
 
+function buildSydneyDateKeyDaysAgo(daysAgo, now = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(now);
+  const year = Number(parts.find((part) => part.type === 'year')?.value || 0);
+  const month = Number(parts.find((part) => part.type === 'month')?.value || 0);
+  const day = Number(parts.find((part) => part.type === 'day')?.value || 0);
+  const anchor = new Date(Date.UTC(year, month - 1, day));
+  anchor.setUTCDate(anchor.getUTCDate() - daysAgo);
+  return anchor.toISOString().slice(0, 10);
+}
+
 function makeFetchHeaders(values = {}) {
   const normalized = Object.fromEntries(
     Object.entries(values).map(([key, value]) => [String(key).toLowerCase(), value])
@@ -1843,116 +1859,116 @@ describe('admin route module', () => {
   });
 
   test('api-health returns cached provider rollups with monitoring-based failure overlay', async () => {
-    const formatDayKey = (offset) => {
-      const date = new Date(Date.now() - (offset * 24 * 60 * 60 * 1000));
-      return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
-    };
-    const dayTwoAgo = formatDayKey(2);
-    const dayOneAgo = formatDayKey(1);
-    const dayToday = formatDayKey(0);
-    const metricDocs = new Map(Object.entries({
-      [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, teslaFleet: { calls: { byCategory: { wake: 1, vehicleData: 2 } } } },
-      [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, teslaFleet: { calls: { byCategory: { wake: 1, command: 1, vehicleData: 2 } } } },
-      [dayToday]: { foxess: 36, amber: 12, aemo: 7, weather: 6, teslaFleet: { calls: { byCategory: { wake: 1, command: 2, vehicleData: 2 } } } }
-    }));
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-05T12:00:00.000Z'));
 
-    const deps = createDeps({
-      googleApis: {
-        auth: {
-          GoogleAuth: jest.fn(() => ({}))
+    try {
+      const now = new Date();
+      const dayTwoAgo = buildSydneyDateKeyDaysAgo(2, now);
+      const dayOneAgo = buildSydneyDateKeyDaysAgo(1, now);
+      const dayToday = buildSydneyDateKeyDaysAgo(0, now);
+      const metricDocs = new Map(Object.entries({
+        [dayTwoAgo]: { foxess: 20, amber: 9, weather: 4, teslaFleet: { calls: { byCategory: { wake: 1, vehicleData: 2 } } } },
+        [dayOneAgo]: { foxess: 24, amber: 11, weather: 5, teslaFleet: { calls: { byCategory: { wake: 1, command: 1, vehicleData: 2 } } } },
+        [dayToday]: { foxess: 36, amber: 12, aemo: 7, weather: 6, teslaFleet: { calls: { byCategory: { wake: 1, command: 2, vehicleData: 2 } } } }
+      }));
+
+      const deps = createDeps({
+        googleApis: {
+          auth: {
+            GoogleAuth: jest.fn(() => ({}))
+          },
+          monitoring: jest.fn(() => ({}))
         },
-        monitoring: jest.fn(() => ({}))
-      },
-      db: {
-        collection: jest.fn((name) => {
-          if (name !== 'metrics') {
+        db: {
+          collection: jest.fn((name) => {
+            if (name !== 'metrics') {
+              return {
+                doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
+                where: jest.fn(() => ({})),
+                add: jest.fn(async () => undefined)
+              };
+            }
+
             return {
-              doc: jest.fn(() => ({ set: jest.fn(async () => undefined) })),
-              where: jest.fn(() => ({})),
-              add: jest.fn(async () => undefined)
-            };
-          }
-
-          return {
-            doc: jest.fn((docId) => ({
-              get: jest.fn(async () => ({
-                exists: metricDocs.has(docId),
-                data: () => metricDocs.get(docId) || {}
+              doc: jest.fn((docId) => ({
+                get: jest.fn(async () => ({
+                  exists: metricDocs.has(docId),
+                  data: () => metricDocs.get(docId) || {}
+                }))
               }))
-            }))
-          };
+            };
+          })
+        },
+        listMonitoringTimeSeries: jest.fn(async ({ filter }) => {
+          if (String(filter).includes('status!="ok"')) {
+            return [
+              { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 1 },
+              { timestamp: `${dayToday}T00:00:00.000Z`, value: 2 }
+            ];
+          }
+          if (String(filter).includes('execution_count')) {
+            return [
+              { timestamp: `${dayTwoAgo}T00:00:00.000Z`, value: 18 },
+              { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 21 },
+              { timestamp: `${dayToday}T00:00:00.000Z`, value: 25 }
+            ];
+          }
+          return [];
+        }),
+        sumSeriesValues: jest.fn((series = []) => series.reduce((sum, point) => sum + Number(point.value || 0), 0))
+      });
+      const app = buildApp(deps);
+
+      const response = await request(app)
+        .get('/api/admin/api-health?days=30')
+        .set('Authorization', 'Bearer token');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body.errno).toBe(0);
+      expect(response.body.result.summary.totalCalls).toBe(146);
+      expect(response.body.result.summary.dominantProvider).toEqual(expect.objectContaining({
+        key: 'foxess',
+        label: 'FoxESS'
+      }));
+      expect(response.body.result.monitoring).toEqual(expect.objectContaining({
+        available: true,
+        requestExecutionsTotal: 64,
+        errorExecutionsTotal: 3
+      }));
+      expect(response.body.result.observability.alphaess).toEqual(expect.objectContaining({
+        enabled: true,
+        liveRealtimeLogging: 'suspicious-only',
+        manualDiagnosticsLogging: 'always',
+        extraProviderCallsPerRequest: 0,
+        extraFirestoreWritesPerRequest: 0
+      }));
+      expect(response.body.result.providers[0]).toEqual(expect.objectContaining({
+        key: 'foxess',
+        totalCalls: 80
+      }));
+      expect(response.body.result.providers.find((provider) => provider.key === 'amber')).toEqual(expect.objectContaining({
+        key: 'amber',
+        totalCalls: 39
+      }));
+      expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
+        categories: expect.objectContaining({
+          amber: 19
+        }),
+        evBreakdown: expect.objectContaining({
+          wake: 1,
+          command: 2,
+          vehicleData: 2
         })
-      },
-      listMonitoringTimeSeries: jest.fn(async ({ filter }) => {
-        if (String(filter).includes('status!="ok"')) {
-          return [
-            { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 1 },
-            { timestamp: `${dayToday}T00:00:00.000Z`, value: 2 }
-          ];
-        }
-        if (String(filter).includes('execution_count')) {
-          return [
-            { timestamp: `${dayTwoAgo}T00:00:00.000Z`, value: 18 },
-            { timestamp: `${dayOneAgo}T00:00:00.000Z`, value: 21 },
-            { timestamp: `${dayToday}T00:00:00.000Z`, value: 25 }
-          ];
-        }
-        return [];
-      }),
-      sumSeriesValues: jest.fn((series = []) => series.reduce((sum, point) => sum + Number(point.value || 0), 0))
-    });
-    const app = buildApp(deps);
-
-    const response = await request(app)
-      .get('/api/admin/api-health?days=30')
-      .set('Authorization', 'Bearer token');
-
-    expect(response.statusCode).toBe(200);
-    expect(response.body.errno).toBe(0);
-    expect(response.body.result.summary.totalCalls).toBe(146);
-    expect(response.body.result.summary.dominantProvider).toEqual(expect.objectContaining({
-      key: 'foxess',
-      label: 'FoxESS'
-    }));
-    expect(response.body.result.monitoring).toEqual(expect.objectContaining({
-      available: true,
-      requestExecutionsTotal: 64,
-      errorExecutionsTotal: 3
-    }));
-    expect(response.body.result.observability.alphaess).toEqual(expect.objectContaining({
-      enabled: true,
-      liveRealtimeLogging: 'suspicious-only',
-      manualDiagnosticsLogging: 'always',
-      extraProviderCallsPerRequest: 0,
-      extraFirestoreWritesPerRequest: 0
-    }));
-    expect(response.body.result.providers[0]).toEqual(expect.objectContaining({
-      key: 'foxess',
-      totalCalls: 80
-    }));
-    expect(response.body.result.providers.find((provider) => provider.key === 'amber')).toEqual(expect.objectContaining({
-      key: 'amber',
-      totalCalls: 39
-    }));
-    expect(response.body.result.daily.find((row) => row.date === dayToday)).toEqual(expect.objectContaining({
-      categories: expect.objectContaining({
-        amber: 19
-      }),
-      evBreakdown: expect.objectContaining({
-        wake: 1,
-        command: 2,
-        vehicleData: 2
-      })
-    }));
-    expect(response.body.result.alerts.some((alert) => alert.code === 'error_rate_watch')).toBe(true);
+      }));
+      expect(response.body.result.alerts.some((alert) => alert.code === 'error_rate_watch')).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('api-health reads Tesla breakdown from flat dotted metrics fields', async () => {
-    const formatDayKey = (offset) => {
-      const date = new Date(Date.now() - (offset * 24 * 60 * 60 * 1000));
-      return date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
-    };
-    const dayToday = formatDayKey(0);
+    const dayToday = buildSydneyDateKeyDaysAgo(0);
     const metricDocs = new Map(Object.entries({
       [dayToday]: {
         foxess: 12,

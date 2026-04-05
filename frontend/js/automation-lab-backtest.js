@@ -186,7 +186,7 @@
             .lab-choice.active { border-color: rgba(16, 185, 129, 0.62); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14); background: linear-gradient(145deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.2)); }
             .lab-choice-title { display: block; font-weight: 700; margin-bottom: 4px; }
             .lab-choice-copy, .lab-run-meta, .lab-metric-meta, .lab-variant-copy, .lab-empty { color: var(--text-secondary); line-height: 1.5; font-size: 0.86rem; }
-            .lab-inline-actions, .lab-inline-fields, .lab-pills, .lab-badges, .lab-variant-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+            .lab-inline-actions, .lab-inline-fields, .lab-pills, .lab-badges { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
             .lab-field { display: grid; gap: 6px; min-width: 0; flex: 1; }
             .lab-field label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
             .lab-field input, .lab-field select { width: 100%; }
@@ -213,8 +213,7 @@
             .lab-metric-value { font-size: 1.35rem; font-weight: 800; margin: 8px 0 4px; color: var(--text-primary); }
             .lab-metric-value.good { color: #86efac; }
             .lab-metric-value.bad { color: #fca5a5; }
-            .lab-comparison-grid, .lab-variant-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-            .lab-variant-actions .btn { flex: 1; justify-content: center; }
+            .lab-comparison-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
             .lab-details { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.16); background: color-mix(in srgb, var(--bg-card) 86%, transparent); }
             .lab-details summary { cursor: pointer; list-style: none; padding: 14px; font-weight: 700; }
             .lab-details summary::-webkit-details-marker { display: none; }
@@ -320,8 +319,42 @@
             .lab-highlight-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 6px 0; font-size: 0.82rem; border-bottom: 1px solid rgba(148, 163, 184, 0.06); }
             .lab-highlight-row:last-child { border-bottom: none; }
 
+            /* ── Result hint strip ── */
+            .lab-result-hint { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 14px; border-radius: 10px; background: rgba(148, 163, 184, 0.06); border: 1px solid rgba(148, 163, 184, 0.12); margin-bottom: 14px; }
+            .lab-result-hint-item { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--text-secondary); }
+            .lab-result-hint-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+            .lab-result-hint-dot.good { background: #86efac; }
+            .lab-result-hint-dot.bad { background: #fca5a5; }
+            [data-theme="light"] .lab-result-hint { background: rgba(15, 23, 42, 0.04); border-color: rgba(148, 163, 184, 0.2); }
+
+            /* ── Count badge inline ── */
+            .lab-count-badge { display: inline-flex; align-items: center; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.18); font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); vertical-align: middle; }
+
+            /* ── Optimiser section ── */
+            .lab-optim-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(148, 163, 184, 0.12); }
+            .lab-optim-header { margin-bottom: 14px; }
+            .lab-optim-title { font-size: 0.9rem; font-weight: 800; color: var(--text-primary); letter-spacing: 0.01em; }
+            .lab-optim-sub { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+            .lab-optim-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+            .lab-optim-controls .lab-field { flex: 1; min-width: 140px; }
+            .lab-optim-controls .btn { align-self: flex-end; white-space: nowrap; }
+            .lab-optim-idle { margin: 14px 0 0; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.5; }
+
+            /* ── Variant grid & cards ── */
+            .lab-variant-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top: 16px; }
+            .lab-variant-card { background: var(--bg-secondary); border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 0; transition: border-color 0.18s ease, box-shadow 0.18s ease; }
+            .lab-variant-card:hover { border-color: rgba(56, 189, 248, 0.28); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14); }
+            .lab-variant-name { font-size: 0.88rem; font-weight: 800; color: var(--text-primary); margin-bottom: 10px; }
+            .lab-variant-card .lab-delta-hero { margin: 0 0 12px; }
+            .lab-variant-card .lab-delta-amount { font-size: 1.4rem; }
+            .lab-variant-card .lab-delta-label { font-size: 0.76rem; }
+            .lab-variant-diffs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+            .lab-variant-diff-tag { display: inline-flex; padding: 3px 9px; border-radius: 999px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); font-size: 0.74rem; color: var(--text-secondary); line-height: 1.4; }
+            .lab-variant-apply { width: 100%; justify-content: center; margin-top: auto; padding-top: 14px; }
+            [data-theme="light"] .lab-variant-diff-tag { background: rgba(59, 130, 246, 0.06); border-color: rgba(59, 130, 246, 0.18); }
+
             @media (max-width: 960px) { .lab-summary-bar, .lab-columns { grid-template-columns: 1fr; } .lab-view-toggle { display: flex; } .lab-panel.lab-mobile-hidden { display: none; } .lab-mode-summary, .lab-mode-tabs { width: 100%; } .lab-mode-summary { justify-content: flex-start; } .lab-summary-bar { top: 68px; } .lab-summary-bar { grid-template-columns: repeat(2, 1fr); } }
-            @media (max-width: 720px) { .lab-hero, .lab-card { padding: 16px; } .lab-plan-row { grid-template-columns: 1fr; } .lab-mode-tab { flex-basis: 100%; min-width: 0; } .lab-summary-bar { top: auto; bottom: 12px; left: 0; right: 0; position: fixed; margin: 0 12px; box-shadow: 0 20px 32px rgba(0, 0, 0, 0.25); grid-template-columns: repeat(2, 1fr); } .lab-shell, .lab-quick-shell { padding-bottom: 116px; } .lab-comparison-metric { grid-template-columns: 70px 1fr 56px; } .lab-rule-bar-label { min-width: 80px; max-width: 100px; } .lab-choice-grid { grid-template-columns: 1fr; } }
+            @media (max-width: 720px) { .lab-hero, .lab-card { padding: 16px; } .lab-plan-row { grid-template-columns: 1fr; } .lab-mode-tab { flex-basis: 100%; min-width: 0; } .lab-summary-bar { top: auto; bottom: 12px; left: 0; right: 0; position: fixed; margin: 0 12px; box-shadow: 0 20px 32px rgba(0, 0, 0, 0.25); grid-template-columns: repeat(2, 1fr); } .lab-shell, .lab-quick-shell { padding-bottom: 116px; } .lab-comparison-metric { grid-template-columns: 70px 1fr 56px; } .lab-rule-bar-label { min-width: 80px; max-width: 100px; } .lab-choice-grid { grid-template-columns: 1fr; } .lab-variant-grid { grid-template-columns: 1fr; } }
         `;
         document.head.appendChild(style);
     }
@@ -541,6 +574,8 @@
             || /authentication failed|api key not configured|amber not configured/i.test(rawMessage);
         const providerTimeout = providerErrno === 408
             || /too long to respond|timeout|Could not reach Amber|internet connection|network/i.test(rawMessage);
+        const infrastructureFailure = String(details?.category || '').trim().toLowerCase() === 'infrastructure'
+            || /processing stopped before the replay completed|processing never started/i.test(rawMessage);
         const unsupportedProviderMatch = rawMessage.match(/Historical pricing is not available for provider:\s*([a-z0-9_-]+)/i);
         const manualPlanMissing = /Choose or create a manual tariff plan first|references a missing tariff plan|missing tariff plan/i.test(rawMessage);
         const siteMissing = /Site ID is required/i.test(rawMessage);
@@ -555,6 +590,10 @@
             category = 'session';
             displayMessage = 'Your session expired before the backtest could start.';
             guidance = 'Sign in again, then rerun the backtest.';
+        } else if (infrastructureFailure) {
+            category = 'infrastructure';
+            displayMessage = 'The backtest worker stopped before this saved report finished.';
+            guidance = 'Retry this saved run to launch a fresh replay with the same settings. This report has already been recovered into a failed state so it no longer blocks new backtests.';
         } else if (deviceMissing) {
             category = 'device-setup';
             displayMessage = 'Backtesting needs a configured inverter serial number before it can replay history.';
@@ -823,6 +862,15 @@
             },
             scenarios
         };
+    }
+
+    function buildRetryPayload(run = state.activeRun) {
+        const request = deepClone(run?.request);
+        if (!request || typeof request !== 'object') {
+            return { error: 'The original backtest request is no longer available. Start a fresh run from Setup instead.' };
+        }
+        delete request.requestHash;
+        return { payload: request };
     }
 
     function selectedRunSummaries(run) {
@@ -1106,7 +1154,6 @@
         return `
             <section class="lab-card">
                 <h3>What to test</h3>
-                <p class="lab-card-copy">Pick a focused comparison. Each mode tests a different question about your automation rules.</p>
                 <div class="lab-choice-grid">
                     ${compareModes().map((mode) => `
                         <button type="button" class="lab-choice ${mode.id === state.compareMode ? 'active' : ''}" data-action="set-compare-mode" data-mode="${mode.id}">
@@ -1128,7 +1175,6 @@
             </section>
             <section class="lab-card">
                 <h3>Period and tariff</h3>
-                <p class="lab-card-copy">Shorter periods run faster and are great for recent rule changes. Longer periods give more statistical confidence, while saved manual plans can act as a direct comparison or a pricing-history fallback.</p>
                 <div class="lab-pills">
                     ${['30', '60', '90'].map((preset) => `
                         <button type="button" class="lab-pill ${state.periodPreset === preset ? 'active' : ''}" data-action="set-period-preset" data-preset="${preset}">${preset}d</button>
@@ -1146,13 +1192,12 @@
                     </div>
                 </div>
                 <div class="lab-note" style="margin-top:14px;">
-                    Backtests are capped to the last 90 days and use a fixed 5-minute replay grid with historical pricing, weather, and provider history where available.
+                    Capped to the last 90 days. Uses a 5-minute replay grid with historical pricing, weather, and provider data.
                 </div>
                 ${renderTariffPanel(selectedPlan)}
             </section>
             <section class="lab-card">
                 <h3>Review and run</h3>
-                <p class="lab-card-copy">Check the scenarios below, then hit run. Results appear on the right with visual savings breakdown and rule performance.</p>
                 ${backtestErrorInfo ? `<div class="lab-message error">${escHtml(backtestErrorInfo.displayMessage)}</div>` : ''}
                 ${backtestErrorInfo && backtestErrorInfo.guidance && backtestErrorInfo.category !== 'generic' ? `<div class="lab-note">${escHtml(backtestErrorInfo.guidance)}</div>` : ''}
                 ${preview.error ? `<div class="lab-message error">${escHtml(preview.error)}</div>` : ''}
@@ -1177,12 +1222,12 @@
         const usingPlanComparison = state.compareMode === 'current_vs_plan';
         const selectionLabel = usingPlanComparison ? 'Manual plan' : 'Fallback plan';
         const selectionNote = usingPlanComparison
-            ? 'The selected plan is replayed side by side against your connected tariff.'
+            ? 'Plan replayed side by side against your connected tariff.'
             : selectedPlan
-                ? `Provider pricing is used first. If historical prices are missing, Automation Lab falls back to ${escHtml(selectedPlan.name)} so the replay can still complete.`
-                : 'Provider pricing is used first. Choose a saved manual plan if you want new runs to survive missing tariff history.';
+                ? `Fallback active: ${escHtml(selectedPlan.name)} used when provider pricing gaps occur.`
+                : 'Provider pricing is used first. Add a fallback plan to fill pricing gaps.';
         const selectedPlanCopy = selectedPlan
-            ? `${usingPlanComparison ? 'Selected comparison plan' : 'Selected fallback plan'}: <strong>${escHtml(selectedPlan.name)}</strong> with ${selectedPlan.importWindows?.length || 0} import window(s) and ${selectedPlan.exportWindows?.length || 0} export window(s).`
+            ? `<strong>${escHtml(selectedPlan.name)}</strong> — ${selectedPlan.importWindows?.length || 0} import / ${selectedPlan.exportWindows?.length || 0} export window${(selectedPlan.exportWindows?.length || 0) === 1 ? '' : 's'}`
             : '';
         return `
             <div class="lab-stack" style="margin-top:16px;">
@@ -1271,7 +1316,6 @@
         return `
             <section class="lab-card">
                 <h3>Results</h3>
-                <p class="lab-card-copy">Headline savings and trade-offs first, then drill into rule mix, interval impact, and top impactful moments.</p>
                 ${run ? renderActiveRun(run) : `
                     <div class="lab-empty">
                         <div style="font-size:1.8rem;margin-bottom:8px;">📊</div>
@@ -1281,8 +1325,7 @@
                 `}
             </section>
             <section class="lab-card">
-                <h3>Saved backtests (${state.backtestRuns.length}/${MAX_BACKTEST_HISTORY})</h3>
-                <p class="lab-card-copy">${getSavedBacktestsCopy()}</p>
+                <h3>Saved backtests <span class="lab-count-badge">${state.backtestRuns.length}/${MAX_BACKTEST_HISTORY}</span></h3>
                 ${historyLimitReached() ? `<div class="lab-note">History is full. Delete a saved report to make room for another run.</div>` : ''}
                 <div class="lab-run-list">
                     ${state.backtestRuns.length ? state.backtestRuns.map((entry) => renderRunCard(entry)).join('') : '<div class="lab-empty">No backtests saved yet. Your first run will appear here.</div>'}
@@ -1338,16 +1381,10 @@
 
     function renderResultsExplainer() {
         return `
-            <div class="lab-explainer">
-                <div class="lab-explainer-title">📊 How to read these results</div>
-                <div class="lab-explainer-body">
-                    <ul>
-                        <li><strong>Bill savings</strong> — positive (green) means the scenario saved money vs passive self-use</li>
-                        <li><strong>Impact bar</strong> — green segments are 5-min intervals where the scenario beat baseline; red where it cost more</li>
-                        <li><strong>Rule mix</strong> — which rules triggered most often and drove the most value</li>
-                        <li><strong>Comparisons</strong> — side-by-side metric bars showing relative performance between scenarios</li>
-                    </ul>
-                </div>
+            <div class="lab-result-hint">
+                <span class="lab-result-hint-item"><span class="lab-result-hint-dot good"></span>Green = saved vs baseline</span>
+                <span class="lab-result-hint-item"><span class="lab-result-hint-dot bad"></span>Red = cost more than baseline</span>
+                <span class="lab-result-hint-item">Impact bar = 5-min interval win rate</span>
             </div>
         `;
     }
@@ -1700,12 +1737,9 @@
         return `
             <section class="lab-card" id="labResultsFaqCard">
                 <h3>FAQ and troubleshooting</h3>
-                <p class="lab-card-copy">Comprehensive answers about replay confidence, fallback tariffs, failed runs, interval impact, and how to read the report.</p>
                 <div class="lab-stack">
-                    <div class="lab-note">${runIntro}</div>
                     ${run?.status === 'failed' ? `<div class="lab-note"><strong>Latest failure:</strong> ${escHtml(failureInfo?.displayMessage || run.error || 'Backtest failed.')}</div>` : ''}
                     ${run?.status === 'completed' && limitations.length ? `
-                        <div style="font-weight:700;font-size:0.86rem;">Latest run caveats</div>
                         <div class="lab-limitation-list">${limitations.map((item) => `<div class="lab-note">${escHtml(item)}</div>`).join('')}</div>
                     ` : ''}
                     <div class="lab-faq-section" id="labResultsFaq">
@@ -1724,12 +1758,14 @@
     function renderOptimizationPanel(run) {
         const summaries = nonBaselineSummaries(run);
         return `
-            <section class="lab-card" style="padding:0;border:none;box-shadow:none;background:transparent;">
-                <h3>Explainable optimiser</h3>
-                <p class="lab-card-copy">Use the completed backtest as evidence, then request bounded rule variants with explicit diffs and measured trade-offs.</p>
+            <section class="lab-optim-section">
+                <div class="lab-optim-header">
+                    <div class="lab-optim-title">Optimiser</div>
+                    <div class="lab-optim-sub">Suggest bounded rule variants against this backtest evidence.</div>
+                </div>
                 ${state.optimizationError ? `<div class="lab-message error">${escHtml(state.optimizationError)}</div>` : ''}
                 ${state.applyMessage ? `<div class="lab-message success">${escHtml(state.applyMessage)}</div>` : ''}
-                <div class="lab-inline-fields">
+                <div class="lab-optim-controls">
                     <div class="lab-field">
                         <label>Source scenario</label>
                         <select data-field="optimizerScenarioId">
@@ -1746,9 +1782,7 @@
                             <option value="balanced" ${state.optimizerGoal === 'balanced' ? 'selected' : ''}>Balanced</option>
                         </select>
                     </div>
-                    <div class="lab-inline-actions">
-                        <button type="button" class="btn btn-primary" data-action="run-optimizer" ${state.optimizerBusy ? 'disabled' : ''}>${state.optimizerBusy ? 'Optimising...' : 'Suggest variants'}</button>
-                    </div>
+                    <button type="button" class="btn btn-primary" data-action="run-optimizer" ${state.optimizerBusy ? 'disabled' : ''}>${state.optimizerBusy ? 'Optimising…' : 'Suggest variants'}</button>
                 </div>
                 ${renderOptimizationRun()}
             </section>
@@ -1757,29 +1791,27 @@
 
     function renderOptimizationRun() {
         const run = state.optimizationRun;
-        if (!run) return `<div class="lab-note" style="margin-top:14px;">Choose a goal and let the optimiser test bounded variants against the selected backtest evidence.</div>`;
+        if (!run) return `<p class="lab-optim-idle">Choose a goal, then hit <strong>Suggest variants</strong> to test bounded rule changes against this backtest.</p>`;
         if (run.status === 'queued' || run.status === 'running') return `
             <div class="lab-progress-pulse" style="margin-top:14px;">
                 <div class="lab-progress-dot"></div>
-                <div class="lab-progress-text">Optimiser is testing candidate variants. This updates automatically.</div>
+                <div class="lab-progress-text">Testing candidate variants — updates automatically.</div>
             </div>`;
         if (run.status === 'failed') return `<div class="lab-message error" style="margin-top:14px;">${escHtml(run.error || 'Optimiser failed.')}</div>`;
         const variants = Array.isArray(run.result?.variants) ? run.result.variants : [];
-        if (!variants.length) return '<div class="lab-note" style="margin-top:14px;">No useful variants beat the source scenario for that goal. Try a different goal or a longer backtest period.</div>';
+        if (!variants.length) return '<p class="lab-optim-idle" style="margin-top:14px;">No variants beat the source for that goal. Try a different goal or a longer backtest period.</p>';
         return `
-            <div class="lab-variant-grid" style="margin-top:14px;">
+            <div class="lab-variant-grid">
                 ${variants.map((variant) => {
                     const improvementVal = Number(variant.billImprovementAud || 0);
                     const improvementClass = improvementVal > 0 ? 'good' : (improvementVal < 0 ? 'bad' : 'neutral');
+                    const sign = improvementVal >= 0 ? '+' : '−';
                     return `
                         <div class="lab-variant-card">
-                            <div style="font-weight:800;margin-bottom:6px;">${escHtml(variant.name)}</div>
-                            <div class="lab-delta-hero" style="margin:8px 0;">
-                                <span class="lab-delta-arrow">${improvementVal >= 0 ? '↑' : '↓'}</span>
-                                <div>
-                                    <div class="lab-delta-amount ${improvementClass}">${formatCurrency(Math.abs(improvementVal))}</div>
-                                    <div class="lab-delta-label">${improvementVal >= 0 ? 'improvement over source' : 'worse than source'}</div>
-                                </div>
+                            <div class="lab-variant-name">${escHtml(variant.name)}</div>
+                            <div class="lab-delta-hero">
+                                <div class="lab-delta-amount ${improvementClass}">${sign}${formatCurrency(Math.abs(improvementVal))}</div>
+                                <div class="lab-delta-label">${improvementVal >= 0 ? 'vs source' : 'worse than source'}</div>
                             </div>
                             <div class="lab-metric-row">
                                 <span class="lab-metric-label">Total bill</span>
@@ -1794,14 +1826,11 @@
                                 <span class="lab-metric-number">${variant.summary.importKWh.toFixed(1)} kWh</span>
                             </div>
                             ${variant.diffSummary?.length ? `
-                                <div style="margin-top:10px;font-size:0.82rem;font-weight:700;">Changes from source</div>
-                                <div class="lab-rule-list" style="margin-top:6px;">
-                                    ${variant.diffSummary.map((item) => `<div class="lab-note" style="font-size:0.82rem;">${escHtml(item)}</div>`).join('')}
+                                <div class="lab-variant-diffs">
+                                    ${variant.diffSummary.map((item) => `<span class="lab-variant-diff-tag">${escHtml(item)}</span>`).join('')}
                                 </div>
                             ` : ''}
-                            <div class="lab-variant-actions" style="margin-top:12px;">
-                                <button type="button" class="btn btn-primary" data-action="apply-variant" data-run-id="${escHtml(run.id)}" data-variant-id="${escHtml(variant.id)}">Apply variant</button>
-                            </div>
+                            <button type="button" class="btn btn-primary lab-variant-apply" data-action="apply-variant" data-run-id="${escHtml(run.id)}" data-variant-id="${escHtml(variant.id)}">Apply variant</button>
                         </div>
                     `;
                 }).join('')}
@@ -1852,13 +1881,15 @@
         }
     }
 
-    async function runBacktest() {
+    async function runBacktest(payloadOverride = null) {
         if (historyLimitReached()) {
             setBacktestError(`You already have ${MAX_BACKTEST_HISTORY} saved backtests. Delete one from history before running another.`);
             render();
             return;
         }
-        const preview = buildPayloadPreview();
+        const preview = payloadOverride && typeof payloadOverride === 'object'
+            ? { payload: deepClone(payloadOverride) }
+            : buildPayloadPreview();
         if (preview.error) {
             setBacktestError(preview.error);
             render();
@@ -2138,7 +2169,13 @@
         } else if (action === 'run-backtest') {
             runBacktest();
         } else if (action === 'retry-backtest') {
-            runBacktest();
+            const retryPreview = buildRetryPayload();
+            if (retryPreview.error) {
+                setBacktestError(retryPreview.error);
+                render();
+                return;
+            }
+            runBacktest(retryPreview.payload);
         } else if (action === 'delete-run') {
             deleteBacktestRun(actionEl.dataset.runId);
         } else if (action === 'select-run') {

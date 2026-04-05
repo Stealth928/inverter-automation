@@ -146,17 +146,17 @@ function buildBacktestDbHarness({ runs = [], dailyUsage = {} } = {}) {
   };
 }
 
-function buildServiceForCreateFlow(db) {
+function buildServiceForCreateFlow(db, overrides = {}) {
   return createBacktestService({
-    adapterRegistry: {
+    adapterRegistry: overrides.adapterRegistry || {
       getTariffProvider: jest.fn(() => null),
       getDeviceProvider: jest.fn(() => null)
     },
     db,
-    foxessAPI: {
+    foxessAPI: overrides.foxessAPI || {
       callFoxESSAPI: jest.fn(async () => ({ errno: 0, result: [{ datas: [] }] }))
     },
-    getConfig: () => ({
+    getConfig: overrides.getConfig || (() => ({
       automation: {
         backtesting: {
           replayIntervalMinutes: 5,
@@ -165,15 +165,16 @@ function buildServiceForCreateFlow(db) {
           maxActiveRuns: 2,
           maxSavedRuns: 5,
           maxRunsPerDay: 5,
-          runTtlMs: 30 * 24 * 60 * 60 * 1000
+          runTtlMs: 30 * 24 * 60 * 60 * 1000,
+          ...(overrides.runtimeConfig || {})
         }
       }
-    }),
-    getHistoricalWeather: jest.fn(async () => ({
+    })),
+    getHistoricalWeather: overrides.getHistoricalWeather || jest.fn(async () => ({
       hourly: { time: [] },
       daily: { time: [] }
     })),
-    getUserConfig: jest.fn(async () => ({
+    getUserConfig: overrides.getUserConfig || jest.fn(async () => ({
       timezone: 'Australia/Sydney',
       pricingProvider: 'amber',
       deviceProvider: 'foxess',
@@ -183,7 +184,7 @@ function buildServiceForCreateFlow(db) {
       defaults: { minSocOnGrid: 20 },
       automation: { blackoutWindows: [] }
     })),
-    getUserRules: jest.fn(async () => ({}))
+    getUserRules: overrides.getUserRules || jest.fn(async () => ({}))
   });
 }
 
@@ -541,6 +542,54 @@ describe('backtest service helpers', () => {
     })]);
   });
 
+  test('listRuns reconciles stale running reports to failed infrastructure errors', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-05T13:40:00.000Z'));
+    try {
+      const harness = buildBacktestDbHarness({
+        runs: [{
+          id: 'run-stale',
+          data: {
+            type: 'backtestRun',
+            status: 'running',
+            requestedAtMs: Date.parse('2026-04-05T13:00:00.000Z'),
+            startedAtMs: Date.parse('2026-04-05T13:10:00.000Z'),
+            request: { period: { startDate: '2026-03-07', endDate: '2026-04-05' } },
+            error: null,
+            errorDetails: null
+          }
+        }]
+      });
+      const service = buildServiceForCreateFlow(harness.db, {
+        runtimeConfig: {
+          staleRunningRunMs: 5 * 60 * 1000
+        }
+      });
+
+      const runs = await service.listRuns('user-1', 20);
+
+      expect(runs).toEqual([expect.objectContaining({
+        id: 'run-stale',
+        status: 'failed',
+        error: expect.stringContaining('stopped before the replay completed'),
+        errorDetails: expect.objectContaining({
+          category: 'infrastructure',
+          reason: 'stale-run',
+          lastStatus: 'running'
+        })
+      })]);
+      expect(harness.runStore.get('run-stale')).toEqual(expect.objectContaining({
+        status: 'failed',
+        errorDetails: expect.objectContaining({
+          category: 'infrastructure',
+          reason: 'stale-run',
+          lastStatus: 'running'
+        })
+      }));
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   test('createRun rejects when report history already has five saved backtests', async () => {
     const harness = buildBacktestDbHarness({
       runs: Array.from({ length: 5 }, (_, index) => ({
@@ -614,7 +663,45 @@ describe('backtest service helpers', () => {
     }
   });
 
+  test('createRun ignores stale active reports when enforcing active run limits', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-05T13:40:00.000Z'));
+    try {
+      const harness = buildBacktestDbHarness({
+        runs: [{
+          id: 'run-stale-active',
+          data: {
+            type: 'backtestRun',
+            status: 'running',
+            requestedAtMs: Date.parse('2026-04-05T13:00:00.000Z'),
+            startedAtMs: Date.parse('2026-04-05T13:05:00.000Z'),
+            request: { period: { startDate: '2026-03-07', endDate: '2026-04-05' } },
+            error: null,
+            errorDetails: null
+          }
+        }]
+      });
+      const service = buildServiceForCreateFlow(harness.db, {
+        runtimeConfig: {
+          maxActiveRuns: 1,
+          staleRunningRunMs: 5 * 60 * 1000
+        }
+      });
+
+      await expect(service.createRun('user-1', {
+        period: {
+          startDate: '2026-04-04',
+          endDate: '2026-04-05'
+        }
+      })).resolves.toMatchObject({ status: 'queued' });
+
+      expect(harness.runStore.size).toBe(2);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   test('deleteRun removes completed reports and blocks active ones', async () => {
+    const nowMs = Date.now();
     const harness = buildBacktestDbHarness({
       runs: [
         {
@@ -628,7 +715,8 @@ describe('backtest service helpers', () => {
           id: 'run-active',
           data: {
             status: 'running',
-            requestedAtMs: 20
+            requestedAtMs: nowMs - 60 * 1000,
+            startedAtMs: nowMs - 30 * 1000
           }
         }
       ]
