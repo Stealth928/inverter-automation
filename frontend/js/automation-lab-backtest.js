@@ -96,6 +96,13 @@
         return state.isAdmin === true;
     }
 
+    function getSavedBacktestsCopy() {
+        if (state.isAdmin === true) {
+            return `Recent runs are kept as lightweight reports. You can keep up to ${MAX_BACKTEST_HISTORY} saved reports at a time. Admins are not limited on reports per day.`;
+        }
+        return `Recent runs are kept as lightweight reports. You can keep up to ${MAX_BACKTEST_HISTORY} saved reports and generate up to ${MAX_BACKTEST_HISTORY} reports per day.`;
+    }
+
     function getBacktestAccessState() {
         if (!state.adminAccessResolved) return 'checking';
         return canAccessBacktestMode() ? 'enabled' : 'restricted';
@@ -1133,7 +1140,7 @@
             </section>
             <section class="lab-card">
                 <h3>Saved backtests (${state.backtestRuns.length}/${MAX_BACKTEST_HISTORY})</h3>
-                <p class="lab-card-copy">Recent runs are kept as lightweight reports. You can keep up to ${MAX_BACKTEST_HISTORY} saved reports and generate up to ${MAX_BACKTEST_HISTORY} reports per day.</p>
+                <p class="lab-card-copy">${getSavedBacktestsCopy()}</p>
                 ${historyLimitReached() ? `<div class="lab-note">History is full. Delete a saved report to make room for another run.</div>` : ''}
                 <div class="lab-run-list">
                     ${state.backtestRuns.length ? state.backtestRuns.map((entry) => renderRunCard(entry)).join('') : '<div class="lab-empty">No backtests saved yet. Your first run will appear here.</div>'}

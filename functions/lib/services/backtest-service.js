@@ -1201,8 +1201,9 @@ function createBacktestService(deps = {}) {
     };
   }
 
-  async function createRun(userId, request = {}) {
+  async function createRun(userId, request = {}, options = {}) {
     const limits = getLimits();
+    const bypassDailyRunLimit = options?.isAdmin === true;
     if ((await countSavedRuns(userId, limits.maxSavedRuns)) >= limits.maxSavedRuns) {
       throw new Error(`You already have ${limits.maxSavedRuns} saved backtests. Delete one from history before running another.`);
     }
@@ -1212,8 +1213,10 @@ function createBacktestService(deps = {}) {
     const normalized = await normalizeCreateRequest(userId, request);
     const nowMs = Date.now();
     const docRef = runsCollection(userId).doc();
-    const dailyUsage = await getDailyRunUsage(userId, normalized.timezone, nowMs, limits.maxRunsPerDay);
-    if (dailyUsage.count >= limits.maxRunsPerDay) {
+    const dailyUsage = bypassDailyRunLimit
+      ? null
+      : await getDailyRunUsage(userId, normalized.timezone, nowMs, limits.maxRunsPerDay);
+    if (dailyUsage && dailyUsage.count >= limits.maxRunsPerDay) {
       throw new Error(`You can generate up to ${limits.maxRunsPerDay} backtest reports per day. Try again tomorrow.`);
     }
     const stored = {
@@ -1227,6 +1230,11 @@ function createBacktestService(deps = {}) {
       error: null
     };
     await db.runTransaction(async (transaction) => {
+      if (!dailyUsage) {
+        transaction.set(docRef, stored);
+        return;
+      }
+
       const usageSnapshot = await transaction.get(dailyUsage.usageRef);
       const currentCount = usageSnapshot.exists
         ? Math.max(0, Math.round(toFiniteNumber(usageSnapshot.data()?.count, dailyUsage.count) || dailyUsage.count))
@@ -1234,6 +1242,7 @@ function createBacktestService(deps = {}) {
       if (currentCount >= limits.maxRunsPerDay) {
         throw new Error(`You can generate up to ${limits.maxRunsPerDay} backtest reports per day. Try again tomorrow.`);
       }
+
       transaction.set(docRef, stored);
       transaction.set(dailyUsage.usageRef, {
         dateKey: dailyUsage.dateKey,

@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-04-02
+Last updated: 2026-04-05
 Purpose: canonical map of the actively maintained documentation set.
 
 ## Start Here
@@ -85,6 +85,7 @@ the day-to-day source of truth for shipped behavior.
 - [P5_G5_CLOSEOUT_EVIDENCE_MAR26.md](P5_G5_CLOSEOUT_EVIDENCE_MAR26.md)
 - [P6_G6_CLOSEOUT_EVIDENCE_MAR26.md](P6_G6_CLOSEOUT_EVIDENCE_MAR26.md)
 - [ENGINEERING_REVIEW_MAR30_2026.md](ENGINEERING_REVIEW_MAR30_2026.md)
+- [evidence/SCHEDULER_METRICS_INVESTIGATION_APR05_2026.md](evidence/SCHEDULER_METRICS_INVESTIGATION_APR05_2026.md)
 - [REFACTORING_IMPLEMENTATION_PLAN_MAR26.md](REFACTORING_IMPLEMENTATION_PLAN_MAR26.md)
 - [evidence/REFACTORING_EXECUTION_LOG_MAR26.md](evidence/REFACTORING_EXECUTION_LOG_MAR26.md)
 - [evidence/scheduler-soak/README.md](evidence/scheduler-soak/README.md)

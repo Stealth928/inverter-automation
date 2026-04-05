@@ -718,17 +718,20 @@ function createNotificationsService(deps = {}) {
       success: 0,
       failure: 0,
       pruned: 0,
-      skipped: false
+      skipped: false,
+      skipReason: null
     };
 
     if (!pushSupported || !webPush) {
       result.skipped = true;
+      result.skipReason = 'push_not_configured';
       return result;
     }
 
     const subscriptions = await listActiveSubscriptions(userId);
     if (!subscriptions.length) {
       result.skipped = true;
+      result.skipReason = 'no_active_subscriptions';
       return result;
     }
 
@@ -760,6 +763,9 @@ function createNotificationsService(deps = {}) {
       } catch (error) {
         result.failure += 1;
         const statusCode = Number(error?.statusCode || error?.statusCode || error?.status || 0);
+        logger.warn(
+          `[Notifications] Push delivery failed user=${userId} subscription=${entry.id} status=${statusCode || 'unknown'} message=${error?.message || error}`
+        );
         if (statusCode === 404 || statusCode === 410) {
           result.pruned += 1;
           await userPushSubscriptionsRef(userId).doc(entry.id).set({
@@ -1126,7 +1132,7 @@ function createNotificationsService(deps = {}) {
     }
 
     return {
-      sent: Boolean(inboxRecord || pushResult.success || pushResult.attempted),
+      sent: Boolean(inboxRecord || pushResult.success > 0),
       notificationId: inboxRecord?.id || null,
       push: pushResult
     };
@@ -1271,7 +1277,7 @@ function createNotificationsService(deps = {}) {
       }
     }
 
-    summary.sent = summary.inboxCreated > 0 || summary.pushAttempted > 0;
+    summary.sent = summary.inboxCreated > 0 || summary.pushSuccess > 0;
     return summary;
   }
 

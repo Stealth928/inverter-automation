@@ -35,7 +35,9 @@ function registerBacktestRoutes(app, deps = {}) {
   app.post('/api/backtests/runs', requireFeatureAccess, async (req, res) => {
     const userId = req.user.uid;
     try {
-      const run = await backtestService.createRun(userId, req.body || {});
+      const createRunArgs = [userId, req.body || {}];
+      if (req._isAdmin === true) createRunArgs.push({ isAdmin: true });
+      const run = await backtestService.createRun(...createRunArgs);
       return res.json({ errno: 0, result: run });
     } catch (error) {
       return res.status(400).json({ errno: 400, error: error?.message || String(error) });

@@ -67,6 +67,44 @@ describe('backtest route module', () => {
     });
   });
 
+  test('passes admin context to backtest run creation when admin access is granted', async () => {
+    const createRun = jest.fn(async () => ({ id: 'run-1', status: 'queued' }));
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-backtest' };
+        next();
+      });
+      registerBacktestRoutes(instance, {
+        backtestService: {
+          createRun,
+          deleteRun: jest.fn(),
+          listRuns: jest.fn(),
+          getRun: jest.fn(),
+          listTariffPlans: jest.fn(),
+          createTariffPlan: jest.fn(),
+          updateTariffPlan: jest.fn(),
+          deleteTariffPlan: jest.fn()
+        },
+        requireAdmin: (req, _res, next) => {
+          req._isAdmin = true;
+          next();
+        }
+      });
+    });
+
+    const response = await request(app)
+      .post('/api/backtests/runs')
+      .send({ period: { startDate: '2026-01-01', endDate: '2026-01-31' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(createRun).toHaveBeenCalledWith('u-backtest', {
+      period: { startDate: '2026-01-01', endDate: '2026-01-31' }
+    }, {
+      isAdmin: true
+    });
+  });
+
   test('rejects non-admin backtest access when admin gate is configured', async () => {
     const listRuns = jest.fn();
 

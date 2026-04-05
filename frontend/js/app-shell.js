@@ -41,7 +41,9 @@
         notificationPanelOpen: false,
         notificationPollingTimer: null,
         notificationRequestToken: 0,
-        notificationMessageBound: false
+        notificationMessageBound: false,
+        notificationSubscriptionSyncInFlight: null,
+        notificationSubscriptionLastSyncedEndpoint: ''
     };
 
     function mergeOptions(options) {
@@ -632,6 +634,116 @@
         };
     }
 
+    function isPushSupportedInBrowser() {
+        return typeof window.Notification !== 'undefined'
+            && typeof window.PushManager !== 'undefined'
+            && 'serviceWorker' in navigator;
+    }
+
+    function isStandaloneDisplayMode() {
+        try {
+            if (window.navigator?.standalone === true) return true;
+            if (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) {
+                return true;
+            }
+        } catch (_error) {
+            return false;
+        }
+        return false;
+    }
+
+    function buildPushUserAgentMeta() {
+        return {
+            platform: window.navigator?.platform || '',
+            language: window.navigator?.language || '',
+            userAgent: window.navigator?.userAgent || ''
+        };
+    }
+
+    async function reconcilePushSubscriptionWithServer() {
+        if (!state.user || !state.notificationsEnabled) return;
+        if (!isPushSupportedInBrowser()) return;
+        if (String(window.Notification.permission || 'default') !== 'granted') return;
+        if (state.notificationSubscriptionSyncInFlight) {
+            return state.notificationSubscriptionSyncInFlight;
+        }
+
+        const syncTask = (async () => {
+            let registration = null;
+            try {
+                registration = await navigator.serviceWorker.getRegistration('/');
+            } catch (_error) {
+                registration = null;
+            }
+            if (!registration?.pushManager) return;
+
+            let subscription = null;
+            try {
+                subscription = await registration.pushManager.getSubscription();
+            } catch (_error) {
+                subscription = null;
+            }
+
+            const endpoint = String(subscription?.endpoint || '').trim();
+            if (!endpoint) return;
+            if (state.notificationSubscriptionLastSyncedEndpoint === endpoint) return;
+
+            const bootstrapResponse = await authFetch('/api/notifications/bootstrap');
+            const bootstrapData = await bootstrapResponse.json().catch(() => null);
+            if (!bootstrapResponse.ok || !bootstrapData || bootstrapData.errno !== 0) {
+                return;
+            }
+
+            const bootstrap = bootstrapData.result || {};
+            const pushConfigured = bootstrap.push?.configured === true && Boolean(bootstrap.push?.vapidPublicKey);
+            if (!pushConfigured) {
+                return;
+            }
+
+            const hasServerMatch = Array.isArray(bootstrap.subscriptions)
+                && bootstrap.subscriptions.some((entry) => (
+                    String(entry?.endpoint || '').trim() === endpoint
+                    && entry?.active !== false
+                ));
+
+            if (hasServerMatch) {
+                state.notificationSubscriptionLastSyncedEndpoint = endpoint;
+                return;
+            }
+
+            const payload = typeof subscription.toJSON === 'function'
+                ? subscription.toJSON()
+                : subscription;
+            if (!payload || !payload.endpoint) return;
+
+            const upsertResponse = await authFetch('/api/notifications/subscriptions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...payload,
+                    userAgentMeta: buildPushUserAgentMeta(),
+                    isStandalone: isStandaloneDisplayMode()
+                })
+            });
+            const upsertData = await upsertResponse.json().catch(() => null);
+            if (!upsertResponse.ok || !upsertData || upsertData.errno !== 0) {
+                const message = upsertData?.error || `Request failed: ${upsertResponse.status}`;
+                throw new Error(message);
+            }
+
+            state.notificationSubscriptionLastSyncedEndpoint = endpoint;
+        })()
+            .catch((error) => {
+                console.warn('[AppShell] Push subscription sync skipped', error?.message || error);
+            })
+            .finally(() => {
+                state.notificationSubscriptionSyncInFlight = null;
+            });
+
+        state.notificationSubscriptionSyncInFlight = syncTask;
+        return syncTask;
+    }
+
     function formatNotificationTime(createdAtMs) {
         const millis = Number(createdAtMs);
         if (!Number.isFinite(millis) || millis <= 0) return '';
@@ -924,6 +1036,7 @@
             state.notificationMessageBound = true;
         }
 
+        await reconcilePushSubscriptionWithServer();
         await refreshNotifications({ includeItems: state.notificationPanelOpen, resetCursor: true, silent: true });
         startNotificationPolling();
     }

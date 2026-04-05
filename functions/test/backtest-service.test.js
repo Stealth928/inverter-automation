@@ -549,6 +549,37 @@ describe('backtest service helpers', () => {
     }
   });
 
+  test('createRun skips the per-day report limit for admins', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-02T04:00:00.000Z'));
+    try {
+      const harness = buildBacktestDbHarness({
+        dailyUsage: {
+          '2026-04-02': {
+            dateKey: '2026-04-02',
+            count: 5,
+            createdAtMs: Date.parse('2026-04-02T00:00:00.000Z'),
+            updatedAtMs: Date.parse('2026-04-02T03:00:00.000Z')
+          }
+        }
+      });
+      const service = buildServiceForCreateFlow(harness.db);
+
+      await expect(service.createRun('user-1', {
+        period: {
+          startDate: '2026-04-01',
+          endDate: '2026-04-02'
+        }
+      }, {
+        isAdmin: true
+      })).resolves.toMatchObject({ status: 'queued' });
+
+      expect(harness.runStore.size).toBe(1);
+      expect(harness.usageStore.get('2026-04-02')).toMatchObject({ count: 5 });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   test('deleteRun removes completed reports and blocks active ones', async () => {
     const harness = buildBacktestDbHarness({
       runs: [
