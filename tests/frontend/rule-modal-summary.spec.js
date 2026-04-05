@@ -160,7 +160,7 @@ test.describe('Rule Modal Summaries', () => {
     await expect(page.locator('#addRuleModal #condTempDayOffset')).toHaveValue('0');
   });
 
-  test('switches the optional stop-on-energy control between export and import modes', async ({ page }) => {
+  test('switches the optional energy-limit control between export and import modes', async ({ page }) => {
     await openAddRuleModal(page);
 
     const energyCapWrap = page.locator('#addRuleModal #ruleEnergyCapWrap');
@@ -169,14 +169,15 @@ test.describe('Rule Modal Summaries', () => {
     const actionSummary = page.locator('#addRuleModal #ruleActionPlainEnglishText');
 
     await expect(energyCapWrap).toBeVisible();
-    await expect(energyCapLabel).toHaveText('Stop after grid export (kWh)');
+    await expect(energyCapLabel).toHaveText('Export limit (kWh)');
+    await expect(page.locator('#addRuleModal')).not.toContainText('Optional guard rail for capped export runs.');
 
     await energyCapInput.fill('15');
     await expect(actionSummary).toContainText('stop after exporting 15 kWh to the grid');
 
     await page.selectOption('#addRuleModal #newRuleWorkMode', 'ForceCharge');
     await expect(energyCapWrap).toBeVisible();
-    await expect(energyCapLabel).toHaveText('Stop after grid import (kWh)');
+    await expect(energyCapLabel).toHaveText('Import limit (kWh)');
     await expect(actionSummary).toContainText('stop after importing 15 kWh from the grid');
 
     await page.selectOption('#addRuleModal #newRuleWorkMode', 'SelfUse');

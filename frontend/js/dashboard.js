@@ -10949,55 +10949,64 @@
                 allRules.forEach(([ruleName, rule]) => {
                     const ruleAction = rule.action || {};
                     const conditions = rule.conditions || {};
+                    const buildRuleBadge = (label, background, color = '#fff') => `<span style="display:inline-flex;align-items:center;background:${background};color:${color};padding:2px 6px;border-radius:3px;font-size:10px;margin:0 4px 4px 0">${label}</span>`;
+                    const energyCapConfig = getRuleEnergyCapConfig(ruleAction.workMode);
+                    const stopOnEnergyKwh = Number.isFinite(Number(ruleAction.stopOnEnergyKwh)) && Number(ruleAction.stopOnEnergyKwh) > 0
+                        ? Number(ruleAction.stopOnEnergyKwh)
+                        : null;
+                    const stopOnEnergyLabel = stopOnEnergyKwh !== null
+                        ? (Number.isInteger(stopOnEnergyKwh) ? String(stopOnEnergyKwh) : String(Number(stopOnEnergyKwh.toFixed(1))))
+                        : null;
                     
                     // Build conditions badges
                     let condBadges = '';
                     if (conditions.feedInPrice?.enabled) {
                         const fiOp = conditions.feedInPrice.op || conditions.feedInPrice.operator || '>';
                         const fiStr = fiOp === 'between' ? `${conditions.feedInPrice.value}¢ – ${conditions.feedInPrice.value2}¢` : `${fiOp} ${conditions.feedInPrice.value}¢`;
-                        condBadges += `<span style="background:#238636;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Feed-in ${fiStr}</span>`;
+                        condBadges += buildRuleBadge(`Feed-in ${fiStr}`, '#238636');
                     }
                     if (conditions.buyPrice?.enabled) {
                         const bpOp = conditions.buyPrice.op || conditions.buyPrice.operator || '<';
                         const bpStr = bpOp === 'between' ? `${conditions.buyPrice.value}¢ – ${conditions.buyPrice.value2}¢` : `${bpOp} ${conditions.buyPrice.value}¢`;
-                        condBadges += `<span style="background:#1f6feb;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">Buy ${bpStr}</span>`;
+                        condBadges += buildRuleBadge(`Buy ${bpStr}`, '#1f6feb');
                     }
                     if (conditions.forecastPrice?.enabled) {
                         const unit = conditions.forecastPrice.lookAheadUnit || 'minutes';
                         const unitLabel = unit === 'minutes' ? 'm' : unit === 'hours' ? 'h' : 'd';
-                        condBadges += `<span style="background:#f778ba;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">📈 ${conditions.forecastPrice.type === 'feedIn' ? 'FI' : 'Buy'} ${conditions.forecastPrice.checkType || 'avg'} ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢ (${conditions.forecastPrice.lookAhead || 30}${unitLabel})</span>`;
+                        condBadges += buildRuleBadge(`${conditions.forecastPrice.type === 'feedIn' ? 'FI' : 'Buy'} ${conditions.forecastPrice.checkType || 'avg'} ${conditions.forecastPrice.operator} ${conditions.forecastPrice.value}¢ (${conditions.forecastPrice.lookAhead || 30}${unitLabel})`, '#f778ba', '#000');
                     }
                     if (conditions.soc?.enabled) {
                         const socOp = conditions.soc.op || conditions.soc.operator || '<';
                         const socStr = socOp === 'between' ? `${conditions.soc.value}% – ${conditions.soc.value2}%` : `${socOp} ${conditions.soc.value}%`;
-                        condBadges += `<span style="background:#8957e5;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">SoC ${socStr}</span>`;
+                        condBadges += buildRuleBadge(`SoC ${socStr}`, '#8957e5');
                     }
                     const tempCond = conditions.temperature || conditions.temp;
                     if (tempCond?.enabled) {
                         const tempType = tempCond.type || 'battery';
+                        const tempOp = tempCond.operator || tempCond.op || '<';
                         let tempLabel = 'Battery Temp';
                         if (tempType === 'ambient') tempLabel = 'Ambient Temp';
                         if (tempType === 'inverter') tempLabel = 'Inverter Temp';
                         if (tempType === 'forecastMax') tempLabel = `Forecast Max (D+${tempCond.dayOffset || 0})`;
                         if (tempType === 'forecastMin') tempLabel = `Forecast Min (D+${tempCond.dayOffset || 0})`;
-                        condBadges += `<span style="background:#f0883e;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${tempLabel} ${tempCond.operator} ${tempCond.value}°C</span>`;
+                        condBadges += buildRuleBadge(`${tempLabel} ${tempOp} ${tempCond.value}°C`, '#f0883e', '#000');
                     }
                     // Solar Radiation condition
                     if (conditions.solarRadiation?.enabled) {
                         const unit = conditions.solarRadiation.lookAheadUnit || 'hours';
                         const unitLabel = unit === 'hours' ? 'h' : 'd';
-                        condBadges += `<span style="background:#f9d71c;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">☀️ ${conditions.solarRadiation.checkType || 'avg'} ${conditions.solarRadiation.operator} ${conditions.solarRadiation.value}W/m² (${conditions.solarRadiation.lookAhead}${unitLabel})</span>`;
+                        condBadges += buildRuleBadge(`Solar ${conditions.solarRadiation.checkType || 'avg'} ${conditions.solarRadiation.operator} ${conditions.solarRadiation.value}W/m² (${conditions.solarRadiation.lookAhead}${unitLabel})`, '#f9d71c', '#000');
                     }
                     // Cloud Cover condition
                     if (conditions.cloudCover?.enabled) {
                         const unit = conditions.cloudCover.lookAheadUnit || 'hours';
                         const unitLabel = unit === 'hours' ? 'h' : 'd';
-                        condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">☁️ ${conditions.cloudCover.checkType || 'avg'} ${conditions.cloudCover.operator} ${conditions.cloudCover.value}% (${conditions.cloudCover.lookAhead}${unitLabel})</span>`;
+                        condBadges += buildRuleBadge(`Cloud ${conditions.cloudCover.checkType || 'avg'} ${conditions.cloudCover.operator} ${conditions.cloudCover.value}% (${conditions.cloudCover.lookAhead}${unitLabel})`, '#79c0ff', '#000');
                     }
                     // Legacy weather condition (for backward compatibility)
                     if (conditions.weather?.enabled) {
                         const wType = conditions.weather.type || conditions.weather.condition || 'sunny';
-                        condBadges += `<span style="background:#79c0ff;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">🌤️ ${wType}</span>`;
+                        condBadges += buildRuleBadge(`Weather ${wType}`, '#79c0ff', '#000');
                     }
                     if (conditions.time?.enabled || conditions.timeWindow?.enabled) {
                         const tw = conditions.time || conditions.timeWindow;
@@ -11005,7 +11014,11 @@
                         const endTime = tw.end || tw.endTime || '23:59';
                         const dayLabel = formatTimeConditionDays(tw.days);
                         const daySuffix = dayLabel === 'Every day' ? '' : ` [${dayLabel}]`;
-                        condBadges += `<span style="background:#6e7681;color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;margin-right:4px">${startTime}-${endTime}${daySuffix}</span>`;
+                        condBadges += buildRuleBadge(`${startTime}-${endTime}${daySuffix}`, '#6e7681');
+                    }
+                    if (energyCapConfig.enabled && stopOnEnergyLabel !== null) {
+                        const capLabel = energyCapConfig.badgeLabel || 'Energy limit';
+                        condBadges += buildRuleBadge(`${capLabel} ${stopOnEnergyLabel} kWh`, '#d29922', '#000');
                     }
                     if (!condBadges) condBadges = '<span style="color:var(--text-secondary);font-size:10px">No conditions set</span>';
                     
@@ -11042,10 +11055,10 @@
                                 <span style="color:var(--text-secondary)">⚡</span> <span style="color:var(--text-primary)">${ruleAction.fdPwr || 0}W</span>
                             </div>
                             <div style="background:var(--bg-secondary);padding:4px 8px;border-radius:4px">
-                                <span style="color:var(--text-secondary)">� Stop</span> <span style="color:var(--text-primary)">${ruleAction.fdSoc != null ? ruleAction.fdSoc : '—'}%</span>
+                                <span style="color:var(--text-primary)">Stop ${ruleAction.fdSoc != null ? ruleAction.fdSoc : '—'}%</span>
                             </div>
                             <div style="background:var(--bg-secondary);padding:4px 8px;border-radius:4px">
-                                <span style="color:var(--text-secondary)">�🔄</span> <span style="color:var(--text-primary)">${rule.cooldownMinutes || 5}min CD</span>
+                                <span style="color:var(--text-primary)">${rule.cooldownMinutes || 5}min CD</span>
                             </div>
                         </div>
                         ${rule.lastTriggered ? `<div style="margin-top:8px;font-size:10px;color:var(--color-orange)">⏱️ Last: ${formatDate(rule.lastTriggered, true)}</div>` : ''}
@@ -11667,13 +11680,10 @@
                                 <div style="display:grid;grid-template-columns:minmax(0, 1fr);gap:8px;min-width:0;">
                                     <div>
                                         <div class="field-label-with-tooltip">
-                                            <label id="newRuleStopOnEnergyLabel" style="display:block;font-size:11px;color:var(--text-secondary)">Stop after grid export (kWh)</label>
-                                            <span class="tooltip-icon" data-tooltip="Optional. Stops the active rule once cumulative grid import or export during this run reaches the amount you set.">?</span>
+                                            <label id="newRuleStopOnEnergyLabel" style="display:block;font-size:11px;color:var(--text-secondary)">Energy limit (kWh)</label>
+                                            <span id="newRuleStopOnEnergyTooltip" class="tooltip-icon" data-tooltip="Optional. Stops the rule when the energy limit is reached.">?</span>
                                         </div>
                                         <input type="number" id="newRuleStopOnEnergyKwh" placeholder="Optional" min="0.1" max="1000" step="0.1" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
-                                        <div id="newRuleStopOnEnergyHint" style="margin-top:6px;font-size:11px;color:var(--text-secondary);line-height:1.4">
-                                            Optional guard rail for capped export runs.
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -11999,8 +12009,9 @@
             if (workMode === 'ForceCharge') {
                 return {
                     enabled: true,
-                    label: 'Stop after grid import (kWh)',
-                    hint: 'Optional. This rule will stop once cumulative grid import during this run reaches the amount you set.',
+                    label: 'Import limit (kWh)',
+                    badgeLabel: 'Import limit',
+                    tooltip: 'Optional. Stops the rule when imported energy reaches this limit.',
                     preposition: 'from the grid',
                     verb: 'importing'
                 };
@@ -12008,16 +12019,18 @@
             if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
                 return {
                     enabled: true,
-                    label: 'Stop after grid export (kWh)',
-                    hint: 'Optional. This rule will stop once cumulative grid export during this run reaches the amount you set.',
+                    label: 'Export limit (kWh)',
+                    badgeLabel: 'Export limit',
+                    tooltip: 'Optional. Stops the rule when exported energy reaches this limit.',
                     preposition: 'to the grid',
                     verb: 'exporting'
                 };
             }
             return {
                 enabled: false,
-                label: 'Stop after energy moved (kWh)',
-                hint: '',
+                label: 'Energy limit (kWh)',
+                badgeLabel: 'Energy limit',
+                tooltip: '',
                 preposition: '',
                 verb: ''
             };
@@ -12035,9 +12048,9 @@
             const modal = modalRef || document.getElementById('addRuleModal') || document;
             const wrap = modal.querySelector ? modal.querySelector('#ruleEnergyCapWrap') : null;
             const label = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyLabel') : null;
-            const hint = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyHint') : null;
+            const tooltip = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyTooltip') : null;
             const input = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyKwh') : null;
-            if (!wrap || !label || !hint || !input) return;
+            if (!wrap || !label || !tooltip || !input) return;
 
             const mode = readModalField(modal, '#newRuleWorkMode', 'SelfUse');
             const config = getRuleEnergyCapConfig(mode);
@@ -12045,7 +12058,7 @@
             wrap.style.display = config.enabled ? 'block' : 'none';
             input.disabled = !config.enabled;
             label.textContent = config.label;
-            hint.textContent = config.hint;
+            tooltip.setAttribute('data-tooltip', config.tooltip || '');
         }
 
         function buildRuleActionSummaryText(modal, compact = false) {

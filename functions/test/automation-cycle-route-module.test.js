@@ -475,7 +475,7 @@ describe('automation cycle route module', () => {
     expect(deps.applyRuleAction).toHaveBeenCalled();
   });
 
-  test('cancels an active rule when its stop-on-energy cap is reached', async () => {
+  test('cancels an active rule when its stop-on-energy cap is reached and preserves cooldown timing', async () => {
     const deps = buildDeps({
       evaluateActiveRuleEnergyCap: jest.fn(async () => ({
         applicable: true,
@@ -546,7 +546,8 @@ describe('automation cycle route module', () => {
       ruleId: 'ruleA',
       userId: 'u-cycle-cap-stop'
     }));
-    expect(deps.setUserRule).toHaveBeenCalledWith('u-cycle-cap-stop', 'ruleA', { lastTriggered: null }, { merge: true });
+    expect(deps.serverTimestamp).toHaveBeenCalled();
+    expect(deps.setUserRule).toHaveBeenCalledWith('u-cycle-cap-stop', 'ruleA', { lastTriggered: '__TS__' }, { merge: true });
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
       'u-cycle-cap-stop',
       expect.objectContaining({
@@ -564,6 +565,69 @@ describe('automation cycle route module', () => {
           expect.objectContaining({ condition: 'energyCap', met: false, target: 15 })
         ]),
         triggered: false
+      })
+    );
+  });
+
+  test('cancels an active rule on normal condition failure and still clears cooldown immediately', async () => {
+    const deps = buildDeps({
+      evaluateRule: jest.fn(async () => ({
+        triggered: false,
+        results: [{ condition: 'feedInPrice', met: false, actual: 5, operator: '>=', target: 20 }]
+      })),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({
+        activeRule: 'ruleA',
+        activeRuleName: 'Rule A',
+        activeSegmentEnabled: true,
+        enabled: true
+      })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-NORMAL-CANCEL-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          cooldownMinutes: 5,
+          conditions: {
+            feedInPrice: { enabled: true, operator: '>=', value: 20 }
+          },
+          action: { workMode: 'ForceDischarge', durationMinutes: 30, fdPwr: 5000, stopOnEnergyKwh: 15 }
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-normal-cancel' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 0,
+      result: expect.objectContaining({
+        triggered: false,
+        rulesEvaluated: 1
+      })
+    }));
+    expect(deps.evaluateActiveRuleEnergyCap).not.toHaveBeenCalled();
+    expect(deps.serverTimestamp).not.toHaveBeenCalled();
+    expect(deps.setUserRule).toHaveBeenCalledWith('u-cycle-normal-cancel', 'ruleA', { lastTriggered: null }, { merge: true });
+    expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
+      'u-cycle-normal-cancel',
+      expect.objectContaining({
+        activeRule: null,
+        activeRuleName: null,
+        activeEnergyTracking: null,
+        activeSegment: null,
+        activeSegmentEnabled: false
       })
     );
   });

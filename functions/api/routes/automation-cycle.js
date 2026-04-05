@@ -824,6 +824,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
       }
 
       let activeRuleEnergyCap = null;
+      let activeRuleStoppedByEnergyCap = false;
       if (isActiveRule && result && result.triggered) {
         try {
           activeRuleEnergyCap = await evaluateActiveRuleEnergyCap({
@@ -845,6 +846,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               ? [...result.results, activeRuleEnergyCap.condition]
               : [activeRuleEnergyCap.condition];
             if (activeRuleEnergyCap.reached === true) {
+              activeRuleStoppedByEnergyCap = true;
               result = {
                 ...result,
                 reason: activeRuleEnergyCap.condition.reason || 'Energy cap reached',
@@ -1151,12 +1153,11 @@ function registerAutomationCycleRoute(app, deps = {}) {
                 break;
               }
             }
-            // Clear lastTriggered when rule is canceled (conditions failed)
-            // This allows the rule to re-trigger immediately if conditions become valid again
-            // Cooldown only applies to CONTINUING active rules, not canceled ones
-            await setUserRule(userId, ruleId, {
-              lastTriggered: null
-            }, { merge: true });
+            // Keep a fresh cooldown anchor when a rule stops because its energy cap was hit.
+            // Other cancellations still clear the trigger timestamp so they can re-arm immediately.
+            await setUserRule(userId, ruleId, activeRuleStoppedByEnergyCap
+              ? { lastTriggered: serverTimestamp() }
+              : { lastTriggered: null }, { merge: true });
           } catch (cancelError) {
             errorLog(`[Automation] Unexpected error during cancellation: ${cancelError.message}`);
             // Break on unexpected errors - don't risk applying a replacement

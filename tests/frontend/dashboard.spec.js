@@ -2441,6 +2441,132 @@ test.describe('Dashboard Page', () => {
     expect(summaryModel.nextItems.map((item) => item.text).join(' ')).not.toContain('Automation reviews conditions in');
   });
 
+  test('should render automation rule badges without replacement glyphs and include stop caps', async ({ page }) => {
+    const fixedNowIso = '2026-04-05T11:04:00.000Z';
+    const fixedNowMs = Date.parse(fixedNowIso);
+
+    await mockDashboardConfig(page, {
+      deviceProvider: 'foxess',
+      deviceSn: 'RULE-BADGE-001'
+    });
+
+    await page.route('**/api/automation/status', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: true,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          lastCheck: fixedNowMs - 60000,
+          lastTriggered: fixedNowMs - (2 * 60 * 1000),
+          activeRule: 'test-rule',
+          activeRuleName: 'Test rule',
+          activeSegmentEnabled: true,
+          activeSegment: {
+            workMode: 'ForceDischarge',
+            startHour: 22,
+            startMinute: 0,
+            endHour: 22,
+            endMinute: 30
+          },
+          userTimezone: 'Australia/Sydney',
+          rules: {
+            'test-rule': {
+              enabled: true,
+              name: 'Test rule',
+              priority: 9,
+              cooldownMinutes: 20,
+              lastTriggered: fixedNowMs - (2 * 60 * 1000),
+              conditions: {
+                forecastPrice: {
+                  enabled: true,
+                  type: 'feedIn',
+                  checkType: 'max',
+                  operator: '<',
+                  value: 30,
+                  lookAhead: 24,
+                  lookAheadUnit: 'hours'
+                },
+                temperature: {
+                  enabled: true,
+                  type: 'forecastMax',
+                  operator: '<',
+                  value: 40,
+                  dayOffset: 3
+                }
+              },
+              action: {
+                workMode: 'ForceDischarge',
+                durationMinutes: 30,
+                fdPwr: 2000,
+                fdSoc: 35,
+                stopOnEnergyKwh: 15
+              }
+            }
+          },
+          config: {
+            automation: { intervalMs: 60000 },
+            defaults: { cooldownMinutes: 5 }
+          }
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/automation/status-summary', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: true,
+          inBlackout: false,
+          telemetryFailsafePaused: false,
+          lastCheck: fixedNowMs - 60000,
+          lastTriggered: fixedNowMs - (2 * 60 * 1000),
+          activeRule: 'test-rule',
+          activeRuleName: 'Test rule',
+          activeSegmentEnabled: true,
+          activeSegment: {
+            workMode: 'ForceDischarge',
+            startHour: 22,
+            startMinute: 0,
+            endHour: 22,
+            endMinute: 30
+          },
+          userTimezone: 'Australia/Sydney',
+          nextCheckIn: 60000,
+          config: {
+            automation: { intervalMs: 60000 },
+            defaults: { cooldownMinutes: 5 }
+          }
+        }
+      }, 200));
+    });
+
+    await page.route('**/api/quickcontrol/status', async (route) => {
+      await route.fulfill(jsonResponse({ errno: 0, result: { active: false } }, 200));
+    });
+
+    await page.route('**/api/scheduler/v1/get*', async (route) => {
+      await route.fulfill(jsonResponse({
+        errno: 0,
+        result: {
+          enabled: false,
+          groups: []
+        }
+      }, 200));
+    });
+
+    await page.reload();
+
+    const rulesPanel = page.locator('[data-tour="automation-rules"]');
+    await expect(rulesPanel).toContainText('Test rule');
+    await expect(rulesPanel).toContainText('FI max < 30¢ (24h)');
+    await expect(rulesPanel).toContainText('Forecast Max (D+3) < 40°C');
+    await expect(rulesPanel).toContainText('Stop export 15 kWh');
+    await expect(rulesPanel).toContainText('Stop 35%');
+    await expect(rulesPanel).toContainText('20min CD');
+    await expect(rulesPanel).not.toContainText('�');
+  });
+
   test('should render overview summary without throwing when inverter and pricing signals are missing', async ({ page }) => {
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(String(error)));
