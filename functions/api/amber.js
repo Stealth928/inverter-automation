@@ -26,6 +26,7 @@ const amberRateLimitState = {
 
 // In-flight request tracker to prevent duplicate API calls
 const amberPricesInFlight = new Map(); // key: "userId:siteId", value: Promise
+const AMBER_HISTORICAL_MAX_DAYS_PER_REQUEST = 7;
 
 function isEmulatorRuntime() {
   return Boolean(process.env.FUNCTIONS_EMULATOR || process.env.FIRESTORE_EMULATOR_HOST);
@@ -48,6 +49,24 @@ function average(values = [], fallback = null) {
     .filter((value) => Number.isFinite(value));
   if (numeric.length === 0) return fallback;
   return numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
+}
+
+function extractAmberErrorMessage(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') return parsed.trim();
+    if (typeof parsed?.error === 'string') return parsed.error.trim();
+    if (typeof parsed?.message === 'string') return parsed.message.trim();
+    if (typeof parsed?.msg === 'string') return parsed.msg.trim();
+    if (typeof parsed?.raw === 'string') return parsed.raw.trim();
+  } catch (_error) {
+    return raw;
+  }
+
+  return raw;
 }
 
 /**
@@ -129,12 +148,17 @@ function init(dependencies) {
       
       // Handle other HTTP errors
       if (!resp.ok) {
+        const detail = extractAmberErrorMessage(text);
         console.warn(`[Amber] HTTP ${resp.status} Error:`, {
           statusText: resp.statusText,
           contentType: resp.headers.get('content-type'),
-          responseText: text.substring(0, 1000)
+          responseText: text.substring(0, 1000),
+          errorDetail: detail || null
         });
-        return { errno: resp.status, error: `HTTP ${resp.status}: ${resp.statusText}` };
+        return {
+          errno: resp.status,
+          error: detail || `HTTP ${resp.status}: ${resp.statusText || 'Amber request failed'}`
+        };
       }
       
       // Clear rate limit on success
@@ -447,14 +471,14 @@ function init(dependencies) {
 
   /**
    * Split a date range into chunks for API calls.
-   * Amber API limit appears to be ~14 days per request.
+   * Amber API currently enforces a maximum 7-day range per request.
    * 
    * @param {string} startDate - Start date (YYYY-MM-DD)
    * @param {string} endDate - End date (YYYY-MM-DD)
-   * @param {number} maxDaysPerChunk - Maximum days per chunk (default: 14)
+   * @param {number} maxDaysPerChunk - Maximum days per chunk (default: 7)
    * @returns {Array<{start: string, end: string}>} Array of date range chunks
    */
-  function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = 14) {
+  function splitRangeIntoChunks(startDate, endDate, maxDaysPerChunk = AMBER_HISTORICAL_MAX_DAYS_PER_REQUEST) {
     const chunks = [];
     
     // Parse dates properly to avoid timezone shifts
@@ -489,6 +513,59 @@ function init(dependencies) {
     }
 
     return chunks;
+  }
+
+  function extractHistoricalPriceRows(result) {
+    if (Array.isArray(result)) {
+      return result;
+    }
+    if (result && Array.isArray(result.result)) {
+      return result.result;
+    }
+    if (result && result.data && Array.isArray(result.data)) {
+      return result.data;
+    }
+    return [];
+  }
+
+  function normalizeHistoricalProviderError(result, chunk) {
+    return {
+      errno: Number(result?.errno || result?.status || 500) || 500,
+      error: result?.error || result?.msg || 'Amber historical price query failed',
+      result: [],
+      chunk,
+      retryAfter: result?.retryAfter || null
+    };
+  }
+
+  async function fetchAmberHistoricalPriceChunks(siteId, startDate, endDate, resolution, userConfig, userId) {
+    const chunks = splitRangeIntoChunks(startDate, endDate, AMBER_HISTORICAL_MAX_DAYS_PER_REQUEST);
+    const rows = [];
+
+    for (const chunk of chunks) {
+      const result = await callAmberAPI(
+        `/sites/${encodeURIComponent(siteId)}/prices`,
+        {
+          startDate: chunk.start,
+          endDate: chunk.end,
+          resolution: resolution || 30
+        },
+        userConfig,
+        userId,
+        false
+      );
+
+      if (result && result.errno && result.errno !== 0) {
+        return normalizeHistoricalProviderError(result, chunk);
+      }
+
+      rows.push(...extractHistoricalPriceRows(result));
+    }
+
+    return {
+      errno: 0,
+      result: rows
+    };
   }
 
   async function buildEmulatorHistoricalPrices(siteId, startDate, endDate, resolution, userConfig, userId) {
@@ -600,43 +677,18 @@ function init(dependencies) {
       };
     }
 
-    let allPrices = [];
-    
-    // Split range into 30-day chunks and fetch each from API (skip cache entirely)
-    const chunks = splitRangeIntoChunks(startDate, endDate, 30);
-    
-    for (const chunk of chunks) {
-      
-      // Count every chunk request as an upstream Amber call attempt.
-      const result = await callAmberAPI(
-        `/sites/${encodeURIComponent(siteId)}/prices`, 
-        {
-          startDate: chunk.start,
-          endDate: chunk.end,
-          resolution: resolution || 30
-        }, 
-        userConfig, 
-        userId, 
-        false
-      );
-      
-      // Handle error responses
-      if (result && result.errno && result.errno !== 0) {
-        continue;
-      }
-      
-      // Extract prices from result
-      let prices = [];
-      if (Array.isArray(result)) {
-        prices = result;
-      } else if (result && Array.isArray(result.result)) {
-        prices = result.result;
-      } else if (result && result.data && Array.isArray(result.data)) {
-        prices = result.data;
-      }
-      
-      allPrices = allPrices.concat(prices);
+    const chunkedResult = await fetchAmberHistoricalPriceChunks(
+      siteId,
+      startDate,
+      endDate,
+      resolution,
+      userConfig,
+      userId
+    );
+    if (chunkedResult.errno !== 0) {
+      return chunkedResult;
     }
+    const allPrices = Array.isArray(chunkedResult.result) ? chunkedResult.result : [];
     
     // Filter to keep ONLY prices where startTime <= now (actual, not forecast)
     const actualPrices = allPrices.filter(p => {
@@ -699,43 +751,22 @@ function init(dependencies) {
     
     let newPrices = [];
     
-    // Step 3: Fetch gaps from API (split into 30-day chunks)
+    // Step 3: Fetch gaps from API using provider-safe chunk sizes
     if (gaps.length > 0) {
       for (const gap of gaps) {
-        const chunks = splitRangeIntoChunks(gap.start, gap.end, 30);
-        
-        for (const chunk of chunks) {
-          
-          // Count every chunk request as an upstream Amber call attempt.
-          const result = await callAmberAPI(
-            `/sites/${encodeURIComponent(siteId)}/prices`, 
-            {
-              startDate: chunk.start,
-              endDate: chunk.end,
-              resolution: resolution || 30
-            }, 
-            userConfig, 
-            userId, 
-            false
-          );
-          
-          // Handle error responses
-          if (result && result.errno && result.errno !== 0) {
-            continue;
-          }
-          
-          // Extract prices from result
-          let prices = [];
-          if (Array.isArray(result)) {
-            prices = result;
-          } else if (result && Array.isArray(result.result)) {
-            prices = result.result;
-          } else if (result && result.data && Array.isArray(result.data)) {
-            prices = result.data;
-          }
-          
-          newPrices = newPrices.concat(prices);
+        const chunkedResult = await fetchAmberHistoricalPriceChunks(
+          siteId,
+          gap.start,
+          gap.end,
+          resolution,
+          userConfig,
+          userId
+        );
+        if (chunkedResult.errno !== 0) {
+          return chunkedResult;
         }
+
+        newPrices = newPrices.concat(chunkedResult.result || []);
       }
     }
     
@@ -782,6 +813,7 @@ function init(dependencies) {
     findGaps,
     cacheAmberPrices,
     splitRangeIntoChunks,
+    AMBER_HISTORICAL_MAX_DAYS_PER_REQUEST,
     fetchAmberHistoricalPricesActualOnly,
     fetchAmberHistoricalPricesWithCache,
     amberRateLimitState,

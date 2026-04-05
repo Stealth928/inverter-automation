@@ -297,6 +297,7 @@ Key characteristics:
 - baseline always generated for comparison (passive self-use)
 - supports manual tariff plans with time-of-use import/export windows
 - supports provider interval tariffs from Amber API history
+- failed runs retain provider failure details so Automation Lab can show mapped recovery guidance while still exposing the raw technical error
 
 Delta convention for results:
 

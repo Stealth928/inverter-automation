@@ -72,6 +72,7 @@ function buildClearedActiveRuleState(options = {}) {
   const state = {
     activeRule: null,
     activeRuleName: null,
+    activeEnergyTracking: null,
     activeSegment: null,
     activeSegmentEnabled: false
   };
@@ -93,6 +94,9 @@ function buildTriggeredRuleState(options = {}) {
     lastTriggered: toFiniteNumber(options.lastTriggeredMs, Date.now()),
     activeRule: options.ruleId,
     activeRuleName: options.ruleName,
+    activeEnergyTracking: Object.prototype.hasOwnProperty.call(options, 'activeEnergyTracking')
+      ? (options.activeEnergyTracking || null)
+      : null,
     activeSegment: options.actionResult?.segment || null,
     activeSegmentEnabled: options.actionResult?.errno === 0,
     inBlackout: false,

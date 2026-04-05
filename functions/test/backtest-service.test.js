@@ -507,6 +507,40 @@ describe('backtest service helpers', () => {
     expect(runs[0].result.summaries[0].chart).toBeUndefined();
   });
 
+  test('listRuns preserves structured failure details for saved reports', async () => {
+    const harness = buildBacktestDbHarness({
+      runs: [{
+        id: 'run-failed',
+        data: {
+          type: 'backtestRun',
+          status: 'failed',
+          requestedAtMs: 456,
+          request: { period: { startDate: '2026-03-01', endDate: '2026-03-02' } },
+          error: 'Amber provider authentication failed',
+          errorDetails: {
+            provider: 'amber',
+            errno: 3202,
+            providerErrno: 401
+          }
+        }
+      }]
+    });
+    const service = buildServiceForCreateFlow(harness.db);
+
+    const runs = await service.listRuns('user-1', 20);
+
+    expect(runs).toEqual([expect.objectContaining({
+      id: 'run-failed',
+      status: 'failed',
+      error: 'Amber provider authentication failed',
+      errorDetails: {
+        provider: 'amber',
+        errno: 3202,
+        providerErrno: 401
+      }
+    })]);
+  });
+
   test('createRun rejects when report history already has five saved backtests', async () => {
     const harness = buildBacktestDbHarness({
       runs: Array.from({ length: 5 }, (_, index) => ({
@@ -893,6 +927,172 @@ describe('backtest service helpers', () => {
       'Historical Amber pricing was unavailable for scenario "Current rules"; used manual tariff plan "Flat plan" instead.'
     );
     expect(emptyTariffProvider.getHistoricalPrices).toHaveBeenCalled();
+  });
+
+  test('runBacktestAnalysis surfaces provider history errors when the tariff provider rejects the request', async () => {
+    const providerError = new Error('Range requested is too large. Maximum 7 days.');
+    providerError.errno = 3200;
+    const failingTariffProvider = {
+      getHistoricalPrices: jest.fn(async () => {
+        throw providerError;
+      })
+    };
+    const db = {
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({
+          collection: jest.fn(() => ({
+            doc: jest.fn(() => ({
+              collection: jest.fn(() => ({
+                orderBy: jest.fn(() => ({
+                  get: jest.fn(async () => ({ docs: [] }))
+                }))
+              }))
+            }))
+          }))
+        }))
+      }))
+    };
+    const service = createBacktestService({
+      adapterRegistry: {
+        getTariffProvider: jest.fn(() => failingTariffProvider),
+        getDeviceProvider: jest.fn(() => null)
+      },
+      db,
+      foxessAPI: {
+        callFoxESSAPI: jest.fn(async () => ({
+          errno: 0,
+          result: [{ datas: [] }]
+        }))
+      },
+      getConfig: () => ({
+        automation: {
+          backtesting: {
+            replayIntervalMinutes: 5,
+            maxLookbackDays: 365,
+            maxScenarios: 3,
+            maxActiveRuns: 2,
+            runTtlMs: 30 * 24 * 60 * 60 * 1000
+          }
+        }
+      }),
+      getHistoricalWeather: jest.fn(async () => ({
+        hourly: { time: [] },
+        daily: { time: [] }
+      })),
+      getUserConfig: jest.fn(async () => ({
+        timezone: 'Australia/Sydney',
+        deviceProvider: 'foxess',
+        deviceSn: 'FOX-SEED-1001',
+        pricingProvider: 'amber',
+        location: 'Sydney',
+        batteryCapacityKWh: 10,
+        inverterCapacityW: 5000,
+        defaults: { minSocOnGrid: 20 },
+        automation: { blackoutWindows: [] }
+      })),
+      getUserRules: jest.fn(async () => ({}))
+    });
+
+    await expect(service.runBacktestAnalysis('user-1', {
+      period: {
+        startDate: '2026-03-07',
+        endDate: '2026-04-05'
+      },
+      includeBaseline: true,
+      scenarios: [{
+        id: 'current',
+        name: 'Current rules',
+        ruleSetSnapshot: { source: 'current', rules: {} }
+      }]
+    })).rejects.toThrow('Range requested is too large. Maximum 7 days.');
+
+    expect(failingTariffProvider.getHistoricalPrices).toHaveBeenCalled();
+  });
+
+  test('processRun stores structured provider failure details on failed runs', async () => {
+    const providerError = new Error('Amber provider authentication failed');
+    providerError.errno = 3202;
+    providerError.providerErrno = 401;
+    providerError.provider = 'amber';
+    const failingTariffProvider = {
+      getHistoricalPrices: jest.fn(async () => {
+        throw providerError;
+      })
+    };
+    const harness = buildBacktestDbHarness({
+      runs: [{
+        id: 'run-process-fail',
+        data: {
+          type: 'backtestRun',
+          status: 'queued',
+          requestedAtMs: Date.parse('2026-04-05T00:00:00Z'),
+          request: {
+            period: { startDate: '2026-03-07', endDate: '2026-04-05' },
+            includeBaseline: true,
+            scenarios: [{
+              id: 'current',
+              name: 'Current rules',
+              ruleSetSnapshot: { source: 'current', rules: {} }
+            }],
+            timezone: 'Australia/Sydney'
+          },
+          error: null,
+          errorDetails: null
+        }
+      }]
+    });
+    const service = createBacktestService({
+      adapterRegistry: {
+        getTariffProvider: jest.fn(() => failingTariffProvider),
+        getDeviceProvider: jest.fn(() => null)
+      },
+      db: harness.db,
+      foxessAPI: {
+        callFoxESSAPI: jest.fn(async () => ({
+          errno: 0,
+          result: [{ datas: [] }]
+        }))
+      },
+      getConfig: () => ({
+        automation: {
+          backtesting: {
+            replayIntervalMinutes: 5,
+            maxLookbackDays: 365,
+            maxScenarios: 3,
+            maxActiveRuns: 2,
+            runTtlMs: 30 * 24 * 60 * 60 * 1000
+          }
+        }
+      }),
+      getHistoricalWeather: jest.fn(async () => ({
+        hourly: { time: [] },
+        daily: { time: [] }
+      })),
+      getUserConfig: jest.fn(async () => ({
+        timezone: 'Australia/Sydney',
+        deviceProvider: 'foxess',
+        deviceSn: 'FOX-SEED-1001',
+        pricingProvider: 'amber',
+        location: 'Sydney',
+        batteryCapacityKWh: 10,
+        inverterCapacityW: 5000,
+        defaults: { minSocOnGrid: 20 },
+        automation: { blackoutWindows: [] }
+      })),
+      getUserRules: jest.fn(async () => ({}))
+    });
+
+    await expect(service.processRun('user-1', 'run-process-fail')).rejects.toThrow('Amber provider authentication failed');
+
+    expect(harness.runStore.get('run-process-fail')).toEqual(expect.objectContaining({
+      status: 'failed',
+      error: 'Amber provider authentication failed',
+      errorDetails: {
+        provider: 'amber',
+        errno: 3202,
+        providerErrno: 401
+      }
+    }));
   });
 
   test('runBacktestAnalysis clamps weather look-ahead to the latest historical day', async () => {

@@ -46,6 +46,16 @@ describe('automation rule action service', () => {
     expect(tooHigh).toContain('exceeds inverter capacity');
   });
 
+  test('validateRuleActionForUser validates stopOnEnergyKwh only for supported work modes', () => {
+    expect(validateRuleActionForUser({ workMode: 'ForceCharge', fdPwr: 5000, stopOnEnergyKwh: 15 }, {})).toBeNull();
+
+    const unsupportedMode = validateRuleActionForUser({ workMode: 'SelfUse', stopOnEnergyKwh: 15 }, {});
+    expect(unsupportedMode).toContain('only supported for workMode ForceCharge, ForceDischarge, or Feedin');
+
+    const invalidCap = validateRuleActionForUser({ workMode: 'ForceDischarge', fdPwr: 5000, stopOnEnergyKwh: 0.05 }, {});
+    expect(invalidCap).toContain('between 0.1 and 1000 kWh');
+  });
+
   test('applyRuleAction returns validation error before API calls', async () => {
     const deps = buildDeps();
     const { applyRuleAction } = createAutomationRuleActionService(deps);

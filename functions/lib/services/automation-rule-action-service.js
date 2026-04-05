@@ -1,6 +1,7 @@
 'use strict';
 
 const { resolveProviderDeviceId } = require('../provider-device-id');
+const { validateActionEnergyCap } = require('./automation-energy-cap-service');
 const {
   applySegmentToGroups,
   buildAutomationSchedulerSegment,
@@ -30,6 +31,11 @@ function validateRuleActionForUser(action, userConfig) {
   const workMode = action.workMode || 'SelfUse';
   if (!VALID_RULE_WORK_MODES.has(workMode)) {
     return `Invalid action.workMode: ${workMode}. Valid modes: ${Array.from(VALID_RULE_WORK_MODES).join(', ')}`;
+  }
+
+  const energyCapValidationError = validateActionEnergyCap(action);
+  if (energyCapValidationError) {
+    return energyCapValidationError;
   }
 
   const provider = String(userConfig?.deviceProvider || 'foxess').toLowerCase().trim();

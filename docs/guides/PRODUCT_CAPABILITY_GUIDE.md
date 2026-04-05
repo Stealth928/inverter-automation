@@ -1,6 +1,6 @@
 # SoCrates Product Capability Guide
 
-Last updated: 2026-03-28
+Last updated: 2026-04-05
 
 ## Purpose
 
@@ -79,7 +79,7 @@ not ship a separate native mobile app.
 | `market-insights.html` | Full market workspace | Member market analysis experience |
 | `settings.html` | Configuration hub | Provider credentials, automation config, curtailment, Tesla |
 | `admin.html` | Admin console | Metrics, user ops, announcements, DataWorks, dead letters |
-| `test.html` | Automation Lab | Two-mode testing surface: Quick Simulation for single-moment rule evaluation, and Backtesting/Optimisation for historical replay with visual savings reports, interval impact analysis, rule mix charts, tariff comparison, and explainable rule optimisation |
+| `test.html` | Automation Lab | Two-mode testing surface: Quick Simulation for single-moment rule evaluation, and Backtesting/Optimisation for historical replay with visual savings reports, interval impact analysis, rule mix charts, tariff comparison, explainable rule optimisation, and mapped troubleshooting guidance for common provider and tariff-history failures |
 
 Important distinction:
 
@@ -87,6 +87,10 @@ Important distinction:
 - `market-insights.html` is the authenticated full workspace
 - `/rule-template-recommender/` is a public guide
 - `rules-library.html` is the authenticated import/edit experience
+
+Automation Lab failure UX note:
+
+- saved backtest failures preserve raw provider diagnostics while the UI translates common cases such as session expiry, missing device setup, Amber auth issues, provider rate limits, or missing tariff history into actionable recovery guidance
 
 ## Capability Domains
 

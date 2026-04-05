@@ -512,7 +512,8 @@ app.post('/api/automation/trigger', async (req, res) => {
     await saveUserAutomationState(req.user.uid, {
       lastTriggered: Date.now(),
       activeRule: ruleId,
-      activeRuleName: rule.name || ruleName
+      activeRuleName: rule.name || ruleName,
+      activeEnergyTracking: null
     });
     
     // Update rule's lastTriggered
@@ -534,6 +535,10 @@ app.post('/api/automation/reset', async (req, res) => {
     await saveUserAutomationState(req.user.uid, {
       lastTriggered: null,
       activeRule: null,
+      activeRuleName: null,
+      activeEnergyTracking: null,
+      activeSegment: null,
+      activeSegmentEnabled: false,
       lastCheck: null
     });
     
@@ -564,7 +569,11 @@ app.post('/api/automation/cancel', async (req, res) => {
     
     // Clear active rule in state
     await saveUserAutomationState(userId, {
-      activeRule: null
+      activeRule: null,
+      activeRuleName: null,
+      activeEnergyTracking: null,
+      activeSegment: null,
+      activeSegmentEnabled: false
     });
     
     // Log to history
@@ -661,6 +670,7 @@ app.post('/api/automation/rule/end', async (req, res) => {
       await saveUserAutomationState(userId, {
         activeRule: null,
         activeRuleName: null,
+        activeEnergyTracking: null,
         activeSegment: null,
         activeSegmentEnabled: false
       });
@@ -839,6 +849,7 @@ app.post('/api/automation/rule/update', async (req, res) => {
         await saveUserAutomationState(req.user.uid, {
           activeRule: null,
           activeRuleName: null,
+          activeEnergyTracking: null,
           activeSegment: null,
           activeSegmentEnabled: false
         });
@@ -923,6 +934,7 @@ app.post('/api/automation/rule/delete', async (req, res) => {
       await saveUserAutomationState(req.user.uid, {
         activeRule: null,
         activeRuleName: null,
+        activeEnergyTracking: null,
         activeSegment: null,
         activeSegmentEnabled: false
       });

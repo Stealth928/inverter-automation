@@ -341,7 +341,9 @@ test.describe('Test Lab Page', () => {
 
     await page.goto('/test.html');
 
-    await expect(page.locator('.lab-message.error')).toContainText('Historical pricing was unavailable');
+    await expect(page.locator('.lab-message.error')).toContainText('Historical tariff data was unavailable for part of this backtest period.');
+    await expect(page.getByText(/Reconnect your tariff provider in Setup or use a manual tariff plan/i)).toBeVisible();
+    await expect(page.getByText(/Technical detail:/i).first()).toBeVisible();
     await expect(page.locator('.lab-guidance-actions')).toBeVisible();
     await expect(page.getByRole('button', { name: /Create manual plan/i })).toBeVisible();
     await expect(page.locator('#labResultsFaqCard')).toContainText('FAQ and troubleshooting');
@@ -352,6 +354,37 @@ test.describe('Test Lab Page', () => {
     await expect(pricingFaq).not.toHaveAttribute('open', '');
     await pricingFaq.locator('summary').click();
     await expect(pricingFaq.locator('.lab-faq-a')).toContainText('manual tariff plan');
+  });
+
+  test('maps provider authentication failures to reconnect guidance in saved backtests', async ({ page }) => {
+    const nowMs = Date.parse('2026-04-05T08:03:00Z');
+    await page.goto('about:blank');
+    await mockAutomationLabBacktestApis(page, {
+      nowMs,
+      backtestRuns: [{
+        id: 'run-auth-failed-1',
+        requestedAtMs: nowMs,
+        status: 'failed',
+        request: {
+          period: { startDate: '2026-03-29', endDate: '2026-04-04' },
+          comparisonMode: 'current_vs_baseline',
+          scenarios: [{ id: 'current', name: 'Current rules', ruleSetSnapshot: { source: 'current', rules: {} } }]
+        },
+        error: 'Amber provider authentication failed',
+        errorDetails: {
+          provider: 'amber',
+          errno: 3202,
+          providerErrno: 401
+        }
+      }]
+    });
+
+    await page.goto('/test.html');
+
+    await expect(page.locator('.lab-message.error')).toContainText('Amber access needs attention before this backtest can run.');
+    await expect(page.getByText(/Open Setup, reconnect Amber, then rerun the backtest\./i)).toBeVisible();
+    await expect(page.getByText(/Technical detail:/i).first()).toBeVisible();
+    await expect(page.locator('.lab-guidance-actions')).toBeVisible();
   });
 
   test('should apply configured inverter capacity to Automation Lab rule power validation', async ({ page }) => {

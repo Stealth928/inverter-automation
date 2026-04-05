@@ -55,6 +55,7 @@ describe('automation cycle lifecycle service', () => {
     expect(state).toEqual({
       activeRule: null,
       activeRuleName: null,
+      activeEnergyTracking: null,
       activeSegment: null,
       activeSegmentEnabled: false
     });
@@ -67,6 +68,7 @@ describe('automation cycle lifecycle service', () => {
     };
 
     expect(buildTriggeredRuleState({
+      activeEnergyTracking: { progressKwh: 0, ruleId: 'r-1' },
       actionResult,
       lastCheckMs: 1000,
       lastTriggeredMs: 900,
@@ -75,6 +77,7 @@ describe('automation cycle lifecycle service', () => {
     })).toEqual({
       activeRule: 'r-1',
       activeRuleName: 'Rule One',
+      activeEnergyTracking: { progressKwh: 0, ruleId: 'r-1' },
       activeSegment: { beginTime: '08:00' },
       activeSegmentEnabled: true,
       inBlackout: false,

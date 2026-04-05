@@ -1004,6 +1004,7 @@ function buildRunListEntry(run = {}, id = '') {
     expiresAtMs: run.expiresAtMs,
     request: run.request,
     error: run.error,
+    errorDetails: run.errorDetails,
     result
   };
 }
@@ -1043,6 +1044,32 @@ function resolveTimezoneOrFallback(timezone, fallbackTimezone = 'Australia/Sydne
   const candidate = String(timezone || '').trim();
   if (candidate && isValidTimezone(candidate)) return candidate;
   return fallbackTimezone;
+}
+
+function buildBacktestErrorDetails(error) {
+  if (!error || typeof error !== 'object') return null;
+
+  const details = {};
+  const errno = toFiniteNumber(error.errno, null);
+  const providerErrno = toFiniteNumber(error.providerErrno ?? error.status, null);
+
+  if (typeof error.provider === 'string' && error.provider.trim()) {
+    details.provider = error.provider.trim().toLowerCase();
+  }
+  if (Number.isFinite(errno)) {
+    details.errno = Math.round(errno);
+  }
+  if (Number.isFinite(providerErrno)) {
+    details.providerErrno = Math.round(providerErrno);
+  }
+  if (error.retryAfter !== undefined && error.retryAfter !== null) {
+    details.retryAfter = error.retryAfter;
+  }
+  if (error.chunk && typeof error.chunk === 'object') {
+    details.chunk = JSON.parse(JSON.stringify(error.chunk));
+  }
+
+  return Object.keys(details).length > 0 ? details : null;
 }
 
 function createBacktestService(deps = {}) {
@@ -1227,7 +1254,8 @@ function createBacktestService(deps = {}) {
       completedAtMs: null,
       expiresAtMs: nowMs + limits.runTtlMs,
       request: normalized,
-      error: null
+      error: null,
+      errorDetails: null
     };
     await db.runTransaction(async (transaction) => {
       if (!dailyUsage) {
@@ -1512,7 +1540,12 @@ function createBacktestService(deps = {}) {
       const data = snapshot.data() || {};
       if (data.status !== RUN_STATUSES.queued) return;
       claimed = { id: snapshot.id, ...data };
-      transaction.update(runRef, { status: RUN_STATUSES.running, startedAtMs: Date.now(), error: null });
+      transaction.update(runRef, {
+        status: RUN_STATUSES.running,
+        startedAtMs: Date.now(),
+        error: null,
+        errorDetails: null
+      });
     });
     if (!claimed) return getRun(userId, runId);
     try {
@@ -1523,13 +1556,15 @@ function createBacktestService(deps = {}) {
         result,
         confidence: result.confidence,
         limitations: result.limitations,
-        error: null
+        error: null,
+        errorDetails: null
       }, { merge: true });
     } catch (error) {
       await runRef.set({
         status: RUN_STATUSES.failed,
         completedAtMs: Date.now(),
-        error: error?.message || String(error)
+        error: error?.message || String(error),
+        errorDetails: buildBacktestErrorDetails(error)
       }, { merge: true });
       throw error;
     }

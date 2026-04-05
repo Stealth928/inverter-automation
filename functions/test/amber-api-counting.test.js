@@ -40,6 +40,11 @@ describe('amber api counting', () => {
   });
 
   test('counts each Amber history chunk request as an upstream call attempt', async () => {
+    const expectedChunkCount = amberApi.splitRangeIntoChunks(
+      '2026-01-01',
+      '2026-03-15'
+    ).length;
+
     await amberApi.fetchAmberHistoricalPricesActualOnly(
       'site-1',
       '2026-01-01',
@@ -49,10 +54,10 @@ describe('amber api counting', () => {
       'u-amber'
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(incrementApiCount).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(expectedChunkCount);
+    expect(incrementApiCount).toHaveBeenCalledTimes(expectedChunkCount);
     expect(incrementApiCount).toHaveBeenNthCalledWith(1, 'u-amber', 'amber');
     expect(incrementApiCount).toHaveBeenNthCalledWith(2, 'u-amber', 'amber');
-    expect(incrementApiCount).toHaveBeenNthCalledWith(3, 'u-amber', 'amber');
+    expect(incrementApiCount).toHaveBeenNthCalledWith(expectedChunkCount, 'u-amber', 'amber');
   });
 });

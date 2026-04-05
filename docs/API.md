@@ -100,6 +100,7 @@ Pricing notes:
 
 - supported providers are `amber` and `aemo`
 - supported AEMO regions are `NSW1`, `QLD1`, `VIC1`, `SA1`, `TAS1`
+- Amber historical range requests are fetched in provider-safe 7-day windows; upstream Amber validation errors are returned in the response envelope instead of degrading to an empty historical result
 - AEMO interval objects may also include `demand`, `demandForecast`, and `generation` in MW when those fields are available from the snapshot source
 - for AEMO snapshots, `demand` prefers `DEMAND_AND_NONSCHEDGEN` (fallback: `TOTALDEMAND`)
 - for AEMO snapshots, `generation` prefers `DISPATCHABLEGENERATION` (fallbacks: `CLEAREDSUPPLY`, `INITIALSUPPLY`, `AVAILABLEGENERATION`)

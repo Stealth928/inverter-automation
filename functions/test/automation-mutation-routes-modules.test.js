@@ -238,6 +238,10 @@ describe('automation mutation route module', () => {
     expect(response.body).toEqual({ errno: 0, result: 'Automation state reset' });
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith('u-reset', {
       activeRule: null,
+      activeRuleName: null,
+      activeEnergyTracking: null,
+      activeSegment: null,
+      activeSegmentEnabled: false,
       lastCheck: null,
       lastTriggered: null
     });
@@ -304,7 +308,13 @@ describe('automation mutation route module', () => {
       msg: 'ok',
       verify: { groups: [{ enable: 0 }], enable: false }
     });
-    expect(deps.saveUserAutomationState).toHaveBeenCalledWith('u-cancel', { activeRule: null });
+    expect(deps.saveUserAutomationState).toHaveBeenCalledWith('u-cancel', {
+      activeRule: null,
+      activeRuleName: null,
+      activeEnergyTracking: null,
+      activeSegment: null,
+      activeSegmentEnabled: false
+    });
     expect(deps.addHistoryEntry).toHaveBeenCalledWith('u-cancel', {
       timestamp: '__TS__',
       type: 'automation_cancel'
@@ -438,6 +448,7 @@ describe('automation mutation route module', () => {
     expect(deps.saveUserAutomationState).toHaveBeenCalledWith('u-rule-update', {
       activeRule: null,
       activeRuleName: null,
+      activeEnergyTracking: null,
       activeSegment: null,
       activeSegmentEnabled: false
     });

@@ -152,6 +152,45 @@ describe('amber tariff adapter', () => {
     );
   });
 
+  test('getHistoricalPrices throws a normalized provider error when Amber history fetch fails', async () => {
+    const amberAPI = buildAmberApi({
+      fetchAmberHistoricalPricesActualOnly: jest.fn(async () => ({
+        errno: 422,
+        error: 'Range requested is too large. Maximum 7 days.',
+        chunk: {
+          start: '2026-03-07',
+          end: '2026-03-13'
+        }
+      }))
+    });
+    const adapter = createAmberTariffAdapter({
+      amberAPI,
+      amberPricesInFlight: new Map(),
+      logger: { warn: jest.fn() }
+    });
+
+    await expect(adapter.getHistoricalPrices(
+      {
+        siteId: 'site-2',
+        userConfig: { amberApiKey: 'key' },
+        userId: 'u2',
+        actualOnly: true
+      },
+      '2026-03-07T00:00:00.000Z',
+      '2026-04-05T23:59:59.000Z',
+      30
+    )).rejects.toMatchObject({
+      message: 'Range requested is too large. Maximum 7 days.',
+      errno: 3200,
+      providerErrno: 422,
+      provider: 'amber',
+      chunk: {
+        start: '2026-03-07',
+        end: '2026-03-13'
+      }
+    });
+  });
+
   test('normalizeProviderError maps known Amber error classes', () => {
     const adapter = createAmberTariffAdapter({
       amberAPI: buildAmberApi(),
@@ -165,6 +204,10 @@ describe('amber tariff adapter', () => {
     expect(adapter.normalizeProviderError({ errno: 401 })).toEqual({
       errno: 3202,
       error: 'Amber provider authentication failed'
+    });
+    expect(adapter.normalizeProviderError({ errno: 422, error: 'Range requested is too large. Maximum 7 days.' })).toEqual({
+      errno: 3200,
+      error: 'Range requested is too large. Maximum 7 days.'
     });
   });
 });

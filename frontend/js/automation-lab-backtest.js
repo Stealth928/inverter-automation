@@ -16,6 +16,7 @@
         isAdmin: false,
         adminAccessResolved: false,
         currentTimezone: 'Australia/Sydney',
+        pricingProvider: 'amber',
         currentRulesSnapshot: null,
         candidateSnapshot: null,
         compareMode: 'current_vs_baseline',
@@ -29,6 +30,7 @@
         activeRun: null,
         runningBacktest: false,
         backtestError: '',
+        backtestErrorDetails: null,
         view: 'setup',
         tariffDraftOpen: false,
         tariffDraftMessage: '',
@@ -463,7 +465,142 @@
     }
 
     function isHistoricalPricingFailureMessage(message) {
-        return /Historical pricing was unavailable|Historical pricing requires|Historical pricing is not available/i.test(String(message || ''));
+        return /Historical pricing was unavailable|Historical pricing requires|Historical pricing is not available|No Amber data/i.test(String(message || ''));
+    }
+
+    function getPricingProviderLabel(provider = state.pricingProvider) {
+        const normalized = String(provider || '').trim().toLowerCase();
+        if (!normalized) return 'tariff provider';
+        if (normalized === 'amber') return 'Amber';
+        if (normalized === 'aemo') return 'AEMO';
+        if (normalized === 'manual') return 'manual tariff plan';
+        return normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (match) => match.toUpperCase());
+    }
+
+    function getPricingProviderReference(provider = state.pricingProvider) {
+        const label = getPricingProviderLabel(provider);
+        return label === 'tariff provider' ? 'your tariff provider' : label;
+    }
+
+    function normalizeBacktestErrorDetails(source, fallbackDetails = null) {
+        const details = fallbackDetails && typeof fallbackDetails === 'object' ? deepClone(fallbackDetails) : {};
+        if (source && typeof source === 'object') {
+            if (source.errorDetails && typeof source.errorDetails === 'object') Object.assign(details, deepClone(source.errorDetails));
+            if (source.details && typeof source.details === 'object') Object.assign(details, deepClone(source.details));
+            if (source.chunk && typeof source.chunk === 'object' && !details.chunk) details.chunk = deepClone(source.chunk);
+            if (source.provider && !details.provider) details.provider = String(source.provider);
+            if (Number.isFinite(Number(source.errno)) && details.errno === undefined) details.errno = Number(source.errno);
+            if (Number.isFinite(Number(source.providerErrno)) && details.providerErrno === undefined) details.providerErrno = Number(source.providerErrno);
+            if (source.retryAfter && details.retryAfter === undefined) details.retryAfter = source.retryAfter;
+        }
+        return Object.keys(details).length ? details : null;
+    }
+
+    function clearBacktestError() {
+        state.backtestError = '';
+        state.backtestErrorDetails = null;
+    }
+
+    function setBacktestError(source, fallbackDetails = null) {
+        if (!source) {
+            clearBacktestError();
+            return;
+        }
+        if (typeof source === 'string') {
+            state.backtestError = source;
+            state.backtestErrorDetails = normalizeBacktestErrorDetails(null, fallbackDetails);
+            return;
+        }
+        const message = String(source.error || source.message || '').trim();
+        state.backtestError = message || 'Backtest failed before the replay completed.';
+        state.backtestErrorDetails = normalizeBacktestErrorDetails(source, fallbackDetails);
+    }
+
+    function getManualPlanRecoveryCopy(selectedPlan = getSelectedTariffPlan()) {
+        if (selectedPlan?.name) {
+            return `The selected manual plan ${selectedPlan.name} is ready for the next run if provider-backed pricing is still unavailable.`;
+        }
+        return 'Create or select a manual tariff plan in Setup so fresh runs can continue even if provider-backed pricing fails again.';
+    }
+
+    function describeBacktestError(source, options = {}) {
+        const selectedPlan = options.selectedPlan || getSelectedTariffPlan();
+        const rawMessage = typeof source === 'string'
+            ? String(source || '').trim()
+            : String(source?.error || source?.message || '').trim();
+        const details = normalizeBacktestErrorDetails(source, options.details || null);
+        const providerKey = String(details?.provider || options.provider || state.pricingProvider || '').trim().toLowerCase();
+        const providerLabel = getPricingProviderLabel(providerKey);
+        const providerRef = getPricingProviderReference(providerKey);
+        const providerErrno = Number(details?.providerErrno || 0) || null;
+        const errno = Number(details?.errno || 0) || null;
+        const rangeRejected = providerErrno === 422 || /Range requested is too large|Maximum 7 days/i.test(rawMessage);
+        const rateLimited = providerErrno === 429 || /rate limited|retry after/i.test(rawMessage);
+        const providerAuthFailure = providerErrno === 401
+            || providerErrno === 403
+            || /authentication failed|api key not configured|amber not configured/i.test(rawMessage);
+        const providerTimeout = providerErrno === 408
+            || /too long to respond|timeout|Could not reach Amber|internet connection|network/i.test(rawMessage);
+        const unsupportedProviderMatch = rawMessage.match(/Historical pricing is not available for provider:\s*([a-z0-9_-]+)/i);
+        const manualPlanMissing = /Choose or create a manual tariff plan first|references a missing tariff plan|missing tariff plan/i.test(rawMessage);
+        const siteMissing = /Site ID is required/i.test(rawMessage);
+        const deviceMissing = /configured device serial number/i.test(rawMessage);
+        const sessionExpired = (errno === 401 || /^Unauthorized$/i.test(rawMessage)) && !providerAuthFailure;
+
+        let displayMessage = rawMessage || 'Backtest failed before the replay completed.';
+        let guidance = 'This saved report failed before the replay completed. Review the setup, then retry with the same period or a shorter window.';
+        let category = 'generic';
+
+        if (sessionExpired) {
+            category = 'session';
+            displayMessage = 'Your session expired before the backtest could start.';
+            guidance = 'Sign in again, then rerun the backtest.';
+        } else if (deviceMissing) {
+            category = 'device-setup';
+            displayMessage = 'Backtesting needs a configured inverter serial number before it can replay history.';
+            guidance = 'Open Setup, save the inverter details, then rerun the backtest.';
+        } else if (manualPlanMissing) {
+            category = 'manual-plan';
+            displayMessage = 'The selected manual tariff plan is missing or incomplete.';
+            guidance = 'Create or reselect a manual tariff plan, then rerun the backtest.';
+        } else if (unsupportedProviderMatch) {
+            category = 'provider-unsupported';
+            displayMessage = `Historical pricing backtests are not supported for ${getPricingProviderLabel(unsupportedProviderMatch[1])}.`;
+            guidance = 'Switch to Amber, AEMO, or a manual tariff plan before rerunning.';
+        } else if (siteMissing) {
+            category = 'provider-site';
+            displayMessage = `${providerLabel} is connected but no site is selected for historical pricing.`;
+            guidance = `Open Setup, resave ${providerRef}, then rerun the backtest.`;
+        } else if (rangeRejected) {
+            category = 'provider-range';
+            displayMessage = `${providerLabel} rejected the historical pricing request for this run.`;
+            guidance = `Retry once. If it happens again, reconnect ${providerRef} or use a manual tariff plan for the next run. ${getManualPlanRecoveryCopy(selectedPlan)}`;
+        } else if (rateLimited) {
+            category = 'provider-rate-limit';
+            displayMessage = `${providerLabel} is rate-limiting historical pricing requests right now.`;
+            guidance = `Wait a minute, then rerun the backtest. ${getManualPlanRecoveryCopy(selectedPlan)}`;
+        } else if (providerTimeout) {
+            category = 'provider-timeout';
+            displayMessage = `${providerLabel} did not respond while historical pricing was loading.`;
+            guidance = `Retry in a moment. If it keeps happening, reconnect ${providerRef} or use a manual tariff plan for the next run. ${getManualPlanRecoveryCopy(selectedPlan)}`;
+        } else if (isHistoricalPricingFailureMessage(rawMessage)) {
+            category = 'historical-pricing';
+            displayMessage = 'Historical tariff data was unavailable for part of this backtest period.';
+            guidance = `Reconnect your tariff provider in Setup or use a manual tariff plan, then rerun. ${getManualPlanRecoveryCopy(selectedPlan)}`;
+        } else if (providerAuthFailure) {
+            category = 'provider-auth';
+            displayMessage = `${providerLabel} access needs attention before this backtest can run.`;
+            guidance = `Open Setup, reconnect ${providerRef}, then rerun the backtest. ${getManualPlanRecoveryCopy(selectedPlan)}`;
+        }
+
+        return {
+            category,
+            displayMessage,
+            guidance,
+            technicalDetail: rawMessage && rawMessage !== displayMessage ? rawMessage : '',
+            rawMessage,
+            details
+        };
     }
 
     function buildSvgLinePath(points, getX, getY) {
@@ -729,6 +866,7 @@
             ]);
 
             state.currentTimezone = configResponse?.result?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Sydney';
+            state.pricingProvider = String(configResponse?.result?.pricingProvider || 'amber').trim().toLowerCase() || 'amber';
             state.currentRulesSnapshot = {
                 source: 'current',
                 name: 'Current rules',
@@ -767,7 +905,7 @@
                 startBacktestPolling(state.activeRun.id);
             }
         } catch (error) {
-            state.backtestError = error?.message || 'Failed to load Automation Lab data.';
+            setBacktestError(error?.message || 'Failed to load Automation Lab data.');
         } finally {
             state.loading = false;
             render();
@@ -962,6 +1100,9 @@
     function renderSetupColumn(preview, selectedPlan) {
         const currentRuleCount = getRuleCount(state.currentRulesSnapshot);
         const candidateRuleCount = getRuleCount(state.candidateSnapshot);
+        const backtestErrorInfo = state.backtestError
+            ? describeBacktestError({ error: state.backtestError, errorDetails: state.backtestErrorDetails }, { selectedPlan })
+            : null;
         return `
             <section class="lab-card">
                 <h3>What to test</h3>
@@ -1012,7 +1153,8 @@
             <section class="lab-card">
                 <h3>Review and run</h3>
                 <p class="lab-card-copy">Check the scenarios below, then hit run. Results appear on the right with visual savings breakdown and rule performance.</p>
-                ${state.backtestError ? `<div class="lab-message error">${escHtml(state.backtestError)}</div>` : ''}
+                ${backtestErrorInfo ? `<div class="lab-message error">${escHtml(backtestErrorInfo.displayMessage)}</div>` : ''}
+                ${backtestErrorInfo && backtestErrorInfo.guidance && backtestErrorInfo.category !== 'generic' ? `<div class="lab-note">${escHtml(backtestErrorInfo.guidance)}</div>` : ''}
                 ${preview.error ? `<div class="lab-message error">${escHtml(preview.error)}</div>` : ''}
                 ${historyLimitReached() ? `<div class="lab-note">History is full (${MAX_BACKTEST_HISTORY}/${MAX_BACKTEST_HISTORY}). Delete a saved report before starting another backtest.</div>` : ''}
                 <div class="lab-scenario-list">
@@ -1157,6 +1299,7 @@
         const completed = run.status === 'completed';
         const failed = run.status === 'failed';
         const running = run.status === 'queued' || run.status === 'running';
+        const failureInfo = failed ? describeBacktestError(run) : null;
         const baselineSummary = summaries.find((s) => s.scenarioId === 'baseline');
         const scenarioSummaries = summaries.filter((s) => s.scenarioId !== 'baseline');
 
@@ -1170,7 +1313,7 @@
                         <span class="lab-badge">Confidence: ${escHtml(confidence)}</span>
                     </div>
                 </div>
-                ${failed ? `<div class="lab-message error">${escHtml(run.error || 'Backtest failed. Try again or shorten the period.')}</div>` : ''}
+                ${failed ? `<div class="lab-message error">${escHtml(failureInfo?.displayMessage || run.error || 'Backtest failed. Try again or shorten the period.')}</div>` : ''}
                 ${failed ? renderFailureGuidance(run) : ''}
                 ${running ? `
                     <div class="lab-progress-pulse">
@@ -1210,15 +1353,12 @@
     }
 
     function renderFailureGuidance(run) {
-        const errorMessage = String(run?.error || '');
+        const failureInfo = describeBacktestError(run);
         const selectedPlan = getSelectedTariffPlan();
-        const note = isHistoricalPricingFailureMessage(errorMessage)
-            ? selectedPlan
-                ? `Historical tariff data was missing for this saved report. The selected fallback plan <strong>${escHtml(selectedPlan.name)}</strong> is ready for new runs, so rerunning now will use it automatically if provider-backed history is still unavailable.`
-                : 'Historical tariff data was missing for this saved report. Create or select a manual plan in setup so new runs can keep going even when provider-backed pricing is unavailable.'
-            : 'This saved report failed before the replay completed. Review the setup, then retry with the same period or a shorter window.';
+        const note = failureInfo.guidance || 'This saved report failed before the replay completed. Review the setup, then retry with the same period or a shorter window.';
         return `
             <div class="lab-note">${note}</div>
+            ${failureInfo.technicalDetail ? `<div class="lab-note"><strong>Technical detail:</strong> ${escHtml(failureInfo.technicalDetail)}</div>` : ''}
             <div class="lab-guidance-actions">
                 <button type="button" class="btn btn-secondary" data-action="switch-view" data-view="setup">Review setup</button>
                 <button type="button" class="btn btn-secondary" data-action="open-tariff-builder">${selectedPlan ? 'Manage tariff plan' : 'Create manual plan'}</button>
@@ -1548,6 +1688,7 @@
         const limitations = getRunLimitations(run);
         const faqItems = buildResultsFaqItems(run, selectedPlan);
         const openIndex = run?.status === 'failed' ? 1 : 0;
+        const failureInfo = run?.status === 'failed' ? describeBacktestError(run, { selectedPlan }) : null;
         const runIntro = !run
             ? 'This section answers the common questions people hit before their first replay: tariffs, fallback plans, confidence, and how to read the outcome.'
             : run.status === 'failed'
@@ -1562,7 +1703,7 @@
                 <p class="lab-card-copy">Comprehensive answers about replay confidence, fallback tariffs, failed runs, interval impact, and how to read the report.</p>
                 <div class="lab-stack">
                     <div class="lab-note">${runIntro}</div>
-                    ${run?.status === 'failed' ? `<div class="lab-note"><strong>Latest failure:</strong> ${escHtml(run.error || 'Backtest failed.')}</div>` : ''}
+                    ${run?.status === 'failed' ? `<div class="lab-note"><strong>Latest failure:</strong> ${escHtml(failureInfo?.displayMessage || run.error || 'Backtest failed.')}</div>` : ''}
                     ${run?.status === 'completed' && limitations.length ? `
                         <div style="font-weight:700;font-size:0.86rem;">Latest run caveats</div>
                         <div class="lab-limitation-list">${limitations.map((item) => `<div class="lab-note">${escHtml(item)}</div>`).join('')}</div>
@@ -1713,17 +1854,17 @@
 
     async function runBacktest() {
         if (historyLimitReached()) {
-            state.backtestError = `You already have ${MAX_BACKTEST_HISTORY} saved backtests. Delete one from history before running another.`;
+            setBacktestError(`You already have ${MAX_BACKTEST_HISTORY} saved backtests. Delete one from history before running another.`);
             render();
             return;
         }
         const preview = buildPayloadPreview();
         if (preview.error) {
-            state.backtestError = preview.error;
+            setBacktestError(preview.error);
             render();
             return;
         }
-        state.backtestError = '';
+        clearBacktestError();
         state.optimizationRun = null;
         state.optimizationError = '';
         state.applyMessage = '';
@@ -1732,13 +1873,16 @@
         render();
         try {
             const response = await window.apiClient.createBacktestRun(preview.payload);
-            if (response?.errno !== 0 || !response?.result?.id) throw new Error(response?.error || 'Backtest run could not be created.');
+            if (response?.errno !== 0 || !response?.result?.id) {
+                setBacktestError(response || { error: 'Backtest run could not be created.' });
+                return;
+            }
             state.selectedRunId = response.result.id;
             state.activeRun = response.result;
             state.backtestRuns = [response.result].concat(state.backtestRuns.filter((entry) => entry.id !== response.result.id));
             startBacktestPolling(response.result.id);
         } catch (error) {
-            state.backtestError = error?.message || 'Backtest run could not be created.';
+            setBacktestError(error || { error: 'Backtest run could not be created.' });
         } finally {
             state.runningBacktest = false;
             render();
@@ -1792,7 +1936,7 @@
                 }
             }
         } catch (error) {
-            state.backtestError = error?.message || 'Could not load that backtest run.';
+            setBacktestError(error || { error: 'Could not load that backtest run.' });
         }
         render();
     }
@@ -1855,7 +1999,7 @@
     async function deleteBacktestRun(runId) {
         const entry = state.backtestRuns.find((candidate) => candidate.id === runId) || (state.activeRun?.id === runId ? state.activeRun : null);
         if (!canDeleteRun(entry)) {
-            state.backtestError = 'Backtest runs can only be deleted after they finish.';
+            setBacktestError('Backtest runs can only be deleted after they finish.');
             render();
             return;
         }
@@ -1882,9 +2026,9 @@
                 state.optimizationError = '';
                 state.applyMessage = '';
             }
-            state.backtestError = '';
+            clearBacktestError();
         } catch (error) {
-            state.backtestError = error?.message || 'Backtest report could not be deleted.';
+            setBacktestError(error || { error: 'Backtest report could not be deleted.' });
         }
         render();
     }

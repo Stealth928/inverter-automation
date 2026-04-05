@@ -3,6 +3,7 @@
 const { resolveProviderDeviceId } = require('../../lib/provider-device-id');
 
 const { buildAllRuleEvaluationsForAudit } = require('../../lib/services/automation-audit-service');
+const { evaluateActiveRuleEnergyCap: defaultEvaluateActiveRuleEnergyCap } = require('../../lib/services/automation-energy-cap-service');
 const {
   applyTriggeredRuleAction,
   persistTriggeredRuleState
@@ -104,6 +105,9 @@ function registerAutomationCycleRoute(app, deps = {}) {
   const emitAutomationNotification = typeof deps.emitAutomationNotification === 'function'
     ? deps.emitAutomationNotification
     : null;
+  const evaluateActiveRuleEnergyCap = typeof deps.evaluateActiveRuleEnergyCap === 'function'
+    ? deps.evaluateActiveRuleEnergyCap
+    : defaultEvaluateActiveRuleEnergyCap;
   const warnLog = typeof logger.warn === 'function' ? logger.warn.bind(logger) : console.warn.bind(console);
   const errorLog = typeof logger.error === 'function' ? logger.error.bind(logger) : console.error.bind(console);
   const saveUserAutomationState = deps.saveUserAutomationState;
@@ -713,6 +717,30 @@ function registerAutomationCycleRoute(app, deps = {}) {
         ...safePatch
       });
     };
+    const initializeTriggeredRuleEnergyTracking = async (ruleId, rule) => {
+      try {
+        const energyCapEvaluation = await evaluateActiveRuleEnergyCap({
+          action: rule?.action,
+          deviceAdapter,
+          deviceSN,
+          foxessAPI,
+          inverterData,
+          nowMs: Date.now(),
+          provider,
+          ruleId,
+          state: { activeEnergyTracking: null },
+          timeZone: userTimezone,
+          userConfig,
+          userId
+        });
+        return energyCapEvaluation?.applicable === true
+          ? (energyCapEvaluation.statePatch?.activeEnergyTracking || null)
+          : null;
+      } catch (energyCapError) {
+        warnLog(`[Automation] Failed to initialize energy cap tracking for ${ruleId}: ${energyCapError?.message || energyCapError}`);
+        return null;
+      }
+    };
 
     if (telemetryHealth.shouldPauseAutomation) {
       const telemetryPauseTransition = state?.telemetryFailsafePaused !== true;
@@ -793,6 +821,40 @@ function registerAutomationCycleRoute(app, deps = {}) {
       } finally {
         addPhaseDuration('ruleEvalMs', ruleEvalStartMs);
       }
+
+      let activeRuleEnergyCap = null;
+      if (isActiveRule && result && result.triggered) {
+        try {
+          activeRuleEnergyCap = await evaluateActiveRuleEnergyCap({
+            action: rule?.action,
+            deviceAdapter,
+            deviceSN,
+            foxessAPI,
+            inverterData,
+            nowMs,
+            provider,
+            ruleId,
+            state,
+            timeZone: userTimezone,
+            userConfig,
+            userId
+          });
+          if (activeRuleEnergyCap?.applicable === true && activeRuleEnergyCap.condition) {
+            result.results = Array.isArray(result.results)
+              ? [...result.results, activeRuleEnergyCap.condition]
+              : [activeRuleEnergyCap.condition];
+            if (activeRuleEnergyCap.reached === true) {
+              result = {
+                ...result,
+                reason: activeRuleEnergyCap.condition.reason || 'Energy cap reached',
+                triggered: false
+              };
+            }
+          }
+        } catch (energyCapError) {
+          warnLog(`[Automation] Active rule energy-cap evaluation failed for ${ruleId}: ${energyCapError?.message || energyCapError}`);
+        }
+      }
       
       if (result.triggered) {
         logger.debug('Automation', `🎯 Rule '${rule.name}' (${ruleId}) conditions MET - triggered=${result.triggered}`);
@@ -823,6 +885,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             logger.debug('Automation', `💾 Updating state after retry: activeSegmentEnabled=${retryResult?.errno === 0}`);
             await saveStateWithTelemetry({
               lastCheck: Date.now(),
+              ...(activeRuleEnergyCap?.statePatch || {}),
               activeSegmentEnabled: retryResult?.errno === 0,
               lastActionResult: retryResult,
               inBlackout: false
@@ -887,6 +950,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             );
 
             await persistTriggeredRuleState({
+              activeEnergyTracking: await initializeTriggeredRuleEnergyTracking(ruleId, rule),
               actionResult,
               lastCheckMs: Date.now(),
               lastTriggeredMs: Date.now(),
@@ -930,6 +994,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             // don't falsely claim it's enabled on subsequent cycles
             await saveStateWithTelemetry({
               lastCheck: Date.now(),
+              ...(activeRuleEnergyCap?.statePatch || {}),
               inBlackout: false
               // DO NOT UPDATE activeSegmentEnabled - preserve prior state
             });
@@ -991,6 +1056,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
           );
           
           await persistTriggeredRuleState({
+            activeEnergyTracking: await initializeTriggeredRuleEnergyTracking(ruleId, rule),
             actionResult,
             lastCheckMs: Date.now(),
             lastTriggeredMs: Date.now(),
@@ -1024,7 +1090,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
             triggered: true,
             ruleName: rule.name,
             ruleId: ruleId,
-            evaluationResults: result.conditions || [],
+            evaluationResults: result.results || result.conditions || [],
             allRuleEvaluations: allRulesForAudit, // Complete evaluation context in frontend format
             actionTaken: {
               workMode: rule.action?.workMode,
@@ -1052,6 +1118,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
         } else {
           // Active rule is continuing - just update check timestamp, no re-apply needed
           await saveStateWithTelemetry({
+            ...(activeRuleEnergyCap?.statePatch || {}),
             lastCheck: Date.now(),
             inBlackout: false,
             activeSegmentEnabled: true,
@@ -1113,7 +1180,7 @@ function registerAutomationCycleRoute(app, deps = {}) {
               triggered: false,
               ruleName: rule.name,
               ruleId: ruleId,
-              evaluationResults: result.conditions || [],
+              evaluationResults: result.results || result.conditions || [],
               allRuleEvaluations: allRulesForAudit, // Complete evaluation context in frontend format
               actionTaken: null,
               activeRuleBefore: state.activeRule,

@@ -11663,6 +11663,21 @@
                                 </div>
                             </div>
 
+                            <div id="ruleEnergyCapWrap" style="display:none;margin-top:12px;padding:12px;background:color-mix(in srgb, var(--bg-secondary) 84%, var(--bg-primary));border:1px solid color-mix(in srgb, var(--accent-blue) 18%, var(--border-primary));border-radius:8px;">
+                                <div style="display:grid;grid-template-columns:minmax(0, 1fr);gap:8px;min-width:0;">
+                                    <div>
+                                        <div class="field-label-with-tooltip">
+                                            <label id="newRuleStopOnEnergyLabel" style="display:block;font-size:11px;color:var(--text-secondary)">Stop after grid export (kWh)</label>
+                                            <span class="tooltip-icon" data-tooltip="Optional. Stops the active rule once cumulative grid import or export during this run reaches the amount you set.">?</span>
+                                        </div>
+                                        <input type="number" id="newRuleStopOnEnergyKwh" placeholder="Optional" min="0.1" max="1000" step="0.1" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:6px;color:var(--text-primary);font-size:13px;margin-top:4px">
+                                        <div id="newRuleStopOnEnergyHint" style="margin-top:6px;font-size:11px;color:var(--text-secondary);line-height:1.4">
+                                            Optional guard rail for capped export runs.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div id="ruleActionPlainEnglish" style="margin-top:12px;padding:10px 12px;border:1px solid color-mix(in srgb, var(--color-success-dark) 45%, var(--border-primary));border-radius:8px;background:linear-gradient(135deg,color-mix(in srgb, var(--color-success-dark) 13%, var(--bg-primary)),color-mix(in srgb, var(--color-success-dark) 4%, var(--bg-primary)));">
                                 <div style="font-size:11px;font-weight:700;color:var(--color-success-dark);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Action Explained</div>
                                 <div id="ruleActionPlainEnglishText" style="font-size:12px;line-height:1.45;color:var(--text-primary)">Set action values to see a clear plain-language explanation.</div>
@@ -11725,6 +11740,7 @@
             setupRulePlainEnglishListeners(modal);
             updateConditionRowStates(modal);
             updateTemperatureConditionUI(modal);
+            updateRuleEnergyCapUI(modal);
             updateRulePlainEnglishSummary(modal);
         }
 
@@ -11979,6 +11995,59 @@
             return map[mode] || 'apply the selected work mode';
         }
 
+        function getRuleEnergyCapConfig(workMode) {
+            if (workMode === 'ForceCharge') {
+                return {
+                    enabled: true,
+                    label: 'Stop after grid import (kWh)',
+                    hint: 'Optional. This rule will stop once cumulative grid import during this run reaches the amount you set.',
+                    preposition: 'from the grid',
+                    verb: 'importing'
+                };
+            }
+            if (workMode === 'ForceDischarge' || workMode === 'Feedin') {
+                return {
+                    enabled: true,
+                    label: 'Stop after grid export (kWh)',
+                    hint: 'Optional. This rule will stop once cumulative grid export during this run reaches the amount you set.',
+                    preposition: 'to the grid',
+                    verb: 'exporting'
+                };
+            }
+            return {
+                enabled: false,
+                label: 'Stop after energy moved (kWh)',
+                hint: '',
+                preposition: '',
+                verb: ''
+            };
+        }
+
+        function getRuleStopOnEnergyKwh(modalRef = null) {
+            const modal = modalRef || document.getElementById('addRuleModal') || document;
+            const rawValue = readModalField(modal, '#newRuleStopOnEnergyKwh', '');
+            if (!rawValue) return null;
+            const parsed = Number(rawValue);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        }
+
+        function updateRuleEnergyCapUI(modalRef = null) {
+            const modal = modalRef || document.getElementById('addRuleModal') || document;
+            const wrap = modal.querySelector ? modal.querySelector('#ruleEnergyCapWrap') : null;
+            const label = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyLabel') : null;
+            const hint = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyHint') : null;
+            const input = modal.querySelector ? modal.querySelector('#newRuleStopOnEnergyKwh') : null;
+            if (!wrap || !label || !hint || !input) return;
+
+            const mode = readModalField(modal, '#newRuleWorkMode', 'SelfUse');
+            const config = getRuleEnergyCapConfig(mode);
+
+            wrap.style.display = config.enabled ? 'block' : 'none';
+            input.disabled = !config.enabled;
+            label.textContent = config.label;
+            hint.textContent = config.hint;
+        }
+
         function buildRuleActionSummaryText(modal, compact = false) {
             const mode = readModalField(modal, '#newRuleWorkMode', 'SelfUse');
             const duration = readModalField(modal, '#newRuleDuration', '30');
@@ -11987,9 +12056,14 @@
             const minSoc = readModalField(modal, '#newRuleMinSoc', '20');
             const maxSoc = readModalField(modal, '#newRuleMaxSoc', '90');
             const cooldown = readModalField(modal, '#newRuleCooldown', '5');
+            const stopOnEnergyKwh = getRuleStopOnEnergyKwh(modal);
+            const energyCapConfig = getRuleEnergyCapConfig(mode);
+            const energyCapPhrase = energyCapConfig.enabled && stopOnEnergyKwh !== null
+                ? ` and stop after ${energyCapConfig.verb} ${stopOnEnergyKwh} kWh ${energyCapConfig.preposition}`
+                : '';
 
             if (compact) {
-                return `Then it will ${getWorkModeActionPhrase(mode)} for ${duration} minutes.`;
+                return `Then it will ${getWorkModeActionPhrase(mode)} for ${duration} minutes${energyCapPhrase}.`;
             }
 
             const powerPhrase = _providerCapabilities.supportsExactPowerControl ? `${power}W` : `requested ${power}W`;
@@ -12001,7 +12075,7 @@
                         ? ' Sigenergy scheduler-backed rule execution is not implemented in the current adapter.'
                         : ''));
 
-            return `When triggered, this rule will ${getWorkModeActionPhrase(mode)} for ${duration} minutes at ${powerPhrase}, with stop SoC ${stopSoc}%, min grid SoC ${minSoc}%, max SoC ${maxSoc}%, and cooldown ${cooldown} minutes before retrigger. Active cancellation applies: if conditions no longer match, the active segment is cancelled on the next automation check.${providerNote}`;
+                        return `When triggered, this rule will ${getWorkModeActionPhrase(mode)} for ${duration} minutes at ${powerPhrase}${energyCapPhrase}, with stop SoC ${stopSoc}%, min grid SoC ${minSoc}%, max SoC ${maxSoc}%, and cooldown ${cooldown} minutes before retrigger. Active cancellation applies: if conditions no longer match, the active segment is cancelled on the next automation check.${providerNote}`;
         }
 
         function updateRulePlainEnglishSummary(modalRef = null) {
@@ -12028,6 +12102,7 @@
 
             const refresh = () => {
                 updateConditionRowStates(modal);
+                updateRuleEnergyCapUI(modal);
                 updateRulePlainEnglishSummary(modal);
             };
             modal.addEventListener('input', (event) => {
@@ -12189,7 +12264,7 @@
             
             // Clear all previous error styles first
             ['newRuleName', 'newRulePriority', 'newRuleDuration', 'newRuleCooldown', 'newRuleFdPwr', 
-             'newRuleFdSoc', 'newRuleMinSoc', 'newRuleMaxSoc', 'condFeedInVal', 'condFeedInVal2',
+             'newRuleFdSoc', 'newRuleMinSoc', 'newRuleMaxSoc', 'newRuleStopOnEnergyKwh', 'condFeedInVal', 'condFeedInVal2',
              'condBuyVal', 'condBuyVal2', 'condSocVal', 'condSocVal2', 'condTempVal', 'condTempDayOffset', 'condSolarVal',
              'condSolarLookAhead', 'condCloudVal', 'condCloudLookAhead', 'condForecastVal', 
              'condForecastLookAhead', 'condTimeStart', 'condTimeEnd'].forEach(clearFieldError);
@@ -12400,6 +12475,15 @@
                 setFieldError('newRuleMinSoc', '🔋 Min SoC (Grid) is higher than Stop SoC — reduce Min SoC or raise Stop SoC');
             }
 
+            const energyCapConfig = getRuleEnergyCapConfig(workModeVal);
+            const stopOnEnergyRaw = modal.querySelector('#newRuleStopOnEnergyKwh')?.value?.trim() || '';
+            if (energyCapConfig.enabled && stopOnEnergyRaw) {
+                const stopOnEnergyKwh = parseFloat(stopOnEnergyRaw);
+                if (isNaN(stopOnEnergyKwh) || stopOnEnergyKwh < 0.1 || stopOnEnergyKwh > 1000) {
+                    setFieldError('newRuleStopOnEnergyKwh', '⚡ Stop-after energy must be between 0.1 and 1000 kWh');
+                }
+            }
+
             // Re-apply non-blocking warning styling after validation pass
             updateRuleMinSocFloorWarning();
             
@@ -12451,6 +12535,11 @@
             const minSocOnGrid = parseInt(document.getElementById('newRuleMinSoc').value) || 20;
             const fdSoc = Math.max(parseInt(document.getElementById('newRuleFdSoc').value) || minSocOnGrid, minSocOnGrid);
             const maxSoc = parseInt(document.getElementById('newRuleMaxSoc').value) || 100;
+            const energyCapConfig = getRuleEnergyCapConfig(workMode);
+            const stopOnEnergyParsed = parseFloat(document.getElementById('newRuleStopOnEnergyKwh').value);
+            const stopOnEnergyKwh = energyCapConfig.enabled && Number.isFinite(stopOnEnergyParsed) && stopOnEnergyParsed > 0
+                ? Number(stopOnEnergyParsed.toFixed(3))
+                : null;
             
             // Collect conditions - use modal scoping to avoid duplicate ID conflicts with old modal
             const modal = document.getElementById('addRuleModal');
@@ -12526,7 +12615,15 @@
                         conditions,
                         cooldownMinutes,
                         enabled: document.getElementById('newRuleEnabled')?.checked === true,
-                        action: { workMode, durationMinutes, fdPwr, fdSoc, minSocOnGrid, maxSoc }
+                        action: {
+                            workMode,
+                            durationMinutes,
+                            fdPwr,
+                            fdSoc,
+                            minSocOnGrid,
+                            maxSoc,
+                            ...(stopOnEnergyKwh !== null ? { stopOnEnergyKwh } : {})
+                        }
                     })
                 });
                 const data = await resp.json();
@@ -12674,8 +12771,10 @@
                 document.getElementById('newRuleFdSoc').value = editFdSoc;
                 document.getElementById('newRuleMinSoc').value = editMinSoc;
                 document.getElementById('newRuleMaxSoc').value = action.maxSoc || 100;
+                document.getElementById('newRuleStopOnEnergyKwh').value = action.stopOnEnergyKwh ?? '';
                 updateRuleMinSocFloorWarning();
                 updateConditionRowStates(modal);
+                updateRuleEnergyCapUI(modal);
                 updateRulePlainEnglishSummary(modal);
                 
                 // Change button text

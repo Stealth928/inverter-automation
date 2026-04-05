@@ -68,6 +68,7 @@ async function persistTriggeredRuleState(options = {}) {
   await saveUserAutomationState(
     userId,
     buildTriggeredRuleState({
+      activeEnergyTracking: options.activeEnergyTracking,
       actionResult,
       lastCheckMs,
       lastTriggeredMs,

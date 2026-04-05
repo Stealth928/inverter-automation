@@ -48,6 +48,7 @@ function buildDeps(overrides = {}) {
     applyRuleAction: jest.fn(async () => ({ errno: 0 })),
     checkAndApplyCurtailment: jest.fn(async () => ({ enabled: false })),
     cleanupExpiredQuickControl: jest.fn(async () => undefined),
+    evaluateActiveRuleEnergyCap: jest.fn(async () => ({ applicable: false, reached: false, statePatch: { activeEnergyTracking: null } })),
     evaluateRule: jest.fn(async () => ({ triggered: false, results: [] })),
     findValue: jest.fn(() => null),
     foxessAPI: {
@@ -124,6 +125,7 @@ describe('automation cycle route module', () => {
       expect.objectContaining({
         activeRule: null,
         activeRuleName: null,
+        activeEnergyTracking: null,
         activeSegment: null,
         activeSegmentEnabled: false,
         lastCheck: expect.any(Number),
@@ -429,6 +431,99 @@ describe('automation cycle route module', () => {
       expect.objectContaining({
         eventType: 'cycle_failure',
         preferenceScope: 'highSignalAutomation'
+      })
+    );
+  });
+
+  test('cancels an active rule when its stop-on-energy cap is reached', async () => {
+    const deps = buildDeps({
+      evaluateActiveRuleEnergyCap: jest.fn(async () => ({
+        applicable: true,
+        condition: {
+          condition: 'energyCap',
+          met: false,
+          actual: 15.1,
+          operator: '<',
+          target: 15,
+          direction: 'export',
+          unit: 'kWh',
+          reason: 'Stop cap reached: exported 15.100 of 15.000 kWh'
+        },
+        reached: true,
+        statePatch: {
+          activeEnergyTracking: {
+            direction: 'export',
+            progressKwh: 15.1,
+            ruleId: 'ruleA',
+            targetKwh: 15
+          }
+        }
+      })),
+      evaluateRule: jest.fn(async () => ({
+        triggered: true,
+        results: [{ condition: 'feedInPrice', met: true, actual: 25, operator: '>=', target: 20 }]
+      })),
+      getQuickControlState: jest.fn(async () => null),
+      getUserAutomationState: jest.fn(async () => ({
+        activeRule: 'ruleA',
+        activeRuleName: 'Rule A',
+        activeSegmentEnabled: true,
+        enabled: true
+      })),
+      getUserConfig: jest.fn(async () => ({ automation: { blackoutWindows: [] }, deviceSn: 'SN-CAP-1' })),
+      getUserRules: jest.fn(async () => ({
+        ruleA: {
+          enabled: true,
+          name: 'Rule A',
+          priority: 1,
+          cooldownMinutes: 5,
+          action: { workMode: 'ForceDischarge', durationMinutes: 30, fdPwr: 5000, stopOnEnergyKwh: 15 }
+        }
+      }))
+    });
+
+    const app = buildApp((instance) => {
+      instance.use('/api', (req, _res, next) => {
+        req.user = { uid: 'u-cycle-cap-stop' };
+        next();
+      });
+      registerAutomationCycleRoute(instance, deps);
+    });
+
+    const response = await request(app)
+      .post('/api/automation/cycle')
+      .send({});
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      errno: 0,
+      result: expect.objectContaining({
+        triggered: false,
+        rulesEvaluated: 1
+      })
+    }));
+    expect(deps.evaluateActiveRuleEnergyCap).toHaveBeenCalledWith(expect.objectContaining({
+      ruleId: 'ruleA',
+      userId: 'u-cycle-cap-stop'
+    }));
+    expect(deps.setUserRule).toHaveBeenCalledWith('u-cycle-cap-stop', 'ruleA', { lastTriggered: null }, { merge: true });
+    expect(deps.saveUserAutomationState).toHaveBeenCalledWith(
+      'u-cycle-cap-stop',
+      expect.objectContaining({
+        activeRule: null,
+        activeRuleName: null,
+        activeEnergyTracking: null,
+        activeSegment: null,
+        activeSegmentEnabled: false
+      })
+    );
+    expect(deps.addAutomationAuditEntry).toHaveBeenCalledWith(
+      'u-cycle-cap-stop',
+      expect.objectContaining({
+        evaluationResults: expect.arrayContaining([
+          expect.objectContaining({ condition: 'energyCap', met: false, target: 15 })
+        ]),
+        triggered: false
       })
     );
   });

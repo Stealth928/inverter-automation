@@ -160,6 +160,31 @@ test.describe('Rule Modal Summaries', () => {
     await expect(page.locator('#addRuleModal #condTempDayOffset')).toHaveValue('0');
   });
 
+  test('switches the optional stop-on-energy control between export and import modes', async ({ page }) => {
+    await openAddRuleModal(page);
+
+    const energyCapWrap = page.locator('#addRuleModal #ruleEnergyCapWrap');
+    const energyCapLabel = page.locator('#addRuleModal #newRuleStopOnEnergyLabel');
+    const energyCapInput = page.locator('#addRuleModal #newRuleStopOnEnergyKwh');
+    const actionSummary = page.locator('#addRuleModal #ruleActionPlainEnglishText');
+
+    await expect(energyCapWrap).toBeVisible();
+    await expect(energyCapLabel).toHaveText('Stop after grid export (kWh)');
+
+    await energyCapInput.fill('15');
+    await expect(actionSummary).toContainText('stop after exporting 15 kWh to the grid');
+
+    await page.selectOption('#addRuleModal #newRuleWorkMode', 'ForceCharge');
+    await expect(energyCapWrap).toBeVisible();
+    await expect(energyCapLabel).toHaveText('Stop after grid import (kWh)');
+    await expect(actionSummary).toContainText('stop after importing 15 kWh from the grid');
+
+    await page.selectOption('#addRuleModal #newRuleWorkMode', 'SelfUse');
+    await expect(energyCapWrap).toBeHidden();
+    await expect(actionSummary).not.toContainText('stop after importing 15 kWh from the grid');
+    await expect(actionSummary).not.toContainText('stop after exporting 15 kWh to the grid');
+  });
+
   test('groups current price conditions ahead of forecast price', async ({ page }) => {
     await openAddRuleModal(page);
 
@@ -195,6 +220,38 @@ test.describe('Rule Modal Summaries', () => {
     await expect(buyOperator).toBeEnabled();
     await expect(buyValue).toBeEnabled();
     await expect(buyRow).toHaveCSS('opacity', '1');
+  });
+
+  test('includes stopOnEnergyKwh in the create payload for supported work modes', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__capturedRuleCreatePayload = null;
+      window.authenticatedFetch = async (url, options = {}) => {
+        if (String(url || '').includes('/api/automation/rule/create')) {
+          window.__capturedRuleCreatePayload = JSON.parse(options.body || '{}');
+        }
+        return {
+          json: async () => ({ errno: 0, result: { ruleId: 'charge_cap_rule' } })
+        };
+      };
+    });
+
+    await openAddRuleModal(page);
+    await page.fill('#addRuleModal #newRuleName', 'Charge Cap Rule');
+    await page.check('#addRuleModal #condBuyEnabled');
+    await page.fill('#addRuleModal #condBuyVal', '5');
+    await page.selectOption('#addRuleModal #newRuleWorkMode', 'ForceCharge');
+    await page.fill('#addRuleModal #newRuleStopOnEnergyKwh', '12.5');
+    await page.evaluate(() => window.createBackendRule());
+
+    await expect.poll(async () => page.evaluate(() => window.__capturedRuleCreatePayload)).not.toBeNull();
+    const capturedPayload = await page.evaluate(() => window.__capturedRuleCreatePayload);
+    expect(capturedPayload).toEqual(expect.objectContaining({
+      action: expect.objectContaining({
+        stopOnEnergyKwh: 12.5,
+        workMode: 'ForceCharge'
+      }),
+      name: 'Charge Cap Rule'
+    }));
   });
 
   test('uses master summaries only and omits legacy temperature panel', async ({ page }) => {

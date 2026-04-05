@@ -132,6 +132,26 @@ function normalizeSiteId(siteRecord) {
   return null;
 }
 
+function createProviderError(normalizedError, rawError = {}) {
+  const error = new Error(
+    normalizedError?.error || rawError?.error || rawError?.message || 'Amber provider error'
+  );
+  if (normalizedError?.errno) {
+    error.errno = normalizedError.errno;
+  }
+  if (rawError?.errno) {
+    error.providerErrno = rawError.errno;
+  }
+  if (rawError?.retryAfter) {
+    error.retryAfter = rawError.retryAfter;
+  }
+  if (rawError?.chunk) {
+    error.chunk = rawError.chunk;
+  }
+  error.provider = 'amber';
+  return error;
+}
+
 class AmberTariffAdapter extends TariffProviderAdapter {
   constructor(options = {}) {
     super();
@@ -334,6 +354,10 @@ class AmberTariffAdapter extends TariffProviderAdapter {
       );
     }
 
+    if (historyResult && historyResult.errno && historyResult.errno !== 0) {
+      throw createProviderError(this.normalizeProviderError(historyResult), historyResult);
+    }
+
     return {
       siteId,
       data: extractPriceRows(historyResult)
@@ -396,6 +420,7 @@ function createAmberTariffAdapter(options = {}) {
 module.exports = {
   AMBER_CURRENT_NEXT_DEFAULT,
   AmberTariffAdapter,
+  createProviderError,
   createAmberTariffAdapter,
   extractPriceRows,
   extractSitesFromResult,
